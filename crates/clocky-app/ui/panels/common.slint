@@ -129,6 +129,7 @@ export component TaskLineView inherits Rectangle {
     height: 46px;
     border-radius: Theme.radius-lg;
     background: root.task.linked ? Theme.field : (touch.has-hover ? Theme.accent-soft : transparent);
+    animate background { duration: Theme.dur-hover; }
     border-width: root.task.linked ? 1px : 0;
     border-color: Theme.line-2;
 
@@ -281,6 +282,7 @@ export component IconButton inherits Rectangle {
     border-width: 1px;
     border-color: Theme.line-2;
     background: touch.has-hover && root.enabled ? Theme.accent-soft : transparent;
+    animate background { duration: Theme.dur-hover; }
     opacity: root.enabled ? 1 : 0.5;
 
     Image {
@@ -308,6 +310,7 @@ export component RoundAction inherits Rectangle {
     height: self.diameter;
     border-radius: self.diameter / 2;
     background: root.primary ? Theme.accent : (touch.has-hover ? Theme.accent-soft : transparent);
+    animate background { duration: Theme.dur-hover; }
     border-width: root.primary ? 0 : 1px;
     border-color: Theme.line-2;
 
@@ -376,6 +379,7 @@ export component Arrow inherits Rectangle {
     height: 28px;
     border-radius: Theme.radius-sm;
     background: touch.has-hover ? Theme.accent-soft : transparent;
+    animate background { duration: Theme.dur-hover; }
 
     Image {
         width: 20px;
@@ -401,6 +405,7 @@ export component Chip inherits Rectangle {
     border-width: root.selected ? 1.5px : 1px;
     border-color: root.selected ? Theme.accent : Theme.line-2;
     background: root.selected ? Theme.panel-2 : (touch.has-hover ? Theme.accent-soft : transparent);
+    animate background { duration: Theme.dur-hover; }
 
     Text {
         text: root.text;

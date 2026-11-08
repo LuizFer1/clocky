@@ -9,6 +9,11 @@ export enum DialogTone { danger, neutral, pause }
 // Dimmed backdrop that swallows the clicks behind the dialog.
 export component Scrim inherits Rectangle {
     background: Theme.dark ? #000000b3 : #0000004d;
+    // The backdrop and its card fade in together.
+    property <bool> shown: false;
+    init => { self.shown = true; }
+    opacity: self.shown ? 1 : 0;
+    animate opacity { duration: Theme.dur-fade; easing: ease-out; }
 
     TouchArea { }
 

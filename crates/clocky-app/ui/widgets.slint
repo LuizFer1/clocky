@@ -74,6 +74,7 @@ export component SecondaryButton inherits Rectangle {
     border-width: 1px;
     border-color: Theme.line-2;
     background: touch.has-hover ? Theme.accent-soft : transparent;
+    animate background { duration: Theme.dur-hover; }
 
     HorizontalLayout {
         padding-left: Theme.space-3-5;
@@ -332,6 +333,7 @@ export component TextAction inherits Rectangle {
     height: 30px;
     border-radius: Theme.radius-sm;
     background: touch.has-hover ? Theme.accent-soft : transparent;
+    animate background { duration: Theme.dur-hover; }
 
     label := Text {
         text: root.text;
@@ -355,6 +357,7 @@ export component MenuEntry inherits Rectangle {
     height: 36px;
     border-radius: Theme.radius-sm;
     background: touch.has-hover ? Theme.accent-soft : transparent;
+    animate background { duration: Theme.dur-hover; }
 
     HorizontalLayout {
         padding-left: Theme.space-3;
