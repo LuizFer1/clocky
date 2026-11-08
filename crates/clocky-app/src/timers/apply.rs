@@ -41,10 +41,16 @@ impl Models {
 
 /// Replaces the rows of `model` with `rows`, touching only the ones that differ.
 pub fn sync<T: Clone + PartialEq + 'static>(model: &VecModel<T>, rows: Vec<T>) {
+    sync_by(model, rows, |a, b| a == b);
+}
+
+/// [`sync`] with the row equality given: a row holding a nested model compares it by contents
+/// (a `ModelRc` equals only itself, so a rebuilt one would always look changed).
+fn sync_by<T: Clone + 'static>(model: &VecModel<T>, rows: Vec<T>, same: impl Fn(&T, &T) -> bool) {
     let len = rows.len();
     for (i, row) in rows.into_iter().enumerate() {
         if i < model.row_count() {
-            if model.row_data(i).as_ref() != Some(&row) {
+            if !model.row_data(i).is_some_and(|old| same(&old, &row)) {
                 model.set_row_data(i, row);
             }
         } else {
@@ -80,7 +86,7 @@ pub fn apply(window: &ui::PanelWindow, models: &Models, frame: Frame) {
         Body::Stopwatch(f) => stopwatch(&global, models, f),
         Body::CountdownConfig(f) => countdown_config(&global, models, f),
         Body::CountdownRun(f) => countdown_run(&global, f),
-        Body::PomodoroList(cards) => sync(&models.pomodoros, cards),
+        Body::PomodoroList(cards) => sync_by(&models.pomodoros, cards, same_card),
         Body::PomodoroTimer(f) => pomodoro_timer(&global, models, f),
         Body::Wizard(f) => wizard(&global, models, f),
         Body::Overview(cards) => sync(&models.cards, cards),
@@ -146,9 +152,39 @@ fn wizard(global: &ui::TimerUi<'_>, models: &Models, f: WizardFrame) {
     sync(&models.shortcuts, f.shortcuts);
 }
 
+/// Pomodoro cards are equal when their fields and their segment bars are.
+fn same_card(a: &ui::PomodoroCard, b: &ui::PomodoroCard) -> bool {
+    a.id == b.id
+        && a.name == b.name
+        && a.summary == b.summary
+        && a.task == b.task
+        && a.parts.iter().eq(b.parts.iter())
+}
+
 #[cfg(test)]
 mod tests {
+    use slint::ModelRc;
+
     use super::*;
+
+    fn card(name: &str) -> ui::PomodoroCard {
+        let parts = vec![
+            ui::BarPart {
+                fraction: 0.8,
+                focus: true,
+            },
+            ui::BarPart {
+                fraction: 0.2,
+                focus: false,
+            },
+        ];
+        ui::PomodoroCard {
+            id: 1,
+            name: name.into(),
+            parts: ModelRc::new(VecModel::from(parts)),
+            ..Default::default()
+        }
+    }
 
     #[test]
     fn sync_keeps_equal_rows_and_resizes() {
@@ -159,5 +195,20 @@ mod tests {
         assert_eq!(model.iter().collect::<Vec<_>>(), [1, 5, 7, 8]);
         sync(&model, Vec::new());
         assert_eq!(model.row_count(), 0);
+    }
+
+    #[test]
+    fn an_unchanged_pomodoro_card_is_left_alone_between_ticks() {
+        let model = VecModel::default();
+        sync_by(&model, vec![card("Clássico")], same_card);
+        let first = model.row_data(0).unwrap().parts;
+        // The next tick builds the same card again, with a new segment model.
+        sync_by(&model, vec![card("Clássico")], same_card);
+        assert!(
+            model.row_data(0).unwrap().parts == first,
+            "the row was replaced"
+        );
+        sync_by(&model, vec![card("Deep work")], same_card);
+        assert_eq!(model.row_data(0).unwrap().name, "Deep work");
     }
 }
