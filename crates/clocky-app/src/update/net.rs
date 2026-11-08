@@ -15,6 +15,7 @@ const MAX_SECONDS: &str = "600";
 const USER_AGENT: &str = "Clocky-Updater";
 
 /// A command that opens no console window on Windows (the app has none to share).
+#[cfg_attr(not(windows), allow(unused_mut))]
 pub fn hidden(mut command: Command) -> Command {
     #[cfg(windows)]
     {
