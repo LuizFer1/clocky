@@ -90,6 +90,14 @@ pub fn backup_path(db: &Path) -> PathBuf {
     PathBuf::from(name)
 }
 
+impl Store {
+    /// Read access to the connection for the read-only queries of other core modules
+    /// (`reports`).
+    pub(crate) fn conn(&self) -> &Connection {
+        &self.conn
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
