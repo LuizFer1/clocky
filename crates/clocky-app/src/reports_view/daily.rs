@@ -63,7 +63,10 @@ where
         blocks,
         lanes: lanes.iter().max().map_or(1, |l| l + 1),
         markers,
-        ticks: ticks(first, last),
+        // Placed by real time: on a 23 h or 25 h (DST) day the hours are not evenly spaced.
+        ticks: ticks(first, last, |hour| {
+            local_instant(daily.date, hour, tz).map(|at| axis.at(at))
+        }),
         sessions,
     }
 }
@@ -122,8 +125,9 @@ fn local_instant<Tz: TimeZone>(date: NaiveDate, hour: u32, tz: &Tz) -> Option<Ti
     Some(Timestamp::from_millis(local.timestamp_millis()))
 }
 
-/// Hour labels: every hour on short days, every 2 or 3 on longer ones.
-fn ticks(first: u32, last: u32) -> Vec<ui::HourTick> {
+/// Hour labels: every hour on short days, every 2 or 3 on longer ones. `place` gives the share of
+/// the axis where an hour falls (`None` for an hour skipped by a DST change: no label).
+fn ticks(first: u32, last: u32, place: impl Fn(u32) -> Option<f32>) -> Vec<ui::HourTick> {
     let span = last - first;
     let step = match span {
         0..=8 => 1,
@@ -132,10 +136,11 @@ fn ticks(first: u32, last: u32) -> Vec<ui::HourTick> {
     };
     (first..=last)
         .step_by(step)
-        .map(|hour| ui::HourTick {
-            #[allow(clippy::cast_precision_loss)]
-            at: (hour - first) as f32 / span as f32,
-            label: format!("{hour}h").into(),
+        .filter_map(|hour| {
+            Some(ui::HourTick {
+                at: place(hour)?,
+                label: format!("{hour}h").into(),
+            })
         })
         .collect()
 }
@@ -230,5 +235,30 @@ where
     match marker.kind {
         SubtaskEventKind::Completed => format!("✓ {} às {at}", marker.name),
         SubtaskEventKind::Reopened => format!("↺ {} desmarcada às {at}", marker.name),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ticks_follow_real_time_and_skip_a_missing_hour() {
+        // 0h to 6h on a day whose 1h repeats (25 h day): 7 real hours on the axis.
+        let place = |hour: u32| {
+            let real = if hour >= 2 { hour + 1 } else { hour };
+            #[allow(clippy::cast_precision_loss)]
+            Some(real as f32 / 7.0)
+        };
+        let long_day = ticks(0, 6, place);
+        let at: Vec<f32> = long_day.iter().map(|t| t.at).collect();
+        assert_eq!(at.len(), 7);
+        assert!((at[2] - 3.0 / 7.0).abs() < 1e-6, "{at:?}");
+        assert!((at[6] - 1.0).abs() < 1e-6, "{at:?}");
+        // An hour skipped by the clock change gets no label.
+        let gap = ticks(0, 6, |hour| (hour != 2).then_some(0.5));
+        let labels: Vec<String> = gap.iter().map(|t| t.label.to_string()).collect();
+        assert!(!labels.contains(&"2h".to_owned()), "{labels:?}");
+        assert_eq!(labels.len(), 6);
     }
 }
