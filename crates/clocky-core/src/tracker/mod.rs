@@ -126,7 +126,9 @@ impl Tracker {
     /// Deletes a task (its sessions become "No task") and unlinks the timers that had it.
     ///
     /// # Errors
-    /// [`TrackerError::Store`] if the task does not exist or the database fails.
+    /// [`TrackerError::Store`] if the task does not exist or the database fails. If only the
+    /// refresh fails, the delete is already committed: the links are read again before the next
+    /// command.
     pub fn delete_task(&mut self, task: TaskId) -> Result<(), TrackerError> {
         self.store.delete_task(task)?;
         self.refresh_links()
@@ -135,7 +137,9 @@ impl Tracker {
     /// Deletes a saved countdown timer and unlinks the countdowns started from it.
     ///
     /// # Errors
-    /// [`TrackerError::Store`] if the preset does not exist or the database fails.
+    /// [`TrackerError::Store`] if the preset does not exist or the database fails. If only the
+    /// refresh fails, the delete is already committed: the links are read again before the next
+    /// command.
     pub fn delete_timer_preset(&mut self, preset: TimerPresetId) -> Result<(), TrackerError> {
         self.store.delete_timer_preset(preset)?;
         self.refresh_links()
@@ -144,7 +148,9 @@ impl Tracker {
     /// Deletes a saved pomodoro and unlinks the pomodoros started from it.
     ///
     /// # Errors
-    /// [`TrackerError::Store`] if the preset does not exist or the database fails.
+    /// [`TrackerError::Store`] if the preset does not exist or the database fails. If only the
+    /// refresh fails, the delete is already committed: the links are read again before the next
+    /// command.
     pub fn delete_pomodoro_preset(&mut self, preset: PomodoroPresetId) -> Result<(), TrackerError> {
         self.store.delete_pomodoro_preset(preset)?;
         self.refresh_links()
@@ -265,6 +271,10 @@ impl Tracker {
     /// Advances every timer to `now` and records what came due. Only timers whose state changed
     /// are written. If more than [`SUSPENSION_GAP`] passed since the last tick (the PC was
     /// suspended), it applies the reopen rules instead, as [`Tracker::open`] does.
+    ///
+    /// The app must tick continuously (about once a second) while timers run: any gap longer
+    /// than [`SUSPENSION_GAP`], including the system clock jumping forward by more than that, is
+    /// treated as a suspension, so an overdue pomodoro phase stops instead of auto-starting.
     ///
     /// # Errors
     /// [`TrackerError::Store`] if the database fails (memory is unchanged, so the next tick
