@@ -15,12 +15,20 @@ mod bridge;
 mod command;
 #[expect(dead_code, reason = "the manage window uses the rest of the API next")]
 mod core;
+#[allow(dead_code, reason = "wired to the windows in the next commits")]
+mod demo;
 mod dock;
+#[allow(dead_code, reason = "wired to the windows in the next commits")]
+mod format;
 mod geometry;
 mod instance;
 mod log;
 mod manage;
+#[allow(dead_code, reason = "wired to the windows in the next commits")]
+mod manage_view;
 mod notify;
+#[allow(dead_code, reason = "wired to the windows in the next commits")]
+mod palette;
 mod panel;
 mod paths;
 mod screenshot;
