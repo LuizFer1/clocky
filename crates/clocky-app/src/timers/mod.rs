@@ -20,6 +20,9 @@ mod frame;
 mod frame_pomodoro;
 mod hms;
 mod names;
+// M7a: the Alarme panel and the alarm cards of Ativos.
+mod alarm_view;
+mod overview_alarms;
 mod pomodoro_view;
 mod segments;
 pub mod shots;
@@ -71,6 +74,8 @@ pub struct TimerPanels {
     interactive: bool,
     /// "Abrir menu" of the empty Ativos list (set by the app).
     on_open_menu: RefCell<Option<Rc<dyn Fn()>>>,
+    /// M7a: the alarms (editor, Ativos cards, ringing).
+    alarms: Rc<crate::alarms::Alarms>,
     weak: Weak<Self>,
 }
 
@@ -82,6 +87,8 @@ pub struct Hooks {
     pub alerts: Box<dyn Alerts>,
     /// `false` in screenshot runs: the tick never opens a panel by itself.
     pub interactive: bool,
+    /// M7a: the alarms (editor, Ativos cards, ringing).
+    pub alarms: Rc<crate::alarms::Alarms>,
 }
 
 impl TimerPanels {
@@ -95,6 +102,7 @@ impl TimerPanels {
             chooser,
             alerts,
             interactive,
+            alarms,
         } = hooks;
         let models = Models::install(&window.global::<ui::TimerUi>());
         let panels = Rc::new_cyclic(|weak| Self {
@@ -106,11 +114,13 @@ impl TimerPanels {
             chooser,
             interactive,
             on_open_menu: RefCell::new(None),
+            alarms,
             weak: weak.clone(),
         });
         panels.load_wizard_defaults();
         panels.reopened(&reopened.events, &reopened.before);
         connect::connect(&panels);
+        alarm_view::connect(&panels);
         panels
     }
 
@@ -139,6 +149,10 @@ impl TimerPanels {
     pub fn show(&self, kind: PanelKind) {
         // A picker left open for another timer must not apply its choice here.
         self.chooser.cancel();
+        // M7a: "Alarme" opens a new alarm.
+        if kind == PanelKind::Alarm {
+            self.alarms.start_new();
+        }
         {
             let handle = self.core.borrow();
             let timers = handle.tracker().timers();
@@ -148,7 +162,9 @@ impl TimerPanels {
             }
             state::forget_ended(&mut state, timers);
             state.view = match kind {
-                PanelKind::Alarm => View::Hidden,
+                PanelKind::Alarm => View::Alarm {
+                    from_overview: false,
+                },
                 PanelKind::Stopwatch => View::Stopwatch,
                 PanelKind::Countdown => View::CountdownRun,
                 PanelKind::Pomodoro => {
@@ -348,17 +364,26 @@ impl TimerPanels {
             return;
         };
         self.forget_deleted_tasks();
+        // M7a: read before the core is borrowed below.
+        let alarm_cards = self.alarms.cards();
+        let alarm_title = self.alarms.title();
         let frame = {
             let handle = self.core.borrow();
             let tracker = handle.tracker();
             let mut state = self.state.borrow_mut();
             state::normalize(&mut state, tracker.timers());
-            let names = Names::load(tracker.store(), linked_tasks(tracker, &state));
+            let tasks = linked_tasks(tracker, &state).into_iter();
+            let names = Names::load(
+                tracker.store(),
+                tasks.chain(alarm_cards.iter().filter_map(|c| c.task)),
+            );
             frame::build(&frame::Source {
                 tracker,
                 state: &state,
                 names: &names,
                 now: handle.now(),
+                alarm_cards: &alarm_cards,
+                alarm_title,
             })
         };
         apply::apply(&window, &self.models, frame);

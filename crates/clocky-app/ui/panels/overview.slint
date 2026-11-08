@@ -1,13 +1,17 @@
 // Visualizar / Ativos (handoff SPEC 2.5, screen 50): one card per timer by urgency, with the
-// ringing state and the empty state. Alarms join in M7.
+// ringing state and the empty state. Alarms (M7a) have their own card actions.
 import { Theme } from "../theme.slint";
 import { TimerUi, ActiveCard } from "timer-ui.slint";
 import { Button, ProgressBar, RoundAction, TaskCaption } from "common.slint";
 import { PrimaryButton } from "../components.slint";
+// M7a: alarm cards (toggle, Dispensar and the editor go through `AlarmUi`).
+import { AlarmUi } from "alarm-ui.slint";
+import { AlarmSwitch } from "alarm-common.slint";
 
 component Card inherits Rectangle {
     in property <ActiveCard> card;
-    property <bool> paused: !root.card.running && !root.card.waiting && !root.card.ringing;
+    property <bool> alarm: root.card.kind == "alarm";
+    property <bool> paused: root.alarm ? !root.card.enabled && !root.card.ringing : !root.card.running && !root.card.waiting && !root.card.ringing;
 
     border-radius: Theme.radius-panel;
     background: root.card.ringing ? Theme.pause-soft : (touch.has-hover ? Theme.panel-2 : Theme.field);
@@ -16,7 +20,13 @@ component Card inherits Rectangle {
 
     touch := TouchArea {
         mouse-cursor: pointer;
-        clicked => { TimerUi.card-open(root.card.id); }
+        clicked => {
+            if (root.alarm) {
+                AlarmUi.card-open(root.card.id);
+            } else {
+                TimerUi.card-open(root.card.id);
+            }
+        }
     }
 
     VerticalLayout {
@@ -39,6 +49,7 @@ component Card inherits Rectangle {
                     height: 20px;
                     source: root.card.kind == "stopwatch" ? @image-url("../../icons/stopwatch.svg")
                         : root.card.kind == "countdown" ? @image-url("../../icons/hourglass.svg")
+                        : root.alarm ? @image-url("../../icons/alarm.svg")
                         : @image-url("../../icons/pomodoro.svg");
                     colorize: root.card.ringing ? #0a0a0a : Theme.text;
                 }
@@ -92,15 +103,30 @@ component Card inherits Rectangle {
                 height: 36px;
                 font-size: Theme.fs-md;
                 text: "Dispensar";
-                clicked => { TimerUi.card-dismiss(root.card.id); }
+                clicked => {
+                    if (root.alarm) {
+                        AlarmUi.card-dismiss(root.card.id);
+                    } else {
+                        TimerUi.card-dismiss(root.card.id);
+                    }
+                }
             }
 
-            if !root.card.ringing: RoundAction {
+            if !root.card.ringing && root.alarm: VerticalLayout {
+                alignment: center;
+
+                AlarmSwitch {
+                    on: root.card.enabled;
+                    toggled(on) => { AlarmUi.card-toggle(root.card.id, on); }
+                }
+            }
+
+            if !root.card.ringing && !root.alarm: RoundAction {
                 icon: root.card.running ? @image-url("../../icons/pause.svg") : @image-url("../../icons/play.svg");
                 clicked => { TimerUi.card-primary(root.card.id); }
             }
 
-            if !root.card.ringing: RoundAction {
+            if !root.card.ringing && !root.alarm: RoundAction {
                 primary: false;
                 icon: @image-url("../../icons/stop.svg");
                 clicked => { TimerUi.card-stop(root.card.id); }

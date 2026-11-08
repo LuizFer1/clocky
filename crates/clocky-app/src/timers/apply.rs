@@ -73,6 +73,7 @@ pub fn apply(window: &ui::PanelWindow, models: &Models, frame: Frame) {
         Body::PomodoroTimer(_) => "pomodoro-timer",
         Body::Wizard(_) => "wizard",
         Body::Overview(_) => "overview",
+        Body::AlarmEditor => "alarm-editor",
     };
     global.set_view(view.into());
     global.set_title(frame.title);
@@ -82,7 +83,7 @@ pub fn apply(window: &ui::PanelWindow, models: &Models, frame: Frame) {
     global.set_forgotten_visible(frame.forgotten.is_some());
     global.set_forgotten_text(frame.forgotten.unwrap_or_default());
     match frame.body {
-        Body::None => {}
+        Body::None | Body::AlarmEditor => {}
         Body::Stopwatch(f) => stopwatch(&global, models, f),
         Body::CountdownConfig(f) => countdown_config(&global, models, f),
         Body::CountdownRun(f) => countdown_run(&global, f),

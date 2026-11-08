@@ -34,6 +34,8 @@ pub enum Body {
     PomodoroTimer(super::frame_pomodoro::PomodoroTimerFrame),
     Wizard(super::frame_pomodoro::WizardFrame),
     Overview(Vec<ui::ActiveCard>),
+    /// M7a: the Alarme panel (its fields live in the `AlarmUi` global).
+    AlarmEditor,
 }
 
 pub struct StopwatchFrame {
@@ -68,6 +70,9 @@ pub struct Source<'a> {
     pub state: &'a State,
     pub names: &'a Names,
     pub now: Timestamp,
+    /// M7a: the alarm cards of Ativos and the Alarme panel title.
+    pub alarm_cards: &'a [crate::alarms::AlarmCard],
+    pub alarm_title: &'a str,
 }
 
 impl Source<'_> {
@@ -109,6 +114,10 @@ pub fn build(src: &Source<'_>) -> Frame {
         View::PomodoroTimer => super::frame_pomodoro::timer(src, &mut frame),
         View::Wizard => super::frame_pomodoro::wizard(src, &mut frame),
         View::Overview => super::frame_pomodoro::overview(src, &mut frame),
+        View::Alarm { .. } => {
+            frame.title = src.alarm_title.into();
+            Body::AlarmEditor
+        }
     };
     frame
 }
@@ -121,6 +130,7 @@ fn header(view: View) -> (&'static str, &'static str, &'static str) {
         View::PomodoroList | View::PomodoroTimer => ("Pomodoro", "", "pomodoro"),
         View::Wizard => ("Novo pomodoro", "", "pomodoro"),
         View::Overview => ("Ativos", "", "overview"),
+        View::Alarm { .. } => ("Novo alarme", "", "alarm"),
     }
 }
 

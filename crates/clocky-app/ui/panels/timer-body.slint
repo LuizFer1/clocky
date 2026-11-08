@@ -8,6 +8,8 @@ import { PomodoroListView, PomodoroTimerView } from "pomodoro.slint";
 import { WizardView } from "wizard.slint";
 import { OverviewView } from "overview.slint";
 import { TimerOverlays } from "overlays.slint";
+// M7a: the Alarme panel.
+import { AlarmEditorView } from "alarm-editor.slint";
 
 export { TimerOverlays }
 
@@ -66,4 +68,6 @@ export component TimerBody inherits VerticalLayout {
     if TimerUi.view == "pomodoro-timer": PomodoroTimerView { }
     if TimerUi.view == "wizard": WizardView { }
     if TimerUi.view == "overview": OverviewView { }
+    // M7a: the Alarme panel.
+    if TimerUi.view == "alarm-editor": AlarmEditorView { }
 }

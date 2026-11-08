@@ -1,0 +1,372 @@
+// Alarme panel (handoff SPEC 2.1, screens 10–11): time with ↑/↓ (56 mono, the digits can also be
+// typed), live summary, [Uma vez | Dias da semana] with the 7 day chips, name, task (context
+// only), sound with preview, snooze stepper, notification text, and Cancelar · Salvar alarme.
+import { Theme } from "../theme.slint";
+import { AlarmUi } from "alarm-ui.slint";
+import { Arrow, Button, FieldLabel, Footer, TaskLineView } from "common.slint";
+import { BoxedInput, DayChip } from "alarm-common.slint";
+
+// One column of the time: ↑, the two typed digits, ↓.
+component TimeField inherits VerticalLayout {
+    in-out property <string> value;
+    callback step(bool);
+    callback edited(string);
+    alignment: center;
+    spacing: 0;
+
+    HorizontalLayout {
+        alignment: center;
+
+        Arrow {
+            up: true;
+            clicked => { root.step(true); }
+        }
+    }
+
+    HorizontalLayout {
+        alignment: center;
+
+        input := TextInput {
+            width: 84px;
+            horizontal-alignment: center;
+            text <=> root.value;
+            color: Theme.text;
+            font-family: Theme.font-mono;
+            font-size: Theme.fs-timer-lg;
+            font-weight: Theme.fw-medium;
+            single-line: true;
+            edited => { root.edited(self.text); }
+        }
+    }
+
+    HorizontalLayout {
+        alignment: center;
+
+        Arrow {
+            up: false;
+            clicked => { root.step(false); }
+        }
+    }
+}
+
+// [Uma vez | Dias da semana]: `field` track, the chosen side raised on `panel-2`.
+component Segmented inherits Rectangle {
+    height: 40px;
+    border-radius: Theme.radius-lg;
+    background: Theme.field;
+
+    HorizontalLayout {
+        padding: 3px;
+        spacing: 0;
+
+        for side[i] in ["Uma vez", "Dias da semana"]: Rectangle {
+            property <bool> chosen: (i == 1) == AlarmUi.repeating;
+            width: label.preferred-width + 2 * Theme.space-3;
+            border-radius: Theme.radius-md;
+            background: self.chosen ? Theme.panel-2 : transparent;
+
+            label := Text {
+                text: side;
+                color: parent.chosen ? Theme.text : Theme.muted;
+                font-size: Theme.fs-base;
+                font-weight: parent.chosen ? Theme.fw-medium : Theme.fw-regular;
+            }
+
+            TouchArea {
+                mouse-cursor: pointer;
+                clicked => { AlarmUi.set-repeating(i == 1); }
+            }
+        }
+    }
+}
+
+// Som: the sound name (a click edits the file path) and the ▶ preview.
+component SoundBox inherits Rectangle {
+    height: 46px;
+    border-radius: Theme.radius-lg;
+    border-width: 1px;
+    border-color: Theme.line-2;
+
+    HorizontalLayout {
+        padding-left: Theme.space-3-5;
+        padding-right: 5px;
+        spacing: Theme.space-2;
+
+        Text {
+            horizontal-stretch: 1;
+            vertical-alignment: center;
+            text: AlarmUi.sound-label;
+            color: Theme.text;
+            font-size: Theme.fs-base;
+            overflow: elide;
+
+            TouchArea {
+                mouse-cursor: pointer;
+                clicked => { AlarmUi.sound-editing = !AlarmUi.sound-editing; }
+            }
+        }
+
+        VerticalLayout {
+            alignment: center;
+
+            Rectangle {
+                width: 36px;
+                height: 36px;
+                border-radius: Theme.radius-sm;
+                background: play.has-hover ? Theme.line-2 : Theme.panel-2;
+
+                Image {
+                    width: 14px;
+                    height: 14px;
+                    source: @image-url("../../icons/play.svg");
+                    colorize: Theme.text;
+                }
+
+                play := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { AlarmUi.preview(); }
+                }
+            }
+        }
+    }
+}
+
+// Soneca: − n min + (1 to 30).
+component SnoozeStepper inherits Rectangle {
+    height: 46px;
+    border-radius: Theme.radius-lg;
+    border-width: 1px;
+    border-color: Theme.line-2;
+
+    HorizontalLayout {
+        alignment: space-between;
+
+        for up[i] in [false, true]: Rectangle {
+            width: 44px;
+
+            Image {
+                width: 16px;
+                height: 16px;
+                source: up ? @image-url("../../icons/plus.svg") : @image-url("../../icons/minus.svg");
+                colorize: Theme.muted;
+            }
+
+            TouchArea {
+                mouse-cursor: pointer;
+                clicked => { AlarmUi.bump-snooze(up); }
+            }
+        }
+    }
+
+    Text {
+        text: AlarmUi.snooze + " min";
+        color: Theme.text;
+        font-size: Theme.fs-base;
+        font-weight: Theme.fw-medium;
+    }
+}
+
+component Section inherits VerticalLayout {
+    spacing: Theme.space-2-5;
+}
+
+export component AlarmEditorView inherits VerticalLayout {
+    VerticalLayout {
+        padding: Theme.space-5;
+        spacing: Theme.space-5;
+
+        VerticalLayout {
+            spacing: Theme.space-4;
+
+            Rectangle {
+                height: 142px;
+                border-radius: Theme.radius-panel;
+                background: Theme.field;
+
+                HorizontalLayout {
+                    alignment: center;
+                    spacing: Theme.space-2;
+
+                    TimeField {
+                        value <=> AlarmUi.hh;
+                        step(up) => { AlarmUi.step-hour(up); }
+                        edited(text) => { AlarmUi.hour-edited(text); }
+                    }
+
+                    Text {
+                        vertical-alignment: center;
+                        text: ":";
+                        color: Theme.muted;
+                        font-family: Theme.font-mono;
+                        font-size: Theme.fs-timer-lg;
+                    }
+
+                    TimeField {
+                        value <=> AlarmUi.mm;
+                        step(up) => { AlarmUi.step-minute(up); }
+                        edited(text) => { AlarmUi.minute-edited(text); }
+                    }
+                }
+            }
+
+            Text {
+                horizontal-alignment: center;
+                text: AlarmUi.summary;
+                color: AlarmUi.can-save ? Theme.muted : Theme.pause-text;
+                font-size: Theme.fs-md;
+            }
+        }
+
+        VerticalLayout {
+            spacing: Theme.space-3-5;
+
+            HorizontalLayout {
+                Text {
+                    horizontal-stretch: 1;
+                    vertical-alignment: center;
+                    text: "Repetição";
+                    color: Theme.muted;
+                    font-size: Theme.fs-md;
+                    font-weight: Theme.fw-medium;
+                }
+
+                Segmented { }
+            }
+
+            if AlarmUi.repeating: HorizontalLayout {
+                alignment: space-between;
+
+                for label[i] in ["S", "T", "Q", "Q", "S", "S", "D"]: DayChip {
+                    text: label;
+                    on: AlarmUi.days[i];
+                    clicked => { AlarmUi.toggle-day(i); }
+                }
+            }
+        }
+
+        Section {
+            FieldLabel {
+                text: "Nome";
+            }
+
+            BoxedInput {
+                text <=> AlarmUi.name;
+                placeholder: "Alarme";
+                edited(text) => { AlarmUi.name-edited(text); }
+            }
+        }
+
+        Section {
+            FieldLabel {
+                text: "Tarefa";
+                hint: "opcional";
+            }
+
+            TaskLineView {
+                task: AlarmUi.task;
+                change => { AlarmUi.change-task(); }
+            }
+
+            Text {
+                text: "Só contexto: alarmes não registram tempo.";
+                color: Theme.muted;
+                font-size: Theme.fs-sm;
+                wrap: word-wrap;
+            }
+        }
+
+        HorizontalLayout {
+            spacing: Theme.space-3;
+
+            Section {
+                horizontal-stretch: 1;
+
+                FieldLabel {
+                    text: "Som";
+                }
+
+                SoundBox { }
+            }
+
+            Section {
+                horizontal-stretch: 1;
+
+                FieldLabel {
+                    text: "Soneca";
+                }
+
+                SnoozeStepper { }
+            }
+        }
+
+        if AlarmUi.sound-editing: Section {
+            FieldLabel {
+                text: "Arquivo de som";
+                hint: "vazio = Sino suave";
+            }
+
+            BoxedInput {
+                text <=> AlarmUi.sound-path;
+                placeholder: "C:\\caminho\\do\\som.mp3";
+                edited(text) => { AlarmUi.sound-edited(text); }
+            }
+        }
+
+        if AlarmUi.notice != "": Text {
+            text: AlarmUi.notice;
+            color: Theme.pause-text;
+            font-size: Theme.fs-sm;
+            wrap: word-wrap;
+        }
+
+        Section {
+            FieldLabel {
+                text: "Texto da notificação";
+            }
+
+            BoxedInput {
+                text <=> AlarmUi.message;
+                placeholder: "Opcional";
+                edited(text) => { AlarmUi.message-edited(text); }
+            }
+        }
+
+        if AlarmUi.editing: HorizontalLayout {
+            alignment: center;
+
+            Text {
+                text: AlarmUi.confirm-delete ? "Clique de novo para apagar" : "Apagar alarme";
+                color: Theme.danger;
+                font-size: Theme.fs-md;
+                font-weight: Theme.fw-medium;
+
+                TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => {
+                        if (AlarmUi.confirm-delete) {
+                            AlarmUi.delete();
+                        } else {
+                            AlarmUi.confirm-delete = true;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    Footer {
+        Button {
+            horizontal-stretch: 1;
+            primary: false;
+            text: "Cancelar";
+            clicked => { AlarmUi.cancel(); }
+        }
+
+        Button {
+            horizontal-stretch: 2.1;
+            text: "Salvar alarme";
+            enabled: AlarmUi.can-save;
+            clicked => { AlarmUi.save(); }
+        }
+    }
+}

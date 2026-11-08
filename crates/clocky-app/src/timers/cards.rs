@@ -181,9 +181,9 @@ pub fn ringing_card(ringing: &Ringing, local_hh_mm: &str) -> Card {
     }
 }
 
-/// Lower is more urgent: ringing, then pomodoros waiting for a click, then running and paused
+/// Lower is more urgent (M7a: alarm cards use the same scale): ringing, then pomodoros waiting for a click, then running and paused
 /// countdowns and pomodoros by remaining time, then stopwatches.
-fn rank(card: &Card) -> (u8, Duration) {
+pub fn rank(card: &Card) -> (u8, Duration) {
     match (card.state, card.kind) {
         (State::Ringing, _) => (0, Duration::ZERO),
         (State::Waiting, _) => (1, Duration::ZERO),

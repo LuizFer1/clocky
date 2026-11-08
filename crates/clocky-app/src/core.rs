@@ -311,6 +311,80 @@ impl AppCore {
     }
 }
 
+/// M7a: alarms (the Alarme panel, the Ativos cards, the ringing overlay and the tick).
+impl AppCore {
+    pub fn alarms(&self) -> CoreResult<Vec<clocky_core::store::Alarm>> {
+        Ok(self.store().alarms()?)
+    }
+
+    pub fn alarm(&self, id: clocky_core::domain::AlarmId) -> CoreResult<clocky_core::store::Alarm> {
+        Ok(self.store().alarm(id)?)
+    }
+
+    pub fn create_alarm(
+        &mut self,
+        alarm: &clocky_core::store::NewAlarm<'_>,
+    ) -> CoreResult<clocky_core::domain::AlarmId> {
+        let now = self.now();
+        Ok(self.store_mut().create_alarm(alarm, now)?)
+    }
+
+    /// Saves the editor's fields and enables the alarm: saving a once-alarm that already rang
+    /// (the store keeps it disabled) arms it again, as the user expects from "Salvar alarme".
+    pub fn update_alarm(
+        &mut self,
+        id: clocky_core::domain::AlarmId,
+        alarm: &clocky_core::store::NewAlarm<'_>,
+    ) -> CoreResult<()> {
+        let now = self.now();
+        self.store_mut().update_alarm(id, alarm, now)?;
+        Ok(self.store_mut().set_alarm_enabled(id, true, now)?)
+    }
+
+    pub fn delete_alarm(&mut self, id: clocky_core::domain::AlarmId) -> CoreResult<()> {
+        Ok(self.store_mut().delete_alarm(id)?)
+    }
+
+    /// The Ativos toggle.
+    pub fn set_alarm_enabled(
+        &mut self,
+        id: clocky_core::domain::AlarmId,
+        enabled: bool,
+    ) -> CoreResult<()> {
+        let now = self.now();
+        Ok(self.store_mut().set_alarm_enabled(id, enabled, now)?)
+    }
+
+    /// Occurrences that came due by `now` and were not handled yet (see
+    /// [`clocky_core::store::Store::pending_alarms`]).
+    pub fn pending_alarms<Tz: chrono::TimeZone>(
+        &self,
+        now: Timestamp,
+        tz: &Tz,
+    ) -> CoreResult<Vec<clocky_core::store::PendingAlarm>> {
+        Ok(self.store().pending_alarms(now, tz)?)
+    }
+
+    /// Records a handled occurrence (`at` = its due instant, `now` = the tick's instant).
+    pub fn mark_alarm_fired(
+        &mut self,
+        id: clocky_core::domain::AlarmId,
+        at: Timestamp,
+        now: Timestamp,
+    ) -> CoreResult<()> {
+        Ok(self.store_mut().mark_alarm_fired(id, at, now)?)
+    }
+
+    /// "Soneca": when the alarm rings again (`None` = it was disabled meanwhile).
+    pub fn snooze_alarm(
+        &mut self,
+        id: clocky_core::domain::AlarmId,
+    ) -> CoreResult<Option<Timestamp>> {
+        let now = self.now();
+        Ok(self.store_mut().snooze_alarm(id, now)?)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use clocky_core::clock::FakeClock;

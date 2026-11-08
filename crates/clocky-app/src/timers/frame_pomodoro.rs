@@ -183,23 +183,38 @@ pub fn cards(src: &Source<'_>) -> Vec<Card> {
 
 pub fn overview(src: &Source<'_>, frame: &mut Frame) -> Body {
     let cards = cards(src);
-    frame.subtitle = format::active_count(cards.len(), 0).into();
-    Body::Overview(
+    // M7a: alarm cards join the list (and the count) by urgency.
+    let active_alarms = src.alarm_cards.iter().filter(|a| a.is_active()).count();
+    frame.subtitle = format::active_count(cards.len(), active_alarms).into();
+    let alarms = src
+        .alarm_cards
+        .iter()
+        .map(|card| super::overview_alarms::alarm_row(card, src))
+        .collect();
+    Body::Overview(super::overview_alarms::merge(
         cards
             .into_iter()
-            .map(|card| ui::ActiveCard {
-                id: timer_to_ui(card.id),
-                kind: card.kind.as_str().into(),
-                name: card.name.into(),
-                status: card.status.into(),
-                time: card.time.into(),
-                has_progress: card.progress.is_some(),
-                progress: card.progress.unwrap_or(0.0),
-                running: card.state == CardState::Running,
-                waiting: card.state == CardState::Waiting,
-                ringing: card.state == CardState::Ringing,
-                task: task_line(src.names.task(card.task)),
+            .map(|card| (cards::rank(&card), card))
+            .map(|(rank, card)| {
+                (
+                    rank,
+                    ui::ActiveCard {
+                        id: timer_to_ui(card.id),
+                        kind: card.kind.as_str().into(),
+                        name: card.name.into(),
+                        status: card.status.into(),
+                        time: card.time.into(),
+                        has_progress: card.progress.is_some(),
+                        progress: card.progress.unwrap_or(0.0),
+                        running: card.state == CardState::Running,
+                        waiting: card.state == CardState::Waiting,
+                        ringing: card.state == CardState::Ringing,
+                        task: task_line(src.names.task(card.task)),
+                        enabled: false,
+                    },
+                )
             })
             .collect(),
-    )
+        alarms,
+    ))
 }

@@ -42,6 +42,8 @@ pub struct App {
     tick_timer: slint::Timer,
     /// M6b: the timer panels and the tracker.
     timers: Rc<TimerPanels>,
+    /// M7a: the alarms (Alarme panel, Ativos cards, ringing overlay).
+    alarms: Rc<crate::alarms::Alarms>,
 }
 
 impl App {
@@ -60,10 +62,23 @@ impl App {
         } else {
             Box::new(timers::SystemAlerts)
         };
+        // M7a: the alarms share the panel window (editor, Ativos cards) and its task picker.
+        let ringer: Box<dyn crate::alarms::Ringer> = if screenshot_mode {
+            Box::new(crate::alarms::SilentRinger)
+        } else {
+            Box::new(crate::alarms::SystemRinger::default())
+        };
+        let alarms = crate::alarms::Alarms::new(
+            core.clone(),
+            &panel.ui,
+            Box::new(timers::PanelChooser::new(Rc::downgrade(&panel))),
+            ringer,
+        )?;
         let hooks = timers::Hooks {
             chooser: Box::new(timers::PanelChooser::new(Rc::downgrade(&panel))),
             alerts,
             interactive: !screenshot_mode,
+            alarms: alarms.clone(),
         };
         let timers = TimerPanels::new(&panel.ui, core.clone(), reopened, hooks);
         let app = Rc::new(Self {
@@ -78,6 +93,7 @@ impl App {
             bridge: Bridge::new(SystemClock),
             tick_timer: slint::Timer::default(),
             timers,
+            alarms,
         });
         app.connect();
         APP.with(|cell| *cell.borrow_mut() = Some(app.clone()));
@@ -145,6 +161,7 @@ impl App {
                 app.back_to_menu();
             }
         });
+        self.connect_alarms();
     }
 
     /// Applies the theme and shows the dock. Runs before the event loop starts; the tray is
@@ -175,9 +192,15 @@ impl App {
     fn on_tick(&self) {
         let snapshot = self.bridge.tick();
         tracing::trace!("tick at {} ms", snapshot.now.as_millis());
+        // M7a: alarms first, so Ativos shows a ring in this very tick.
+        let missed = self.alarms.tick();
+        self.timers.add_notices(&missed);
         // M6b: the tracker drives the badge and may ask for a panel (forgotten stopwatch).
         let outcome = self.timers.tick();
-        self.dock.ui.set_active_count(outcome.active_count);
+        let badge = outcome
+            .active_count
+            .saturating_add(self.alarms.ringing_count());
+        self.dock.ui.set_active_count(badge);
         if let Some(kind) = outcome.open {
             self.open_panel(kind, false);
         }
@@ -234,6 +257,7 @@ impl App {
         self.dock.set_dark(dark);
         self.panel.set_dark(dark);
         self.manage.set_dark(dark);
+        self.alarms.set_dark(dark);
     }
 
     fn save_dock(&self, placement: DockPlacement) {
@@ -282,6 +306,16 @@ impl App {
             }),
             done: Box::new(quit),
         });
+    }
+}
+
+/// M7a: alarms.
+impl App {
+    fn connect_alarms(self: &Rc<Self>) {
+        // The overlay opens on the dock's monitor.
+        let weak = Rc::downgrade(self);
+        self.alarms
+            .set_anchor_source(move || weak.upgrade().and_then(|app| app.dock.anchor()));
     }
 }
 

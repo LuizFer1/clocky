@@ -21,6 +21,10 @@ pub enum View {
     PomodoroTimer,
     Wizard,
     Overview,
+    /// M7a: the Alarme panel; back returns to Ativos when a card opened it.
+    Alarm {
+        from_overview: bool,
+    },
 }
 
 impl View {
@@ -29,6 +33,9 @@ impl View {
         match self {
             Self::CountdownRun => Some(Self::CountdownConfig),
             Self::PomodoroTimer | Self::Wizard => Some(Self::PomodoroList),
+            Self::Alarm {
+                from_overview: true,
+            } => Some(Self::Overview),
             _ => None,
         }
     }

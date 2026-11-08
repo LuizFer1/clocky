@@ -49,6 +49,8 @@ export struct ActiveCard {
     waiting: bool,
     ringing: bool,
     task: TaskLine,
+    // M7a: an alarm card (kind "alarm") is switched on.
+    enabled: bool,
 }
 
 export global TimerUi {

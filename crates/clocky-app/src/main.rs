@@ -37,6 +37,8 @@ mod tour;
 mod tray;
 // M6b: the timer panels.
 mod timers;
+// M7a: alarms (Alarme panel, Ativos cards, ringing overlay).
+mod alarms;
 
 fn main() {
     match run() {
