@@ -6,9 +6,13 @@ use super::StoreError;
 use super::convert::u32_from_sql;
 
 /// Migration scripts. Script `i` (from 0) takes the schema from version `i` to `i + 1`.
+///
+/// One script per line: the version is the position in the list, so a script is never removed
+/// or reordered once released.
 pub(super) const MIGRATIONS: &[&str] = &[
     include_str!("sql/0001_init.sql"),
     include_str!("sql/0002_active_timers.sql"),
+    include_str!("sql/0003_alarms.sql"),
 ];
 
 /// Latest schema version that `migrations` produces.
