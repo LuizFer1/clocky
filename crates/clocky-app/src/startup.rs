@@ -190,11 +190,9 @@ pub fn show_failure(
                 on_opened(core, reopened);
             }
             Err(e) => {
-                tracing::error!("cannot discard the active timers: {e}");
+                tracing::error!("{e}");
                 window.set_can_discard(false);
-                window.set_message(
-                    "Não foi possível descartar os timers ativos. Os detalhes estão no log.".into(),
-                );
+                window.set_message(e.user_message().into());
             }
         }
     });
@@ -217,11 +215,45 @@ pub fn show_failure(
     Ok(window)
 }
 
+/// Which step of "Descartar timers ativos" failed.
+#[derive(Debug)]
+enum DiscardError {
+    /// The timers could not be deleted: nothing changed.
+    Discard(StoreError),
+    /// The timers were deleted, but the core could not be opened again.
+    Reopen(TrackerError),
+}
+
+impl std::fmt::Display for DiscardError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Discard(e) => write!(f, "cannot discard the active timers: {e}"),
+            Self::Reopen(e) => write!(f, "discarded the active timers but cannot reopen: {e}"),
+        }
+    }
+}
+
+impl DiscardError {
+    /// The window text, in PT-BR (the details go to the log).
+    fn user_message(&self) -> &'static str {
+        match self {
+            Self::Discard(_) => {
+                "Não foi possível descartar os timers ativos. Os detalhes estão no log."
+            }
+            Self::Reopen(_) => {
+                "Os timers ativos foram descartados, mas o banco não abriu de novo. Feche e abra                  o Clocky. Os detalhes estão no log."
+            }
+        }
+    }
+}
+
 /// Deletes the saved active timers (history stays) and opens the core again.
-fn discard_and_open(timers: TrackerOpenError) -> anyhow::Result<(AppCore, Reopened)> {
-    let store = timers.discard_active_timers()?;
+fn discard_and_open(timers: TrackerOpenError) -> Result<(AppCore, Reopened), DiscardError> {
+    let store = timers
+        .discard_active_timers()
+        .map_err(DiscardError::Discard)?;
     tracing::warn!("discarded the active timers that could not be restored");
-    AppCore::with_store(store, Box::new(SystemClock)).map_err(|e| anyhow::anyhow!("{}", e.error))
+    AppCore::with_store(store, Box::new(SystemClock)).map_err(|e| DiscardError::Reopen(e.error))
 }
 
 #[cfg(test)]
@@ -289,6 +321,22 @@ mod tests {
         let timers = failure.timers.expect("the discard is offered");
         let (core, _) = discard_and_open(timers).unwrap();
         assert_eq!(core.tracker().timers().iter().count(), 0);
+    }
+
+    #[test]
+    fn a_failed_reopen_does_not_claim_the_discard_failed() {
+        let discard = DiscardError::Discard(StoreError::Sqlite(rusqlite_busy()));
+        assert!(
+            discard
+                .user_message()
+                .starts_with("Não foi possível descartar")
+        );
+        let reopen = DiscardError::Reopen(TrackerError::Store(StoreError::Sqlite(rusqlite_busy())));
+        assert!(
+            reopen
+                .user_message()
+                .starts_with("Os timers ativos foram descartados")
+        );
     }
 
     fn rusqlite_busy() -> rusqlite::Error {
