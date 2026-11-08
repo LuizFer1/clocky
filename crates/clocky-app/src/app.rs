@@ -290,6 +290,7 @@ impl App {
 impl App {
     fn schedule_timer_shots(self: &Rc<Self>, dir: PathBuf) {
         let (weak_set, weak_open) = (Rc::downgrade(self), Rc::downgrade(self));
+        let (weak_done, dir_done) = (Rc::downgrade(self), dir.clone());
         timers::shots::start(timers::shots::ShotContext {
             panels: self.timers.clone(),
             window: self.panel.ui.as_weak(),
@@ -304,7 +305,12 @@ impl App {
                     app.open_panel(kind, false);
                 }
             }),
-            done: Box::new(quit),
+            // M7a: the alarm captures follow, then quit.
+            done: Box::new(move || {
+                if let Some(app) = weak_done.upgrade() {
+                    app.schedule_alarm_shots(dir_done.clone());
+                }
+            }),
         });
     }
 }
@@ -337,6 +343,10 @@ impl App {
         if self.timers.show_alarm(id) {
             self.panel.open(PanelKind::Alarm, self.dock.anchor(), true);
         }
+    }
+
+    fn schedule_alarm_shots(self: &Rc<Self>, dir: PathBuf) {
+        crate::alarms::shots::start(self, self.alarms.clone(), self.timers.clone(), dir, quit);
     }
 }
 

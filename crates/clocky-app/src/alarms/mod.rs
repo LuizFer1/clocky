@@ -13,6 +13,7 @@ mod overlay;
 pub mod queue;
 mod ringer;
 mod runtime;
+pub mod shots;
 pub mod summary;
 
 use std::cell::{Cell, RefCell};
@@ -116,6 +117,11 @@ impl Alarms {
 
     pub fn set_dark(&self, dark: bool) {
         self.overlay.set_dark(dark);
+    }
+
+    /// The overlay window (screenshots).
+    pub fn overlay_window(&self) -> &slint::Window {
+        self.overlay.ui.window()
     }
 
     /// Alarms ringing now (the dock badge counts them with the timers).

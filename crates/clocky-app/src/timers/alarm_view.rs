@@ -56,6 +56,11 @@ impl TimerPanels {
         true
     }
 
+    /// Clears the panel's notice (screenshots).
+    pub fn clear_notice(&self) {
+        self.dismiss_notice();
+    }
+
     /// Adds lines to the panel's notice (missed alarms, "Alarme perdido às 07:30 · nome"). It
     /// stays until closed or until a panel is opened from the menu after it was seen.
     pub fn add_notices(&self, lines: &[String]) {
