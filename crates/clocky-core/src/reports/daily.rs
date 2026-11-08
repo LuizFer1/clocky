@@ -24,6 +24,7 @@ pub struct Daily {
     /// Sessions with time in the day, by their first segment.
     pub blocks: Vec<SessionBlock>,
     /// Subtasks checked or unchecked in the day, oldest first, with or without a session.
+    /// A marker's session is not always among `blocks` (see [`SubtaskMarker::session`]).
     pub markers: Vec<SubtaskMarker>,
     /// Time in the day.
     pub total: Duration,
