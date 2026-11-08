@@ -152,9 +152,10 @@ impl Pomodoro {
     /// Restores a pomodoro from its parts. `run` is `None` while the phase waits for the user.
     ///
     /// # Errors
-    /// [`EngineError::InvalidPomodoroState`] if `round` is zero, `focus_index` is outside
-    /// `1..=focus_per_round`, or the phase cannot happen at that focus index (the long break
-    /// only after the last focus of the round, the short break only before it).
+    /// [`EngineError::InvalidPomodoroState`] if `round` is zero or `u32::MAX` (it could not
+    /// grow), `focus_index` is outside `1..=focus_per_round`, or the phase cannot happen at that
+    /// focus index (the long break only after the last focus of the round, the short break only
+    /// before it).
     pub fn from_parts(
         config: PomodoroConfig,
         phase: Phase,
@@ -168,7 +169,8 @@ impl Pomodoro {
             Phase::ShortBreak => focus_index < last,
             Phase::LongBreak => focus_index == last,
         };
-        if round == 0 || focus_index == 0 || focus_index > last || !phase_fits {
+        let round_fits = round != 0 && round != u32::MAX;
+        if !round_fits || focus_index == 0 || focus_index > last || !phase_fits {
             return Err(EngineError::InvalidPomodoroState);
         }
         Ok(Self {
@@ -372,7 +374,7 @@ impl Pomodoro {
                 Phase::Focus
             }
             Phase::LongBreak => {
-                self.round += 1;
+                self.round = self.round.saturating_add(1);
                 self.focus_index = 1;
                 Phase::Focus
             }
@@ -788,6 +790,19 @@ mod tests {
     }
 
     #[test]
+    fn the_last_possible_round_never_overflows() {
+        let mut p =
+            Pomodoro::from_parts(cfg(false), Phase::LongBreak, 2, u32::MAX - 1, None).unwrap();
+        let _events = p.skip(at(0));
+        assert_eq!(p.round(), u32::MAX);
+        let _events = p.skip(at(1)); // focus 1 -> short break
+        let _events = p.skip(at(2)); // short break -> focus 2
+        let _events = p.skip(at(3)); // focus 2 -> long break
+        let _events = p.skip(at(4)); // long break -> a new round, which saturates
+        assert_eq!((p.round(), p.phase()), (u32::MAX, Phase::Focus));
+    }
+
+    #[test]
     fn from_parts_restores_every_field() {
         let mut p = Pomodoro::start(cfg(false), at(0));
         let _events = p.tick(at(1500)); // short break waiting
@@ -830,6 +845,10 @@ mod tests {
             invalid
         );
         assert!(Pomodoro::from_parts(cfg(false), Phase::LongBreak, 2, 3, None).is_ok());
+        assert_eq!(
+            Pomodoro::from_parts(cfg(false), Phase::Focus, 1, u32::MAX, None),
+            invalid
+        );
         assert!(Pomodoro::from_parts(cfg(false), Phase::ShortBreak, 1, 1, None).is_ok());
     }
 

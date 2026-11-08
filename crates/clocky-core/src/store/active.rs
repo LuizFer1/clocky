@@ -194,6 +194,16 @@ impl Store {
         ensure_found(deleted, "active timer", timer_id_to_sql(id)?)
     }
 
+    /// Deletes every active timer without recording anything: the way out when a saved timer
+    /// is corrupt and the tracker cannot open (history is kept).
+    ///
+    /// # Errors
+    /// [`StoreError::Sqlite`] if SQLite fails.
+    pub fn clear_active_timers(&mut self) -> Result<(), StoreError> {
+        self.conn.execute("DELETE FROM active_timers", [])?;
+        Ok(())
+    }
+
     /// The saved active timers, by id, and the identifier the next timer must get.
     ///
     /// # Errors

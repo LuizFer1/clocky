@@ -6,7 +6,7 @@
 
 mod error;
 
-pub use error::TrackerError;
+pub use error::{TrackerError, TrackerOpenError};
 
 use std::time::Duration;
 
@@ -64,18 +64,30 @@ impl Tracker {
     /// was closed.
     ///
     /// # Errors
-    /// [`TrackerError::Store`] if a saved timer is corrupt or the database fails.
-    pub fn open(store: Store, now: Timestamp) -> Result<(Self, Vec<TrackerEvent>), TrackerError> {
-        let (next_id, saved) = store.load_active()?;
-        let timers = Timers::restore(next_id, saved)?;
+    /// [`TrackerOpenError`] if a saved timer is corrupt or the database fails; it gives the store
+    /// back.
+    pub fn open(
+        store: Store,
+        now: Timestamp,
+    ) -> Result<(Self, Vec<TrackerEvent>), TrackerOpenError> {
+        let restored = store
+            .load_active()
+            .map_err(TrackerError::from)
+            .and_then(|(next_id, saved)| Ok(Timers::restore(next_id, saved)?));
+        let timers = match restored {
+            Ok(timers) => timers,
+            Err(error) => return Err(open_error(store, error)),
+        };
         let mut tracker = Self {
             store,
             timers,
             links_stale: false,
             last_tick: None,
         };
-        let events = tracker.advance(now, true)?;
-        Ok((tracker, events))
+        match tracker.advance(now, true) {
+            Ok(events) => Ok((tracker, events)),
+            Err(error) => Err(open_error(tracker.store, error)),
+        }
     }
 
     /// The active timers.
@@ -350,6 +362,13 @@ impl Tracker {
         }
         self.links_stale = false;
         Ok(())
+    }
+}
+
+fn open_error(store: Store, error: TrackerError) -> TrackerOpenError {
+    TrackerOpenError {
+        store: Box::new(store),
+        error,
     }
 }
 

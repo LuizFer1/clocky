@@ -165,22 +165,59 @@ fn timer_ids_are_never_reused() {
 }
 
 #[test]
-fn corrupted_active_timer_is_an_error_on_open() {
+fn corrupted_active_timer_gives_the_store_back_for_recovery() {
     let db = TempDb::new("reopen-corrupt");
     let (mut tracker, _) = open(&db, at(0));
+    let task = tracker
+        .store_mut()
+        .create_task(None, "report", at(0))
+        .unwrap();
+    let sw = tracker.start_stopwatch(Some(task), at(0)).unwrap();
+    let _events = tracker.stop(sw, at(60)).unwrap();
     tracker
-        .start_pomodoro(None, quick(false), None, at(0))
+        .start_pomodoro(None, quick(false), None, at(100))
         .unwrap();
     tracker.store().execute_batch_for_tests(
         "PRAGMA ignore_check_constraints = ON; UPDATE active_timers SET phase = 'nap';",
     );
     drop(tracker);
 
-    let result = Tracker::open(Store::open(db.path()).unwrap(), at(1));
+    let failed = Tracker::open(Store::open(db.path()).unwrap(), at(200)).unwrap_err();
     assert!(matches!(
-        result,
-        Err(TrackerError::Store(StoreError::Corrupt { .. }))
+        failed.error,
+        TrackerError::Store(StoreError::Corrupt { .. })
     ));
+    assert!(failed.to_string().starts_with("invalid pomodoro phase"));
+    assert!(std::error::Error::source(&failed).is_some());
+    // History is still there, and discarding the active timers lets the tracker open.
+    let mut store = *failed.store;
+    assert_eq!(store.task_time(task).unwrap(), secs(60));
+    store.clear_active_timers().unwrap();
+    let (tracker, events) = Tracker::open(store, at(200)).unwrap();
+    assert_eq!(events, vec![]);
+    assert_eq!(tracker.timers().iter().count(), 0);
+}
+
+#[test]
+fn failed_catch_up_on_open_gives_the_store_back() {
+    let db = TempDb::new("reopen-failed-write");
+    let (mut tracker, _) = open(&db, at(0));
+    tracker
+        .start_countdown(None, secs(60), None, at(0))
+        .unwrap();
+    drop(tracker);
+
+    let store = Store::open(db.path()).unwrap();
+    store.execute_batch_for_tests(
+        "CREATE TEMP TRIGGER no_sessions BEFORE INSERT ON sessions
+         BEGIN SELECT RAISE(ABORT, 'disk is broken'); END;",
+    );
+    let failed = Tracker::open(store, at(500)).unwrap_err();
+    assert!(matches!(
+        failed.error,
+        TrackerError::Store(StoreError::Sqlite(_))
+    ));
+    assert_eq!(failed.store.load_active().unwrap().1.len(), 1);
 }
 
 fn classic(auto_start: bool) -> PomodoroConfig {
