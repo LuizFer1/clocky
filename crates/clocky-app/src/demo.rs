@@ -63,6 +63,8 @@ pub fn seed_if_empty<Tz: TimeZone>(core: &mut AppCore, tz: &Tz) -> CoreResult<bo
     seeder.faculdade()?;
     seeder.pessoal()?;
     seeder.core.create_task(None, "organizar e-mails")?;
+    // M7a: the demo alarms, on the tasks above.
+    crate::alarms::demo::seed(seeder.core)?;
     Ok(true)
 }
 

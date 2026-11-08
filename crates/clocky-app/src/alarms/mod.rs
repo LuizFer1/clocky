@@ -6,6 +6,7 @@
 //! reports navigation through [`Event`]s and the timer panels switch views and re-render.
 
 pub mod cards;
+pub mod demo;
 mod draft;
 mod editor;
 mod overlay;
