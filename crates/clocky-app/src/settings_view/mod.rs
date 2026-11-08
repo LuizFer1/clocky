@@ -10,6 +10,8 @@
 //!
 //! "Iniciar com o sistema" is not stored: the OS entry is the truth ([`crate::autostart`]).
 
+pub mod presets;
+
 use std::time::Duration;
 
 use crate::core::{AppCore, CoreResult};
@@ -43,6 +45,8 @@ pub enum Applied {
     Theme(ThemeMode),
     /// The timer panels read the wizard defaults again.
     Wizard,
+    /// A saved pomodoro changed or was deleted: the timer panels show the new list.
+    Presets,
     /// Nothing else (the forgotten limit and the alarm sound are read when used).
     Stored,
 }
