@@ -144,6 +144,41 @@ pub fn select(state: &mut State, kind: Kind, id: TimerId) {
     }
 }
 
+/// Drops every draft task (and ringing card task) that no longer exists, deleted in Gerenciar or
+/// elsewhere: a timer started with it would fail on the database's foreign key.
+pub fn forget_missing_tasks(state: &mut State, exists: impl Fn(TaskId) -> bool) {
+    let drafts = [
+        &mut state.stopwatch_task,
+        &mut state.countdown_task,
+        &mut state.pomodoro_task,
+        &mut state.wizard.task,
+    ];
+    for task in drafts {
+        if task.is_some_and(|t| !exists(t)) {
+            *task = None;
+        }
+    }
+    for ringing in &mut state.ringing {
+        if ringing.task.is_some_and(|t| !exists(t)) {
+            ringing.task = None;
+        }
+    }
+}
+
+/// The draft and ringing tasks of `state`, to check against the database.
+pub fn draft_tasks(state: &State) -> Vec<TaskId> {
+    [
+        state.stopwatch_task,
+        state.countdown_task,
+        state.pomodoro_task,
+        state.wizard.task,
+    ]
+    .into_iter()
+    .chain(state.ringing.iter().map(|r| r.task))
+    .flatten()
+    .collect()
+}
+
 /// Drops the selections whose timer ended: a panel opened from the menu shows the most recent
 /// timer of its kind again.
 pub fn forget_ended(state: &mut State, timers: &Timers) {
@@ -211,6 +246,23 @@ mod tests {
         // A selection that is not an active timer of that kind shows none.
         assert_eq!(pick(&timers, Kind::Stopwatch, Some(c)), None);
         assert_eq!(pick(&timers, Kind::Pomodoro, None), None);
+    }
+
+    #[test]
+    fn drafts_forget_a_deleted_task_and_keep_the_others() {
+        let (deleted, kept) = (TaskId(7), TaskId(8));
+        let mut state = State::new();
+        state.stopwatch_task = Some(deleted);
+        state.countdown_task = Some(kept);
+        state.pomodoro_task = Some(deleted);
+        state.wizard.task = Some(deleted);
+        assert_eq!(draft_tasks(&state).len(), 4);
+        forget_missing_tasks(&mut state, |t| t != deleted);
+        assert_eq!(state.stopwatch_task, None);
+        assert_eq!(state.countdown_task, Some(kept));
+        assert_eq!(state.pomodoro_task, None);
+        assert_eq!(state.wizard.task, None);
+        assert_eq!(draft_tasks(&state), [kept]);
     }
 
     #[test]

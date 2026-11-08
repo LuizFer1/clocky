@@ -105,6 +105,7 @@ impl TimerPanels {
     }
 
     fn current_task(&self, target: TaskTarget) -> Option<TaskId> {
+        self.forget_deleted_tasks();
         let timer = self.target_timer(target);
         let handle = self.core.borrow();
         if let Some(active) = timer.and_then(|id| handle.tracker().timers().get(id)) {

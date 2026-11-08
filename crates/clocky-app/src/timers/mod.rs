@@ -31,8 +31,9 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::{Rc, Weak};
 
-use clocky_core::domain::TimerId;
+use clocky_core::domain::{TaskId, TimerId};
 use clocky_core::engine::timers::{ActiveTimer, Timer, TimersEvent};
+use clocky_core::store::StoreError;
 use clocky_core::time::Timestamp;
 use clocky_core::tracker::{TrackerError, TrackerEvent};
 use slint::ComponentHandle;
@@ -346,6 +347,7 @@ impl TimerPanels {
         let Some(window) = self.ui.upgrade() else {
             return;
         };
+        self.forget_deleted_tasks();
         let frame = {
             let handle = self.core.borrow();
             let tracker = handle.tracker();
@@ -363,6 +365,29 @@ impl TimerPanels {
         if window.window().is_visible() {
             let mut state = self.state.borrow_mut();
             state.notice_seen = !state.notice.is_empty();
+        }
+    }
+}
+
+impl TimerPanels {
+    /// Clears the drafts whose task was deleted (in Gerenciar, or by any other path), so the
+    /// next start does not fail on it. Runs before every render and every start.
+    pub(super) fn forget_deleted_tasks(&self) {
+        let tasks = state::draft_tasks(&self.state.borrow());
+        if tasks.is_empty() {
+            return;
+        }
+        let missing: Vec<TaskId> = {
+            let core = self.core.borrow();
+            let store = core.tracker().store();
+            tasks
+                .into_iter()
+                .filter(|&t| matches!(store.task(t), Err(StoreError::NotFound { .. })))
+                .collect()
+        };
+        if !missing.is_empty() {
+            tracing::info!("dropping deleted tasks from the timer drafts: {missing:?}");
+            state::forget_missing_tasks(&mut self.state.borrow_mut(), |t| !missing.contains(&t));
         }
     }
 }

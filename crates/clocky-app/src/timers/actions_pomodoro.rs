@@ -73,6 +73,7 @@ impl TimerPanels {
         let Some(config) = config else {
             return;
         };
+        self.forget_deleted_tasks();
         let task = self.state.borrow().pomodoro_task;
         let started = self.command("start pomodoro", |t, now| {
             t.start_pomodoro(task, config, Some(id), now)
@@ -160,6 +161,7 @@ impl TimerPanels {
             self.render();
             return;
         }
+        self.forget_deleted_tasks();
         let wizard = self.state.borrow().wizard.clone();
         let name = wizard.final_name();
         let created = self.command("create pomodoro preset", |t, _| {

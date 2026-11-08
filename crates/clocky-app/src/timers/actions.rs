@@ -140,6 +140,7 @@ impl TimerPanels {
             self.toggle(id);
             return;
         }
+        self.forget_deleted_tasks();
         let task = self.state.borrow().stopwatch_task;
         if let Some(id) = self.command("start stopwatch", |t, now| t.start_stopwatch(task, now)) {
             let mut state = self.state.borrow_mut();
@@ -172,6 +173,7 @@ impl TimerPanels {
     }
 
     pub(super) fn add_subtask(&self, name: &str) {
+        self.forget_deleted_tasks();
         let name = name.trim();
         let task = match self.picked(Kind::Stopwatch) {
             Some(id) => self
@@ -212,6 +214,7 @@ impl TimerPanels {
     }
 
     pub(super) fn countdown_start(&self) {
+        self.forget_deleted_tasks();
         let (task, hms) = {
             let state = self.state.borrow();
             (state.countdown_task, state.hms)
@@ -275,6 +278,7 @@ impl TimerPanels {
 
     /// "+ Novo preset": saves the current values under `name`.
     pub(super) fn countdown_save_preset(&self, name: &str) {
+        self.forget_deleted_tasks();
         let (hms, task) = {
             let state = self.state.borrow();
             (state.hms, state.countdown_task)
