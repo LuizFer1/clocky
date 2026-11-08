@@ -3,7 +3,7 @@
 use chrono::TimeZone;
 use rusqlite::params;
 
-use super::{Alarm, Store, StoreError, alarm_in};
+use super::{Alarm, Store, StoreError, alarm_in, instant_to_sql};
 use crate::alarms::{AlarmSchedule, Firing};
 use crate::domain::AlarmId;
 use crate::time::Timestamp;
@@ -122,15 +122,18 @@ impl Store {
         let Some(schedule) = change(&alarm_in(&tx, id)?)? else {
             return Ok(None);
         };
+        let snoozed_until = schedule
+            .snoozed_until
+            .map(|until| instant_to_sql(until, "alarm snoozed until"))
+            .transpose()?;
+        let last_fired_at = schedule
+            .last_fired_at
+            .map(|fired| instant_to_sql(fired, "alarm last fired at"))
+            .transpose()?;
         tx.execute(
             "UPDATE alarms SET enabled = ?2, snoozed_until_ms = ?3, last_fired_at_ms = ?4
              WHERE id = ?1",
-            params![
-                id.0,
-                schedule.enabled,
-                schedule.snoozed_until.map(Timestamp::as_millis),
-                schedule.last_fired_at.map(Timestamp::as_millis)
-            ],
+            params![id.0, schedule.enabled, snoozed_until, last_fired_at],
         )?;
         tx.commit()?;
         Ok(Some(schedule))

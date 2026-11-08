@@ -154,6 +154,15 @@ fn instant_from_ms(millis: i64, what: &'static str) -> Result<Timestamp, StoreEr
     Ok(Timestamp::from_millis(millis))
 }
 
+/// An instant to write; negative values are an error, as when reading them back.
+fn instant_to_sql(instant: Timestamp, what: &'static str) -> Result<i64, StoreError> {
+    let millis = instant.as_millis();
+    if millis < 0 {
+        return Err(StoreError::OutOfRange(what));
+    }
+    Ok(millis)
+}
+
 /// The alarm with this identifier, read through `conn` (a store or a transaction).
 fn alarm_in(conn: &Connection, id: AlarmId) -> Result<Alarm, StoreError> {
     let sql = format!("SELECT {ALARM_COLUMNS} FROM alarms WHERE id = ?1");
@@ -170,6 +179,7 @@ impl Store {
         alarm: &NewAlarm<'_>,
         now: Timestamp,
     ) -> Result<AlarmId, StoreError> {
+        let created_at = instant_to_sql(now, "alarm created at")?;
         self.conn.execute(
             "INSERT INTO alarms (name, time_local, repeat_days, sound_path, message,
                  snooze_minutes, task_id, enabled, created_at_ms)
@@ -182,7 +192,7 @@ impl Store {
                 alarm.message,
                 alarm.snooze_minutes,
                 alarm.task.map(|t| t.0),
-                now.as_millis()
+                created_at
             ],
         )?;
         Ok(AlarmId(self.conn.last_insert_rowid()))
@@ -218,6 +228,7 @@ impl Store {
         alarm: &NewAlarm<'_>,
         now: Timestamp,
     ) -> Result<(), StoreError> {
+        let created_at = instant_to_sql(now, "alarm created at")?;
         let changed = self.conn.execute(
             "UPDATE alarms SET name = ?2, time_local = ?3, repeat_days = ?4, sound_path = ?5,
                  message = ?6, snooze_minutes = ?7, task_id = ?8, created_at_ms = ?9,
@@ -234,7 +245,7 @@ impl Store {
                 alarm.message,
                 alarm.snooze_minutes,
                 alarm.task.map(|t| t.0),
-                now.as_millis()
+                created_at
             ],
         )?;
         ensure_found(changed, "alarm", id.0)
@@ -271,7 +282,7 @@ impl Store {
                      snoozed_until_ms = CASE WHEN enabled THEN snoozed_until_ms ELSE NULL END,
                      enabled = 1
                  WHERE id = ?1",
-                params![id.0, now.as_millis()],
+                params![id.0, instant_to_sql(now, "alarm created at")?],
             )?
         } else {
             self.conn.execute(

@@ -7,7 +7,8 @@
 CREATE TABLE alarms (
     id               INTEGER PRIMARY KEY,
     name             TEXT    NOT NULL,
-    time_local       TEXT    NOT NULL CHECK (time_local GLOB '[0-2][0-9]:[0-5][0-9]'),
+    time_local       TEXT    NOT NULL CHECK (time_local GLOB '[01][0-9]:[0-5][0-9]'
+                                          OR time_local GLOB '2[0-3]:[0-5][0-9]'),
     repeat_days      INTEGER NOT NULL CHECK (repeat_days BETWEEN 0 AND 127),
     sound_path       TEXT    NULL,
     message          TEXT    NOT NULL DEFAULT '',
