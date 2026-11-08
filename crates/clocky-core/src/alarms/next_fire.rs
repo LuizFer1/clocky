@@ -1,6 +1,6 @@
 //! Next ring of an alarm, computed in local time.
 
-use chrono::{Datelike, Days, NaiveDateTime, TimeDelta, TimeZone};
+use chrono::{Datelike, Days, NaiveDateTime, Offset, TimeDelta, TimeZone};
 
 use super::alarm_time::AlarmTime;
 use super::weekdays::Weekdays;
@@ -24,10 +24,12 @@ pub fn next_fire<Tz: TimeZone>(
     after: Timestamp,
     tz: &Tz,
 ) -> Option<Timestamp> {
-    let today = tz
-        .timestamp_millis_opt(after.as_millis())
-        .single()?
-        .date_naive();
+    // Not `date_naive()`: it panics when the local date falls outside chrono's range.
+    let after_dt = tz.timestamp_millis_opt(after.as_millis()).single()?;
+    let today = after_dt
+        .naive_utc()
+        .checked_add_offset(after_dt.offset().fix())?
+        .date();
     (0..=DAYS_AHEAD)
         .map_while(|offset| today.checked_add_days(Days::new(offset)))
         .filter(|date| repeat.is_once() || repeat.contains(date.weekday()))
@@ -54,7 +56,7 @@ fn resolve_local<Tz: TimeZone>(local: NaiveDateTime, tz: &Tz) -> Option<Timestam
 
 #[cfg(test)]
 mod tests {
-    use chrono::{NaiveDate, Utc, Weekday};
+    use chrono::{FixedOffset, NaiveDate, Utc, Weekday};
     use chrono_tz::America::{New_York, Sao_Paulo};
     use chrono_tz::Pacific::Apia;
 
@@ -260,6 +262,29 @@ mod tests {
                 None
             );
         }
+        // Representable in UTC, but the local date is past chrono's last or first day.
+        let utc_at = |date: NaiveDate, hour| {
+            let dt = date.and_hms_opt(hour, 0, 0).unwrap().and_utc();
+            Timestamp::from_millis(dt.timestamp_millis())
+        };
+        let east = FixedOffset::east_opt(5 * 3600).unwrap();
+        let west = FixedOffset::west_opt(3 * 3600).unwrap();
+        let past_the_end = utc_at(NaiveDate::MAX, 23);
+        let before_the_start = utc_at(NaiveDate::MIN, 1);
+        assert_eq!(
+            next_fire(time(7, 0), Weekdays::EVERY_DAY, past_the_end, &east),
+            None
+        );
+        assert_eq!(
+            next_fire(time(7, 0), Weekdays::EVERY_DAY, before_the_start, &west),
+            None
+        );
+        // The local fire time exists, but its UTC instant is past chrono's last day.
+        let last_day_noon = utc_at(NaiveDate::MAX, 12);
+        assert_eq!(
+            next_fire(time(23, 0), Weekdays::EVERY_DAY, last_day_noon, &west),
+            None
+        );
     }
 
     #[test]
