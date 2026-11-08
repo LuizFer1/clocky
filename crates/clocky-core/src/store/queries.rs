@@ -150,22 +150,48 @@ impl Store {
 
     /// Tasks whose name or project name contains `text` (task picker), by name.
     ///
-    /// Case is ignored for ASCII letters only (SQLite `lower`), so accented letters must match
-    /// exactly.
+    /// Case and the common Latin accents are ignored on both sides ("autenticacao" finds
+    /// "Autenticação"). An empty `text` returns every task.
     ///
     /// # Errors
     /// [`StoreError::Sqlite`] if SQLite fails.
     pub fn search_tasks(&self, text: &str) -> Result<Vec<Task>, StoreError> {
         let sql = format!(
-            "SELECT {TASK_COLUMNS} FROM tasks t
+            "SELECT {TASK_COLUMNS}, COALESCE(p.name, '') FROM tasks t
              LEFT JOIN projects p ON p.id = t.project_id
-             WHERE t.archived_at_ms IS NULL AND p.archived_at_ms IS NULL
-                 AND (instr(lower(t.name), lower(?1)) > 0
-                      OR instr(lower(COALESCE(p.name, '')), lower(?1)) > 0)
-             ORDER BY t.name, t.id"
+             WHERE t.archived_at_ms IS NULL AND p.archived_at_ms IS NULL"
         );
-        collect(&self.conn, &sql, [text], task_from_row)
+        let needle = fold(text);
+        let rows = collect(&self.conn, &sql, [], |row| {
+            Ok((task_from_row(row)?, row.get::<_, String>(7)?))
+        })?;
+        let mut found: Vec<(String, Task)> = rows
+            .into_iter()
+            .filter(|(task, project)| {
+                fold(&task.name).contains(&needle) || fold(project).contains(&needle)
+            })
+            .map(|(task, _)| (fold(&task.name), task))
+            .collect();
+        found.sort_by(|a, b| (&a.0, a.1.id).cmp(&(&b.0, b.1.id)));
+        Ok(found.into_iter().map(|(_, task)| task).collect())
     }
+}
+
+/// `text` in lower case and without the common Latin accents, for searching and sorting.
+fn fold(text: &str) -> String {
+    text.chars()
+        .flat_map(char::to_lowercase)
+        .map(|c| match c {
+            'á' | 'à' | 'â' | 'ã' | 'ä' => 'a',
+            'é' | 'è' | 'ê' | 'ë' => 'e',
+            'í' | 'ì' | 'î' | 'ï' => 'i',
+            'ó' | 'ò' | 'ô' | 'õ' | 'ö' => 'o',
+            'ú' | 'ù' | 'û' | 'ü' => 'u',
+            'ç' => 'c',
+            'ñ' => 'n',
+            other => other,
+        })
+        .collect()
 }
 
 #[cfg(test)]

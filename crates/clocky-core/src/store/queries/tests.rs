@@ -192,3 +192,36 @@ fn search_skips_archived_tasks_and_projects() {
     store.archive_task(archived, at(1)).unwrap();
     assert_eq!(ids(&store.search_tasks("task").unwrap()), vec![visible]);
 }
+
+#[test]
+fn search_ignores_accents_and_case() {
+    let mut store = Store::open_in_memory().unwrap();
+    let ethics = store.create_task(None, "Ética", at(0)).unwrap();
+    let auth = store.create_task(None, "Autenticação", at(0)).unwrap();
+    let clinic = store
+        .create_project("Pesquisa Clínica", "#000000", at(0))
+        .unwrap();
+    let in_clinic = store.create_task(Some(clinic), "coleta", at(0)).unwrap();
+    assert_eq!(ids(&store.search_tasks("ética").unwrap()), vec![ethics]);
+    assert_eq!(
+        ids(&store.search_tasks("autenticacao").unwrap()),
+        vec![auth]
+    );
+    assert_eq!(
+        ids(&store.search_tasks("AUTENTICAÇÃO").unwrap()),
+        vec![auth]
+    );
+    assert_eq!(
+        ids(&store.search_tasks("clinica").unwrap()),
+        vec![in_clinic]
+    );
+}
+
+#[test]
+fn search_sorts_by_folded_name() {
+    let mut store = Store::open_in_memory().unwrap();
+    let b = store.create_task(None, "b", at(0)).unwrap();
+    let accented = store.create_task(None, "Á", at(0)).unwrap();
+    let a = store.create_task(None, "a", at(0)).unwrap();
+    assert_eq!(ids(&store.search_tasks("").unwrap()), vec![accented, a, b]);
+}
