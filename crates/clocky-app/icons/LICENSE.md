@@ -2,9 +2,11 @@
 
 The icons were created for Clocky with Claude Design and are distributed under the project's GPLv3 license.
 
-This directory holds 22 SVG icons (23 files with this one):
+This directory holds 26 SVG icons (27 files with this one):
 
 - the 21 icons of the UI handoff (`docs/ui-handoff/icons/`): `alarm`, `chart`, `check`, `chevron-down`, `chevron-left`, `chevron-right`, `chevron-up`, `clock`, `eye`, `hourglass`, `manage`, `minus`, `pause`, `play`, `plus`, `pomodoro`, `search`, `settings`, `skip`, `stop` and `stopwatch`;
+- `more.svg` (three dots) and `x.svg` (a cross), drawn for Clocky in the same style for the action menus of the manage window;
+- `trash.svg` (a bin) and `archive.svg` (a box), drawn for Clocky in the same style for the confirmation dialogs of the manage window;
 - `tray.svg`, made for the tray: the `clock.svg` icon drawn on a filled disc so it stays visible on light and dark taskbars.
 
 ## Note on `settings.svg`

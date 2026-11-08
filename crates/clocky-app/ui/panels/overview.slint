@@ -1,0 +1,187 @@
+// Visualizar / Ativos (handoff SPEC 2.5, screen 50): one card per timer by urgency, with the
+// ringing state and the empty state. Alarms (M7a) have their own card actions.
+import { Theme } from "../theme.slint";
+import { TimerUi, ActiveCard } from "timer-ui.slint";
+import { Button, ProgressBar, RoundAction, TaskCaption } from "common.slint";
+import { PrimaryButton } from "../components.slint";
+// M7a: alarm cards (toggle, Dispensar and the editor go through `AlarmUi`).
+import { AlarmUi } from "alarm-ui.slint";
+import { AlarmSwitch } from "alarm-common.slint";
+
+component Card inherits Rectangle {
+    in property <ActiveCard> card;
+    property <bool> alarm: root.card.kind == "alarm";
+    property <bool> paused: root.alarm ? !root.card.enabled && !root.card.ringing : !root.card.running && !root.card.waiting && !root.card.ringing;
+
+    border-radius: Theme.radius-panel;
+    background: root.card.ringing ? Theme.pause-soft : (touch.has-hover ? Theme.panel-2 : Theme.field);
+    border-width: 1px;
+    border-color: root.card.ringing ? Theme.pause : Theme.line;
+
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => {
+            if (root.alarm) {
+                AlarmUi.card-open(root.card.id);
+            } else {
+                TimerUi.card-open(root.card.id);
+            }
+        }
+    }
+
+    VerticalLayout {
+        padding: Theme.space-3-5;
+        padding-left: Theme.space-3-5;
+        padding-right: Theme.space-4;
+        spacing: Theme.space-3;
+
+        HorizontalLayout {
+            spacing: Theme.space-3;
+
+            Rectangle {
+                width: 40px;
+                height: 40px;
+                border-radius: 20px;
+                background: root.card.ringing ? Theme.pause : Theme.panel-2;
+
+                Image {
+                    width: 20px;
+                    height: 20px;
+                    source: root.card.kind == "stopwatch" ? @image-url("../../icons/stopwatch.svg")
+                        : root.card.kind == "countdown" ? @image-url("../../icons/hourglass.svg")
+                        : root.alarm ? @image-url("../../icons/alarm.svg")
+                        : @image-url("../../icons/pomodoro.svg");
+                    colorize: root.card.ringing ? #0a0a0a : Theme.text;
+                }
+            }
+
+            VerticalLayout {
+                horizontal-stretch: 1;
+                alignment: center;
+                spacing: 2px;
+
+                Text {
+                    text: root.card.name;
+                    color: Theme.text;
+                    font-size: Theme.fs-lg;
+                    font-weight: Theme.fw-medium;
+                    overflow: elide;
+                }
+
+                Text {
+                    text: root.card.status;
+                    color: root.card.ringing ? Theme.pause-text : Theme.muted;
+                    font-size: Theme.fs-sm;
+                    overflow: elide;
+                }
+            }
+
+            Text {
+                vertical-alignment: center;
+                text: root.card.time;
+                color: root.card.ringing ? Theme.pause-text : root.paused ? Theme.muted : Theme.text;
+                font-family: Theme.font-mono;
+                font-size: Theme.fs-timer-sm;
+                font-weight: Theme.fw-medium;
+            }
+        }
+
+        if root.card.has-progress: ProgressBar {
+            value: root.card.progress;
+            fill: root.paused ? Theme.muted : Theme.accent;
+        }
+
+        HorizontalLayout {
+            spacing: Theme.space-2;
+
+            TaskCaption {
+                horizontal-stretch: 1;
+                task: root.card.task;
+            }
+
+            if root.card.ringing: Button {
+                height: 36px;
+                font-size: Theme.fs-md;
+                text: "Dispensar";
+                clicked => {
+                    if (root.alarm) {
+                        AlarmUi.card-dismiss(root.card.id);
+                    } else {
+                        TimerUi.card-dismiss(root.card.id);
+                    }
+                }
+            }
+
+            if !root.card.ringing && root.alarm: VerticalLayout {
+                alignment: center;
+
+                AlarmSwitch {
+                    on: root.card.enabled;
+                    toggled(on) => { AlarmUi.card-toggle(root.card.id, on); }
+                }
+            }
+
+            if !root.card.ringing && !root.alarm: RoundAction {
+                icon: root.card.running ? @image-url("../../icons/pause.svg") : @image-url("../../icons/play.svg");
+                clicked => { TimerUi.card-primary(root.card.id); }
+            }
+
+            if !root.card.ringing && !root.alarm: RoundAction {
+                primary: false;
+                icon: @image-url("../../icons/stop.svg");
+                clicked => { TimerUi.card-stop(root.card.id); }
+            }
+        }
+    }
+}
+
+export component OverviewView inherits VerticalLayout {
+    if TimerUi.cards.length == 0: VerticalLayout {
+        padding: Theme.space-8;
+        spacing: Theme.space-3;
+        alignment: center;
+
+        Text {
+            horizontal-alignment: center;
+            text: "Nada rodando agora";
+            color: Theme.text;
+            font-size: Theme.fs-base;
+            font-weight: Theme.fw-medium;
+        }
+
+        Text {
+            horizontal-alignment: center;
+            text: "Inicie um timer pelo menu.";
+            color: Theme.muted;
+            font-size: Theme.fs-sm;
+        }
+
+        HorizontalLayout {
+            alignment: center;
+            padding-top: Theme.space-2;
+
+            PrimaryButton {
+                text: "Abrir menu";
+                has-icon: false;
+                clicked => { TimerUi.open-menu(); }
+            }
+        }
+    }
+
+    if TimerUi.cards.length > 0: VerticalLayout {
+        padding: Theme.space-3;
+
+        Flickable {
+            height: min(list.preferred-height, 640px);
+            content-height: list.preferred-height;
+
+            list := VerticalLayout {
+                spacing: Theme.space-2-5;
+
+                for card in TimerUi.cards: Card {
+                    card: card;
+                }
+            }
+        }
+    }
+}

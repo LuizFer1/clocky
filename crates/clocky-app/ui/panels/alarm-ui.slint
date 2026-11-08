@@ -1,0 +1,52 @@
+// State and callbacks of the Alarme panel (handoff SPEC 2.1, screens 10–11) and of the alarm
+// cards in Ativos (SPEC 2.5). Rust (`src/alarms/`) fills it when the editor opens and after each
+// change; the text fields are two-way, so typing is never overwritten.
+import { TaskLine } from "timer-ui.slint";
+
+export global AlarmUi {
+    // Editor. hh/mm are two-way: the arrows set them from Rust, typing sets them here.
+    in-out property <string> hh: "07";
+    in-out property <string> mm: "30";
+    // "Toca seg–sex às 07:30", "Toca uma vez, às 07:30" or "Escolha ao menos um dia".
+    in property <string> summary;
+    // "Dias da semana" (true) or "Uma vez".
+    in property <bool> repeating;
+    // The 7 chips, Monday first.
+    in property <[bool]> days: [true, true, true, true, true, false, false];
+    in-out property <string> name;
+    in property <TaskLine> task;
+    // "Sino suave" or the file name; the path is edited in its own field.
+    in property <string> sound-label: "Sino suave";
+    in-out property <string> sound-path;
+    in-out property <bool> sound-editing;
+    in property <int> snooze: 5;
+    in-out property <string> message;
+    in property <bool> can-save: true;
+    // Editing a saved alarm: "Apagar alarme" shows.
+    in property <bool> editing;
+    // One-line notice in the editor (a custom sound that cannot be played).
+    in property <string> notice;
+    // "Apagar alarme" asks for a second click.
+    in-out property <bool> confirm-delete;
+
+    callback step-hour(bool);
+    callback step-minute(bool);
+    callback hour-edited(string);
+    callback minute-edited(string);
+    callback set-repeating(bool);
+    callback toggle-day(int);
+    callback name-edited(string);
+    callback change-task();
+    callback preview();
+    callback sound-edited(string);
+    callback bump-snooze(bool);
+    callback message-edited(string);
+    callback cancel();
+    callback save();
+    callback delete();
+
+    // Ativos: alarm cards carry an alarm id, not a timer id.
+    callback card-open(int);
+    callback card-toggle(int, bool);
+    callback card-dismiss(int);
+}

@@ -1,0 +1,226 @@
+// Cronômetro (handoff SPEC 2.3, screens 30–33): counter with status, Iniciar/Pausar/Retomar and
+// Parar, the task line and the subtask checklist of the linked task.
+import { Theme } from "../theme.slint";
+import { TimerUi } from "timer-ui.slint";
+import { Button, CheckBox, DashedBox, FieldLabel, ProgressBar, TaskLineView } from "common.slint";
+
+component SubtaskItem inherits Rectangle {
+    in property <string> name;
+    in property <bool> done;
+    callback toggled(bool);
+
+    height: 40px;
+
+    HorizontalLayout {
+        spacing: Theme.space-3-5;
+
+        VerticalLayout {
+            alignment: center;
+
+            CheckBox {
+                checked: root.done;
+                toggled(value) => { root.toggled(value); }
+            }
+        }
+
+        Rectangle {
+            horizontal-stretch: 1;
+
+            label := Text {
+                x: 0;
+                width: min(self.preferred-width, parent.width);
+                text: root.name;
+                color: root.done ? Theme.muted : Theme.text;
+                font-size: Theme.fs-base;
+                overflow: elide;
+            }
+
+            // Slint text has no strike-through: a 1px line over the label.
+            if root.done: Rectangle {
+                x: 0;
+                y: parent.height / 2;
+                width: label.width;
+                height: 1px;
+                background: Theme.muted;
+            }
+        }
+    }
+}
+
+// "+ Adicionar subtarefa": Enter adds and clears the field.
+component AddSubtask inherits Rectangle {
+    height: 40px;
+    border-radius: Theme.radius-lg;
+
+    DashedBox {
+        width: root.width;
+        height: root.height;
+    }
+
+    HorizontalLayout {
+        padding-left: Theme.space-4;
+        padding-right: Theme.space-4;
+        spacing: Theme.space-3;
+
+        VerticalLayout {
+            alignment: center;
+
+            Image {
+                width: 16px;
+                height: 16px;
+                source: @image-url("../../icons/plus.svg");
+                colorize: Theme.muted;
+            }
+        }
+
+        Rectangle {
+            horizontal-stretch: 1;
+
+            input := TextInput {
+                width: 100%;
+                height: 100%;
+                vertical-alignment: center;
+                color: Theme.text;
+                font-size: Theme.fs-base;
+                single-line: true;
+                accepted => {
+                    TimerUi.sw-add-subtask(self.text);
+                    self.text = "";
+                }
+            }
+
+            if input.text == "": Text {
+                width: 100%;
+                height: 100%;
+                vertical-alignment: center;
+                text: "Adicionar subtarefa";
+                color: Theme.muted;
+                font-size: Theme.fs-base;
+            }
+        }
+    }
+}
+
+export component StopwatchView inherits VerticalLayout {
+    padding: Theme.space-5;
+    spacing: Theme.space-5;
+
+    // Counter block.
+    Rectangle {
+        height: 140px;
+        border-radius: Theme.radius-panel;
+        background: Theme.field;
+
+        VerticalLayout {
+            alignment: center;
+            spacing: Theme.space-1;
+
+            HorizontalLayout {
+                alignment: center;
+                spacing: Theme.space-2;
+
+                VerticalLayout {
+                    alignment: center;
+
+                    Rectangle {
+                        width: 8px;
+                        height: 8px;
+                        border-radius: 4px;
+                        background: TimerUi.sw-state == 1 ? Theme.text : Theme.muted;
+                    }
+                }
+
+                Text {
+                    text: TimerUi.sw-state == 1 ? "GRAVANDO" : TimerUi.sw-state == 2 ? "PAUSADO" : "PRONTO";
+                    color: TimerUi.sw-state == 1 ? Theme.text : Theme.muted;
+                    font-size: Theme.fs-sm;
+                    font-weight: Theme.fw-medium;
+                    letter-spacing: 1px;
+                }
+            }
+
+            Text {
+                horizontal-alignment: center;
+                text: TimerUi.sw-time;
+                color: Theme.text;
+                font-family: Theme.font-mono;
+                font-size: Theme.fs-timer-xl;
+                font-weight: Theme.fw-medium;
+            }
+        }
+    }
+
+    HorizontalLayout {
+        spacing: Theme.space-2-5;
+
+        Button {
+            horizontal-stretch: 1;
+            text: TimerUi.sw-state == 1 ? "Pausar" : TimerUi.sw-state == 2 ? "Retomar" : "Iniciar";
+            has-icon: true;
+            icon: TimerUi.sw-state == 1 ? @image-url("../../icons/pause.svg") : @image-url("../../icons/play.svg");
+            clicked => { TimerUi.sw-primary(); }
+        }
+
+        Button {
+            horizontal-stretch: 1;
+            primary: false;
+            text: "Parar";
+            has-icon: true;
+            icon: @image-url("../../icons/stop.svg");
+            enabled: TimerUi.sw-state != 0;
+            clicked => { TimerUi.sw-stop(); }
+        }
+    }
+
+    VerticalLayout {
+        spacing: Theme.space-2-5;
+
+        FieldLabel {
+            text: "Tarefa";
+            hint: TimerUi.sw-task.linked ? "" : "opcional";
+        }
+
+        TaskLineView {
+            task: TimerUi.sw-task;
+            change => { TimerUi.sw-change-task(); }
+        }
+    }
+
+    if TimerUi.sw-task.linked: VerticalLayout {
+        spacing: Theme.space-2-5;
+
+        HorizontalLayout {
+            FieldLabel {
+                text: "Subtarefas";
+            }
+
+            Text {
+                text: TimerUi.sw-progress-label;
+                color: Theme.muted;
+                font-size: Theme.fs-sm;
+            }
+        }
+
+        ProgressBar {
+            height: 4px;
+            value: TimerUi.sw-progress;
+            fill: Theme.ok;
+        }
+
+        // Five rows show at once; more scroll.
+        Flickable {
+            height: min(TimerUi.sw-subtasks.length, 5) * 40px + 4px;
+            content-height: TimerUi.sw-subtasks.length * 40px + 4px;
+
+            for row[i] in TimerUi.sw-subtasks: SubtaskItem {
+                y: 4px + i * 40px;
+                width: parent.width;
+                name: row.name;
+                done: row.done;
+                toggled(value) => { TimerUi.sw-toggle-subtask(row.id, value); }
+            }
+        }
+
+        AddSubtask { }
+    }
+}

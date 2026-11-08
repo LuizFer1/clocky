@@ -7,6 +7,7 @@
 use std::fs::File;
 use std::io::BufReader;
 use std::path::{Path, PathBuf};
+use std::sync::mpsc;
 use std::time::Duration;
 
 use rodio::Source;
@@ -47,7 +48,6 @@ pub fn play_default() {
 }
 
 /// Plays a user file, or the default chime when the file cannot be played.
-#[expect(dead_code, reason = "custom alarm sounds arrive in M7")]
 pub fn play_file(path: PathBuf) {
     spawn("file", move |player| {
         match open_file(&path) {
@@ -62,6 +62,89 @@ pub fn play_file(path: PathBuf) {
         }
         Ok(())
     });
+}
+
+/// A ringing alarm: the sound repeats until this is dropped (Dispensar, Soneca) or until the
+/// auto-stop limit passes.
+pub struct Looping {
+    /// Dropping the sender ends the loop on the worker thread.
+    _stop: mpsc::Sender<()>,
+}
+
+/// How long a ringing alarm keeps sounding when nobody answers it. The overlay stays up; only
+/// the sound stops (decision logged in `docs/duvidas.md`).
+pub const ALARM_AUTO_STOP: Duration = Duration::from_mins(3);
+/// Silence between two rounds of an alarm sound.
+const ROUND_GAP: Duration = Duration::from_millis(900);
+/// How often the worker checks for a stop while a round plays.
+const POLL: Duration = Duration::from_millis(100);
+
+/// Repeats `file` (or the chime when `None` or when it stops decoding) with a short gap, until
+/// the returned [`Looping`] is dropped or `limit` has passed.
+pub fn play_looping(file: Option<PathBuf>, limit: Duration) -> Looping {
+    let (stop, stopped) = mpsc::channel();
+    tracing::info!("alarm sound starts (auto-stop after {limit:?})");
+    spawn("alarm", move |player| {
+        loop_rounds(player, file.as_deref(), &stopped, rounds_of(limit));
+        Ok(())
+    });
+    Looping { _stop: stop }
+}
+
+/// The number of [`POLL`] periods in `limit` (the worker counts them instead of reading a clock).
+fn rounds_of(limit: Duration) -> u128 {
+    limit.as_millis() / POLL.as_millis()
+}
+
+/// Plays rounds until a stop arrives or the `budget` of [`POLL`] periods runs out.
+fn loop_rounds(
+    player: &rodio::Player,
+    file: Option<&Path>,
+    stopped: &mpsc::Receiver<()>,
+    budget: u128,
+) {
+    let mut spent: u128 = 0;
+    let gap_polls = ROUND_GAP.as_millis() / POLL.as_millis();
+    loop {
+        append_round(player, file);
+        let mut waited_gap = 0;
+        // Wait for the round to end, then for the gap.
+        while !player.empty() || waited_gap < gap_polls {
+            if player.empty() {
+                waited_gap += 1;
+            }
+            match stopped.recv_timeout(POLL) {
+                Err(mpsc::RecvTimeoutError::Timeout) => {}
+                Ok(()) | Err(mpsc::RecvTimeoutError::Disconnected) => {
+                    player.stop();
+                    return;
+                }
+            }
+            spent += 1;
+            if spent >= budget {
+                tracing::info!("alarm sound auto-stopped after {:?}", ALARM_AUTO_STOP);
+                player.stop();
+                return;
+            }
+        }
+    }
+}
+
+fn append_round(player: &rodio::Player, file: Option<&Path>) {
+    let Some(path) = file else {
+        append_chime(player);
+        return;
+    };
+    match open_file(path) {
+        Ok(decoder) => player.append(decoder),
+        Err(e) => {
+            tracing::warn!(
+                "cannot play {}: {e:#}; playing the default sound",
+                path.display()
+            );
+            append_chime(player);
+        }
+    }
 }
 
 fn spawn(
@@ -127,6 +210,12 @@ mod tests {
         std::fs::write(&path, wav_bytes(800)).unwrap();
         let decoder = open_file(&path).unwrap();
         assert_eq!(decoder.channels().get(), 1);
+    }
+
+    #[test]
+    fn the_auto_stop_is_counted_in_poll_periods() {
+        assert_eq!(rounds_of(ALARM_AUTO_STOP), 1800);
+        assert_eq!(rounds_of(Duration::from_millis(250)), 2);
     }
 
     #[test]

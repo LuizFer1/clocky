@@ -1,0 +1,179 @@
+// "Todos os projetos": project cards and the project form (handoff screens 70-71).
+import { Theme } from "theme.slint";
+import { AccentButton, DotCell, ProgressBar, SecondaryButton, TextField } from "widgets.slint";
+import { ManageState } from "manage-state.slint";
+
+// Name + palette of 10 colors. New project (all projects page) or edit (project page).
+export component ProjectForm inherits Rectangle {
+    border-radius: Theme.radius-panel;
+    border-width: 1px;
+    border-color: Theme.accent;
+    background: Theme.field;
+
+    init => { name.focus-input(); }
+
+    VerticalLayout {
+        padding: 18px;
+        alignment: start;
+        spacing: Theme.space-3-5;
+
+        VerticalLayout {
+            spacing: Theme.space-2;
+
+            Text {
+                text: "Nome do projeto";
+                color: Theme.muted;
+                font-size: Theme.fs-sm;
+                font-weight: Theme.fw-medium;
+            }
+
+            name := TextField {
+                background: Theme.panel;
+                placeholder: "Ex.: freelas";
+                text <=> ManageState.project-form-name;
+                accepted(text) => { ManageState.save-project(text, ManageState.project-form-color); }
+                cancelled => { ManageState.project-form-open = false; }
+            }
+        }
+
+        VerticalLayout {
+            spacing: Theme.space-2;
+
+            Text {
+                text: "Cor";
+                color: Theme.muted;
+                font-size: Theme.fs-sm;
+                font-weight: Theme.fw-medium;
+            }
+
+            HorizontalLayout {
+                alignment: start;
+                spacing: Theme.space-2;
+
+                for swatch[index] in ManageState.palette: Rectangle {
+                    width: 32px;
+                    height: 32px;
+                    border-radius: 16px;
+                    background: swatch;
+                    border-width: index == ManageState.project-form-color ? 3px : 0px;
+                    border-color: Theme.text;
+
+                    TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => { ManageState.project-form-color = index; }
+                    }
+                }
+            }
+        }
+
+        HorizontalLayout {
+            alignment: start;
+            spacing: Theme.space-2;
+
+            AccentButton {
+                text: ManageState.project-form-editing ? "Salvar" : "Criar projeto";
+                clicked => { ManageState.save-project(ManageState.project-form-name, ManageState.project-form-color); }
+            }
+
+            SecondaryButton {
+                text: "Cancelar";
+                clicked => { ManageState.project-form-open = false; }
+            }
+        }
+    }
+}
+
+// Project card: name with dot, counts and the completed bar in the project color.
+component ProjectCard inherits Rectangle {
+    in property <string> name;
+    in property <color> card-color;
+    in property <string> counts;
+    in property <float> progress;
+    callback clicked();
+
+    border-radius: Theme.radius-panel;
+    border-width: 1px;
+    border-color: touch.has-hover ? Theme.line-2 : Theme.line;
+    background: Theme.field;
+
+    VerticalLayout {
+        padding: 18px;
+        spacing: Theme.space-3-5;
+
+        HorizontalLayout {
+            spacing: Theme.space-2-5;
+
+            DotCell {
+                size: 12px;
+                dot-color: root.card-color;
+            }
+
+            Text {
+                horizontal-stretch: 1;
+                text: root.name;
+                color: Theme.text;
+                font-size: Theme.fs-lg;
+                font-weight: Theme.fw-medium;
+                overflow: elide;
+            }
+        }
+
+        Text {
+            text: root.counts;
+            color: Theme.muted;
+            font-size: Theme.fs-sm;
+        }
+
+        ProgressBar {
+            progress: root.progress;
+            bar-color: root.card-color;
+        }
+    }
+
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+export component AllProjectsPage inherits VerticalLayout {
+    alignment: start;
+    property <length> gap: Theme.space-3;
+    property <int> columns: max(1, floor((self.width + self.gap) / (220px + self.gap)));
+    property <length> card-width: (self.width - (self.columns - 1) * self.gap) / self.columns;
+    property <length> card-height: 104px;
+    property <int> rows: ceil(ManageState.projects.length / self.columns);
+
+    spacing: Theme.space-5;
+
+    if ManageState.project-form-open && !ManageState.project-form-editing: HorizontalLayout {
+        alignment: start;
+
+        ProjectForm {
+            width: min(520px, parent.width);
+        }
+    }
+
+    if ManageState.projects.length > 0: Rectangle {
+        height: root.rows * root.card-height + max(0, root.rows - 1) * root.gap;
+
+        for project[index] in ManageState.projects: ProjectCard {
+            x: mod(index, root.columns) * (root.card-width + root.gap);
+            y: floor(index / root.columns) * (root.card-height + root.gap);
+            width: root.card-width;
+            height: root.card-height;
+            name: project.name;
+            card-color: project.color;
+            counts: project.counts;
+            progress: project.progress;
+            clicked => { ManageState.select-project(project.id); }
+        }
+    }
+
+    Text {
+        text: ManageState.projects.length == 0 ? "Nenhum projeto ainda. Crie o primeiro com “Novo projeto”." : "Selecione um projeto para ver e criar tarefas.";
+        color: Theme.muted;
+        font-size: Theme.fs-md;
+        wrap: word-wrap;
+    }
+}

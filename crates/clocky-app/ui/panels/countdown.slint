@@ -1,0 +1,417 @@
+// Temporizador (handoff SPEC 2.2, screens 20–22): the h/m/s configuration with shortcuts, task
+// and presets, and the running / paused / ringing view.
+import { Theme } from "../theme.slint";
+import { TimerUi, PresetRow } from "timer-ui.slint";
+import { Arrow, Button, Chip, FieldLabel, Footer, ProgressBar, TaskCaption, TaskLineView } from "common.slint";
+
+// One h/m/s column: ↑, the two digits, the label, ↓.
+component HmsField inherits VerticalLayout {
+    in property <int> field;
+    in property <string> value;
+    in property <string> label;
+    alignment: center;
+    spacing: 2px;
+
+    HorizontalLayout {
+        alignment: center;
+
+        Arrow {
+            up: true;
+            clicked => { TimerUi.cd-step(root.field, true); }
+        }
+    }
+
+    Text {
+        horizontal-alignment: center;
+        text: root.value;
+        color: Theme.text;
+        font-family: Theme.font-mono;
+        font-size: Theme.fs-timer-md;
+        font-weight: Theme.fw-medium;
+    }
+
+    Text {
+        horizontal-alignment: center;
+        text: root.label;
+        color: Theme.muted;
+        font-size: Theme.fs-md;
+    }
+
+    HorizontalLayout {
+        alignment: center;
+
+        Arrow {
+            up: false;
+            clicked => { TimerUi.cd-step(root.field, false); }
+        }
+    }
+}
+
+// Preset row: "nome · 12 min", the task below, ▶ that starts it. A click elsewhere loads it.
+component PresetItem inherits Rectangle {
+    in property <PresetRow> preset;
+    in property <bool> first;
+
+    height: 61px;
+
+    if !root.first: Rectangle {
+        y: 0;
+        height: 1px;
+        background: Theme.line;
+    }
+
+    TouchArea {
+        mouse-cursor: pointer;
+        clicked => { TimerUi.cd-load-preset(root.preset.id); }
+    }
+
+    HorizontalLayout {
+        padding-left: Theme.space-3-5;
+        padding-right: Theme.space-2-5;
+        spacing: Theme.space-3;
+
+        VerticalLayout {
+            horizontal-stretch: 1;
+            alignment: center;
+            spacing: 3px;
+
+            HorizontalLayout {
+                spacing: 0;
+
+                Text {
+                    text: root.preset.name;
+                    color: Theme.text;
+                    font-size: Theme.fs-base;
+                    font-weight: Theme.fw-medium;
+                }
+
+                Text {
+                    horizontal-stretch: 1;
+                    text: " · " + root.preset.duration;
+                    color: Theme.muted;
+                    font-size: Theme.fs-base;
+                }
+            }
+
+            TaskCaption {
+                task: root.preset.task;
+                font-size: Theme.fs-sm;
+            }
+        }
+
+        VerticalLayout {
+            alignment: center;
+
+            Rectangle {
+                width: 40px;
+                height: 40px;
+                border-radius: 20px;
+                background: play.has-hover ? Theme.line-2 : Theme.panel-2;
+
+                Image {
+                    width: 14px;
+                    height: 14px;
+                    source: @image-url("../../icons/play.svg");
+                    colorize: Theme.text;
+                }
+
+                play := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { TimerUi.cd-start-preset(root.preset.id); }
+                }
+            }
+        }
+    }
+}
+
+// "+ Novo preset" name field: Enter (or Salvar) saves the current values.
+component PresetName inherits Rectangle {
+    height: Theme.size-control;
+    border-radius: Theme.radius-lg;
+    background: Theme.field;
+    border-width: 1px;
+    border-color: input.has-focus ? Theme.accent : Theme.line-2;
+
+    HorizontalLayout {
+        padding-left: Theme.space-3-5;
+        padding-right: 4px;
+        spacing: Theme.space-2;
+
+        Rectangle {
+            horizontal-stretch: 1;
+
+            input := TextInput {
+                width: 100%;
+                height: 100%;
+                vertical-alignment: center;
+                color: Theme.text;
+                font-size: Theme.fs-base;
+                single-line: true;
+                accepted => {
+                    TimerUi.cd-save-preset(self.text);
+                    TimerUi.cd-naming = false;
+                }
+            }
+
+            if input.text == "": Text {
+                width: 100%;
+                height: 100%;
+                vertical-alignment: center;
+                text: "Nome do preset";
+                color: Theme.muted;
+                font-size: Theme.fs-base;
+            }
+        }
+
+        VerticalLayout {
+            alignment: center;
+
+            Button {
+                height: 36px;
+                text: "Salvar";
+                font-size: Theme.fs-md;
+                clicked => {
+                    TimerUi.cd-save-preset(input.text);
+                    TimerUi.cd-naming = false;
+                }
+            }
+        }
+    }
+
+    init => {
+        input.focus();
+    }
+}
+
+export component CountdownConfigView inherits VerticalLayout {
+    VerticalLayout {
+        padding: Theme.space-5;
+        spacing: Theme.space-5;
+
+        Rectangle {
+            height: 152px;
+            border-radius: Theme.radius-panel;
+            background: Theme.field;
+
+            HorizontalLayout {
+                padding-left: Theme.space-3;
+                padding-right: Theme.space-3;
+
+                HmsField {
+                    horizontal-stretch: 1;
+                    field: 0;
+                    value: TimerUi.cd-h;
+                    label: "horas";
+                }
+
+                HmsField {
+                    horizontal-stretch: 1;
+                    field: 1;
+                    value: TimerUi.cd-m;
+                    label: "minutos";
+                }
+
+                HmsField {
+                    horizontal-stretch: 1;
+                    field: 2;
+                    value: TimerUi.cd-s;
+                    label: "segundos";
+                }
+            }
+        }
+
+        HorizontalLayout {
+            spacing: Theme.space-2;
+
+            Chip {
+                horizontal-stretch: 1;
+                text: "+1 min";
+                clicked => { TimerUi.cd-add-minutes(1); }
+            }
+
+            Chip {
+                horizontal-stretch: 1;
+                text: "+5 min";
+                clicked => { TimerUi.cd-add-minutes(5); }
+            }
+
+            Chip {
+                horizontal-stretch: 1;
+                text: "+10 min";
+                clicked => { TimerUi.cd-add-minutes(10); }
+            }
+        }
+
+        VerticalLayout {
+            spacing: Theme.space-2-5;
+
+            FieldLabel {
+                text: "Tarefa";
+                hint: "opcional";
+            }
+
+            TaskLineView {
+                task: TimerUi.cd-task;
+                change => { TimerUi.cd-change-task(); }
+            }
+        }
+
+        VerticalLayout {
+            spacing: Theme.space-2-5;
+
+            HorizontalLayout {
+                FieldLabel {
+                    text: "Presets";
+                }
+
+                Text {
+                    text: "+ Novo preset";
+                    color: TimerUi.cd-can-start ? Theme.accent-text : Theme.muted;
+                    font-size: Theme.fs-md;
+                    font-weight: Theme.fw-medium;
+
+                    TouchArea {
+                        mouse-cursor: pointer;
+                        enabled: TimerUi.cd-can-start;
+                        clicked => { TimerUi.cd-naming = !TimerUi.cd-naming; }
+                    }
+                }
+            }
+
+            if TimerUi.cd-naming: PresetName { }
+
+            if TimerUi.cd-presets.length == 0: Text {
+                text: "Nenhum preset ainda. Ajuste o tempo e salve em “+ Novo preset”.";
+                color: Theme.muted;
+                font-size: Theme.fs-sm;
+                wrap: word-wrap;
+            }
+
+            if TimerUi.cd-presets.length > 0: Rectangle {
+                border-radius: Theme.radius-xl;
+                border-width: 1px;
+                border-color: Theme.line-2;
+                clip: true;
+                // Three rows show at once; more scroll.
+                height: min(TimerUi.cd-presets.length, 3) * 61px + 2px;
+
+                Flickable {
+                    y: 1px;
+                    height: parent.height - 2px;
+                    content-height: TimerUi.cd-presets.length * 61px;
+
+                    for row[i] in TimerUi.cd-presets: PresetItem {
+                        y: i * 61px;
+                        width: parent.width;
+                        preset: row;
+                        first: i == 0;
+                    }
+                }
+            }
+        }
+    }
+
+    Footer {
+        Button {
+            horizontal-stretch: 1;
+            text: "Iniciar";
+            has-icon: true;
+            icon: @image-url("../../icons/play.svg");
+            enabled: TimerUi.cd-can-start;
+            clicked => { TimerUi.cd-start(); }
+        }
+    }
+}
+
+export component CountdownRunView inherits VerticalLayout {
+    padding: Theme.space-5;
+    spacing: Theme.space-5;
+    property <bool> ringing: TimerUi.cd-run-state == 3;
+    property <bool> paused: TimerUi.cd-run-state == 2;
+
+    Rectangle {
+        border-radius: Theme.radius-panel;
+        background: root.ringing ? Theme.pause-soft : Theme.field;
+        border-width: root.ringing ? 1px : 0;
+        border-color: Theme.pause;
+
+        VerticalLayout {
+            padding: Theme.space-6;
+            padding-top: Theme.space-6;
+            spacing: Theme.space-2;
+
+            Text {
+                horizontal-alignment: center;
+                text: TimerUi.cd-run-status;
+                color: root.ringing ? Theme.pause-text : root.paused ? Theme.muted : Theme.text;
+                font-size: Theme.fs-sm;
+                font-weight: Theme.fw-medium;
+                letter-spacing: root.ringing ? 0 : 1px;
+            }
+
+            Text {
+                horizontal-alignment: center;
+                text: TimerUi.cd-run-time;
+                color: root.ringing ? Theme.pause-text : Theme.text;
+                font-family: Theme.font-mono;
+                font-size: 60px;
+                font-weight: Theme.fw-medium;
+            }
+
+            Text {
+                horizontal-alignment: center;
+                text: TimerUi.cd-run-caption;
+                color: Theme.muted;
+                font-size: Theme.fs-md;
+            }
+
+            VerticalLayout {
+                padding-top: Theme.space-4;
+
+                ProgressBar {
+                    value: TimerUi.cd-run-progress;
+                    fill: root.ringing ? Theme.pause : root.paused ? Theme.muted : Theme.accent;
+                }
+            }
+        }
+    }
+
+    VerticalLayout {
+        spacing: Theme.space-2-5;
+
+        FieldLabel {
+            text: "Tarefa";
+        }
+
+        TaskLineView {
+            task: TimerUi.cd-run-task;
+            change => {
+                if !root.ringing {
+                    TimerUi.cd-run-change-task();
+                }
+            }
+        }
+    }
+
+    if root.ringing: Button {
+        text: "Dispensar";
+        clicked => { TimerUi.cd-run-dismiss(); }
+    }
+
+    if !root.ringing: HorizontalLayout {
+        spacing: Theme.space-2-5;
+
+        Button {
+            horizontal-stretch: 1.6;
+            text: root.paused ? "Retomar" : "Pausar";
+            clicked => { TimerUi.cd-run-primary(); }
+        }
+
+        Button {
+            horizontal-stretch: 1;
+            primary: false;
+            text: "Cancelar";
+            clicked => { TimerUi.cd-run-cancel(); }
+        }
+    }
+}

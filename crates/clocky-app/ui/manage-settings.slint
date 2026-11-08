@@ -1,0 +1,258 @@
+// Configurações (designed in M7, spec decision 12): theme, the "Novo pomodoro" defaults, the
+// forgotten-stopwatch limit, the default alarm sound and the start with the system. Every
+// control saves on change.
+import { Theme } from "theme.slint";
+import { TextAction, TextField } from "widgets.slint";
+import { Card, Segmented, Stepper, Switch } from "manage-controls.slint";
+import { SettingsState } from "manage-settings-state.slint";
+
+// Label and help on the left, the control on the right.
+component SettingRow inherits HorizontalLayout {
+    in property <string> label;
+    in property <string> help;
+
+    spacing: Theme.space-4;
+
+    VerticalLayout {
+        horizontal-stretch: 1;
+        alignment: center;
+        spacing: 3px;
+
+        Text {
+            text: root.label;
+            color: Theme.text;
+            font-size: Theme.fs-md;
+            font-weight: Theme.fw-medium;
+            wrap: word-wrap;
+        }
+
+        if root.help != "": Text {
+            text: root.help;
+            color: Theme.muted;
+            font-size: Theme.fs-sm;
+            wrap: word-wrap;
+        }
+    }
+
+    VerticalLayout {
+        alignment: center;
+
+        @children
+    }
+}
+
+component SectionTitle inherits VerticalLayout {
+    in property <string> text;
+    in property <string> help;
+
+    spacing: 3px;
+
+    Text {
+        text: root.text;
+        color: Theme.text;
+        font-size: Theme.fs-base;
+        font-weight: Theme.fw-medium;
+    }
+
+    if root.help != "": Text {
+        text: root.help;
+        color: Theme.muted;
+        font-size: Theme.fs-sm;
+        wrap: word-wrap;
+    }
+}
+
+component Divider inherits Rectangle {
+    height: 1px;
+    background: Theme.line;
+}
+
+// One wizard default: label and stepper.
+component WizardValue inherits VerticalLayout {
+    in property <string> label;
+    in property <string> unit;
+    in property <int> index;
+
+    horizontal-stretch: 1;
+    spacing: Theme.space-2;
+
+    Text {
+        text: root.label;
+        color: Theme.muted;
+        font-size: Theme.fs-sm;
+        font-weight: Theme.fw-medium;
+    }
+
+    Stepper {
+        value: SettingsState.wizard[root.index];
+        unit: root.unit;
+        can-decrease: !SettingsState.wizard-at-min[root.index];
+        can-increase: !SettingsState.wizard-at-max[root.index];
+        decrease => { SettingsState.step-wizard(root.index, -1); }
+        increase => { SettingsState.step-wizard(root.index, 1); }
+    }
+}
+
+export component SettingsPage inherits VerticalLayout {
+    alignment: start;
+    spacing: Theme.space-5;
+
+    Card {
+        SectionTitle {
+            text: "Aparência";
+        }
+
+        SettingRow {
+            label: "Tema";
+            help: "Vale para o ícone flutuante, os painéis e esta janela.";
+
+            Segmented {
+                width: 196px;
+                options: ["Escuro", "Claro"];
+                selected: SettingsState.dark ? 0 : 1;
+                picked(index) => { SettingsState.set-theme(index == 0); }
+            }
+        }
+    }
+
+    Card {
+        SectionTitle {
+            text: "Novo pomodoro";
+            help: "Valores com que o assistente começa. Os pomodoros já salvos não mudam.";
+        }
+
+        HorizontalLayout {
+            spacing: Theme.space-3;
+
+            WizardValue {
+                label: "Foco";
+                unit: "min";
+                index: 0;
+            }
+
+            WizardValue {
+                label: "Pausa curta";
+                unit: "min";
+                index: 1;
+            }
+        }
+
+        HorizontalLayout {
+            spacing: Theme.space-3;
+
+            WizardValue {
+                label: "Pausa longa";
+                unit: "min";
+                index: 2;
+            }
+
+            WizardValue {
+                label: "Fluxos";
+                unit: "focos";
+                index: 3;
+            }
+        }
+
+        Text {
+            text: SettingsState.wizard-summary;
+            color: Theme.muted;
+            font-family: Theme.font-mono;
+            font-size: Theme.fs-sm;
+        }
+    }
+
+    Card {
+        SectionTitle {
+            text: "Timers";
+        }
+
+        SettingRow {
+            label: "Cronômetro esquecido";
+            help: "Pergunta se o cronômetro foi esquecido depois deste tempo rodando.";
+
+            Stepper {
+                value: SettingsState.forgotten;
+                can-decrease: !SettingsState.forgotten-at-min;
+                can-increase: !SettingsState.forgotten-at-max;
+                decrease => { SettingsState.step-forgotten(-1); }
+                increase => { SettingsState.step-forgotten(1); }
+            }
+        }
+
+        Divider { }
+
+        VerticalLayout {
+            spacing: Theme.space-2;
+
+            HorizontalLayout {
+                VerticalLayout {
+                    horizontal-stretch: 1;
+                    spacing: 3px;
+
+                    Text {
+                        text: "Som padrão do alarme";
+                        color: Theme.text;
+                        font-size: Theme.fs-md;
+                        font-weight: Theme.fw-medium;
+                    }
+
+                    Text {
+                        text: "Caminho de um arquivo .mp3, .wav ou .ogg. Vazio usa o som do Clocky.";
+                        color: Theme.muted;
+                        font-size: Theme.fs-sm;
+                        wrap: word-wrap;
+                    }
+                }
+
+                if SettingsState.alarm-sound != "": VerticalLayout {
+                    alignment: center;
+
+                    TextAction {
+                        text: "Usar o padrão";
+                        clicked => {
+                            SettingsState.alarm-sound = "";
+                            SettingsState.alarm-sound-edited("");
+                        }
+                    }
+                }
+            }
+
+            TextField {
+                font-size: Theme.fs-md;
+                placeholder: "Som do Clocky";
+                text <=> SettingsState.alarm-sound;
+                edited(text) => { SettingsState.alarm-sound-edited(text); }
+            }
+        }
+    }
+
+    Card {
+        SectionTitle {
+            text: "Sistema";
+        }
+
+        SettingRow {
+            label: "Iniciar com o sistema";
+            help: SettingsState.autostart-available ? SettingsState.autostart-help : "Indisponível neste sistema.";
+
+            Switch {
+                checked: SettingsState.autostart;
+                enabled: SettingsState.autostart-available;
+                toggled(on) => { SettingsState.set-autostart(on); }
+            }
+        }
+
+        if SettingsState.autostart-error != "": Text {
+            text: SettingsState.autostart-error;
+            color: Theme.danger;
+            font-size: Theme.fs-sm;
+            wrap: word-wrap;
+        }
+    }
+
+    Text {
+        text: "As mudanças são salvas na hora.";
+        color: Theme.muted;
+        font-size: Theme.fs-xs;
+    }
+}

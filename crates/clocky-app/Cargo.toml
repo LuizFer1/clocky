@@ -14,6 +14,9 @@ path = "src/main.rs"
 
 [dependencies]
 anyhow = "1.0.104"
+# Local wall-clock times (session rows, "termina às HH:MM"): `clock` gives `chrono::Local`;
+# it only converts timestamps, the app never reads the clock through it.
+chrono = { version = "0.4.45", default-features = false, features = ["clock", "std"] }
 clocky-core.workspace = true
 directories = "6.0.0"
 # PNG encoder for the screenshot hook; already in the Slint dependency graph.
@@ -32,6 +35,8 @@ tracing-subscriber = { version = "0.3.23", default-features = false, features = 
 winreg = "0.56.0"
 
 [dev-dependencies]
+# Tests that corrupt a saved timer row on purpose (same version as `clocky-core`).
+rusqlite = { version = "0.41.1", features = ["bundled"] }
 tempfile = "3.27.0"
 
 [build-dependencies]

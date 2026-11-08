@@ -1,0 +1,86 @@
+// Rows the Rust side fills (see `src/manage_view.rs` and `src/picker.rs`). Identifiers are the
+// database ids; "none" choices have their own flag or row kind, never a sentinel id.
+
+// A project in the sidebar, the card grid and the chip lists.
+export struct ProjectItem {
+    id: int,
+    name: string,
+    color: color,
+    // Open tasks (sidebar count).
+    open: int,
+    // "4 abertas · 0 concluídas"
+    counts: string,
+    // Completed share, 0..1 (card bar).
+    progress: float,
+    selected: bool,
+    // The "Sem projeto" chip (its id is meaningless).
+    none: bool,
+}
+
+// One row of wrapped project chips (Rust estimates the widths; Slint has no flex-wrap).
+export struct ChipRow {
+    chips: [ProjectItem],
+}
+
+// A task in the project list (and in the search results, with its project).
+export struct TaskRow {
+    id: int,
+    name: string,
+    done: bool,
+    // "1/3 subtarefas", or empty.
+    subtasks: string,
+    // Project label for search results; empty inside a project.
+    project: string,
+    // The task has a project (its dot uses `project-color`); "Sem projeto" otherwise.
+    has-project: bool,
+    project-color: color,
+    has-pomodoro: bool,
+    has-timer: bool,
+    // "3h 40min" or "—"
+    time: string,
+    // M7a: the task has alarms (alarm icon).
+    has-alarm: bool,
+}
+
+export struct SubtaskRow {
+    id: int,
+    name: string,
+    done: bool,
+}
+
+// "Vinculado a": a saved pomodoro or countdown timer of the task.
+export struct LinkRow {
+    kind: string,
+    label: string,
+    is-pomodoro: bool,
+    // M7a: an alarm of the task; a click opens its editor.
+    is-alarm: bool,
+    alarm-id: int,
+}
+
+// "Tempo registrado": one recent session.
+export struct SessionRow {
+    // M7b: the session id (opens its Sessão detail).
+    id: int,
+    day: string,
+    range: string,
+    kind: string,
+    duration: string,
+}
+
+// Task picker row: a group header, a task, or "Sem tarefa".
+export enum PickerRowKind { header, task, none }
+
+// Dot of a header: the project color, the accent ("Recentes") or the line color ("Sem projeto").
+export enum DotStyle { project, accent, line }
+
+export struct PickerRow {
+    kind: PickerRowKind,
+    id: int,
+    name: string,
+    color: color,
+    dot: DotStyle,
+    // "1/3" or empty.
+    subtasks: string,
+    selected: bool,
+}

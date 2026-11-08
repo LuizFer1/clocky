@@ -763,12 +763,14 @@ name = "clocky-app"
 version = "0.0.0"
 dependencies = [
  "anyhow",
+ "chrono",
  "clocky-core",
  "directories",
  "image",
  "interprocess",
  "notify-rust",
  "rodio",
+ "rusqlite",
  "serde",
  "serde_json",
  "slint",

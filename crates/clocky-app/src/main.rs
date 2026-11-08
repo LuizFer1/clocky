@@ -11,20 +11,38 @@ mod ui {
 }
 
 mod app;
+mod autostart;
 mod bridge;
+mod chips;
 mod command;
+mod core;
+mod demo;
 mod dock;
+mod format;
 mod geometry;
 mod instance;
 mod log;
 mod manage;
+mod manage_view;
 mod notify;
+mod palette;
 mod panel;
 mod paths;
+mod picker;
+mod picker_ui;
+mod reports_view;
 mod screenshot;
 mod settings;
+mod settings_view;
 mod sound;
+mod startup;
+mod tour;
+mod tour_manage;
 mod tray;
+// M6b: the timer panels.
+mod timers;
+// M7a: alarms (Alarme panel, Ativos cards, ringing overlay).
+mod alarms;
 
 fn main() {
     match run() {
@@ -53,19 +71,75 @@ fn run() -> anyhow::Result<()> {
     // Only the primary instance logs: a second launch must not touch the running one's log.
     start_logging();
     select_backend()?;
-    // Listen before creating the windows: that can take seconds on a cold start, and a launch
-    // during it must reach this instance instead of starting a second one.
+    // Claim the single-instance name before the database is opened: a second launch then
+    // reaches this instance even while the database error window is up (it never gets its own
+    // window on the same file), and during the seconds a cold start takes.
     if screenshot_dir.is_none() {
         instance::listen(app::run_command)?;
     }
-    let app = app::App::new(screenshot_dir.is_some())?;
+    let app = match startup::open_core(screenshot_dir.is_some()) {
+        Ok((core, reopened)) => start_app(core, reopened, screenshot_dir)?,
+        Err(failure) => return recover(failure, screenshot_dir),
+    };
+    // The app lives in the tray: closing every window does not end it, only "Sair" does.
+    let result = slint::run_event_loop_until_quit();
+    // Drops the windows and the tray icon before the process exits.
+    app::shutdown(app);
+    result?;
+    Ok(())
+}
+
+/// Creates the app on an opened core: the single-instance channel, the demo data (if asked),
+/// the windows and the screenshot tour.
+fn start_app(
+    core: core::AppCore,
+    reopened: core::Reopened,
+    screenshot_dir: Option<std::path::PathBuf>,
+) -> anyhow::Result<std::rc::Rc<app::App>> {
+    let (core, reopened) = match paths::db(screenshot_dir.is_some()) {
+        // The demo needs `CLOCKY_DB`, so its database is always a file.
+        paths::Db::File(path) if demo::requested() => {
+            tracing::info!("demo data requested");
+            demo::seed_and_reopen(core, reopened, &path, &chrono::Local)?
+        }
+        _ => (core, reopened),
+    };
+    let app = app::App::new(core, &reopened, screenshot_dir.is_some())?;
     app.start()?;
     if let Some(dir) = screenshot_dir {
         app.schedule_screenshots(dir);
     }
-    // The app lives in the tray: closing every window does not end it, only "Sair" does.
+    Ok(app)
+}
+
+/// The database could not be opened: the error window instead of the app. When the problem is
+/// only the saved active timers, the user may discard them and the app starts from there, in
+/// the same event loop.
+fn recover(
+    failure: startup::OpenFailure,
+    screenshot_dir: Option<std::path::PathBuf>,
+) -> anyhow::Result<()> {
+    let started = std::rc::Rc::new(std::cell::RefCell::new(None));
+    let (slot, dir) = (started.clone(), screenshot_dir.clone());
+    // The cause was logged by `open_core`; the window shows it in PT-BR.
+    let _window =
+        startup::show_failure(
+            failure,
+            screenshot_dir,
+            move |core, reopened| match start_app(core, reopened, dir) {
+                Ok(app) => *slot.borrow_mut() = Some(app),
+                Err(e) => {
+                    tracing::error!("cannot start after discarding the active timers: {e:#}");
+                    app::quit();
+                }
+            },
+        )?;
     let result = slint::run_event_loop_until_quit();
-    // Drops the windows and the tray icon before the process exits.
+    let app = started.borrow_mut().take();
+    let Some(app) = app else {
+        result?;
+        anyhow::bail!("the database could not be opened");
+    };
     app::shutdown(app);
     result?;
     Ok(())
@@ -82,6 +156,8 @@ fn start_logging() {
 /// Selects the winit backend (the dock relies on winit window APIs).
 fn select_backend() -> anyhow::Result<()> {
     let selector = slint::BackendSelector::new().backend_name("winit".into());
+    // M7: the alarm overlay is created without activation (it must not take the focus).
+    let selector = selector.with_winit_window_attributes_hook(alarms::window_attributes);
     #[cfg(all(unix, not(target_vendor = "apple")))]
     let selector = selector.with_winit_event_loop_builder(linux_event_loop_builder());
     selector.select()?;

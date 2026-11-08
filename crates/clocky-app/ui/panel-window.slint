@@ -1,8 +1,13 @@
 // Generic floating panel (handoff SPEC 2): 380 wide, header (back · title · option icon), body
-// and an optional footer. M5 shows a placeholder body per option; M6 fills the real contents.
+// and an optional footer. M5 shows a placeholder body per option; M6b fills the real contents.
+// With `picking`, the body is the task picker ("Vincular tarefa", screens 60-61).
 // Esc and a click outside (window focus lost, handled in Rust) close it.
 import { Theme } from "theme.slint";
 import { FabIcon, GhostIcon, PrimaryButton } from "components.slint";
+// M6b timer panels: the body and header come from `TimerUi` when its view is set.
+import { TimerUi } from "panels/timer-ui.slint";
+import { TimerBody, TimerOverlays } from "panels/timer-body.slint";
+import { PickerState, TaskPicker } from "task-picker.slint";
 
 export component PanelWindow inherits Window {
     in property <string> panel-title: "Clocky";
@@ -13,23 +18,36 @@ export component PanelWindow inherits Window {
     // Empty = no button in the body.
     in property <string> action-label: "";
     in property <bool> has-footer: true;
+    // The body is the task picker.
+    in property <bool> picking;
+    in property <length> panel-height: 420px;
+    // The tallest the timer views may make the window on this monitor (set from Rust).
+    in property <length> height-cap: 800px;
+    property <bool> timer-view: !root.picking && TimerUi.view != "";
     callback back();
     callback dismiss();
     callback action();
 
-    title: "Clocky · " + root.panel-title;
+    title: "Clocky · " + (root.picking ? "Vincular tarefa" : root.panel-title);
     no-frame: true;
     always-on-top: true;
     background: transparent;
     default-font-family: Theme.font-sans;
     width: Theme.size-panel-width;
-    height: 420px;
+    // Header (64 + 1) plus the timer view, capped; past the cap the view scrolls. Rust reads it
+    // to place the window before it is shown (its size is not known yet then).
+    out property <length> wanted-height: root.timer-view ? min(65px + timer-body.preferred-height, root.height-cap) : root.panel-height;
+    height: root.wanted-height;
     forward-focus: keys;
 
     keys := FocusScope {
         key-pressed(event) => {
             if (event.text == Key.Escape) {
-                root.dismiss();
+                if (root.picking) {
+                    PickerState.cancel();
+                } else {
+                    root.dismiss();
+                }
                 return accept;
             }
             reject
@@ -42,7 +60,7 @@ export component PanelWindow inherits Window {
             border-color: Theme.line;
             clip: true;
 
-            VerticalLayout {
+            content := VerticalLayout {
                 // Header 64: back · title (+ subtitle) · option icon (continuity of the pill).
                 HorizontalLayout {
                     height: 64px;
@@ -55,7 +73,13 @@ export component PanelWindow inherits Window {
 
                         GhostIcon {
                             icon: @image-url("../icons/chevron-left.svg");
-                            clicked => { root.back(); }
+                            clicked => {
+                                if (root.picking) {
+                                    PickerState.cancel();
+                                } else {
+                                    root.back();
+                                }
+                            }
                         }
                     }
 
@@ -64,21 +88,26 @@ export component PanelWindow inherits Window {
                         alignment: center;
 
                         Text {
-                            text: root.panel-title;
+                            text: root.picking ? "Vincular tarefa" : TimerUi.view == "" ? root.panel-title : TimerUi.title;
                             color: Theme.text;
                             font-size: Theme.fs-lg;
                             font-weight: Theme.fw-medium;
                         }
 
-                        if root.panel-subtitle != "": Text {
-                            text: root.panel-subtitle;
+                        if !root.picking && (TimerUi.view == "" ? root.panel-subtitle : TimerUi.subtitle) != "": Text {
+                            text: TimerUi.view == "" ? root.panel-subtitle : TimerUi.subtitle;
                             color: Theme.muted;
                             font-size: Theme.fs-sm;
                         }
                     }
 
-                    FabIcon {
-                        source: root.panel-icon;
+                    if !root.picking: FabIcon {
+                        source: TimerUi.view == "" ? root.panel-icon
+                            : TimerUi.icon-kind == "stopwatch" ? @image-url("../icons/stopwatch.svg")
+                            : TimerUi.icon-kind == "countdown" ? @image-url("../icons/hourglass.svg")
+                            : TimerUi.icon-kind == "pomodoro" ? @image-url("../icons/pomodoro.svg")
+                            : TimerUi.icon-kind == "alarm" ? @image-url("../icons/alarm.svg")
+                            : @image-url("../icons/eye.svg");
                     }
                 }
 
@@ -87,8 +116,25 @@ export component PanelWindow inherits Window {
                     background: Theme.line;
                 }
 
-                // Body (placeholder until M6).
-                VerticalLayout {
+                if root.picking: TaskPicker {
+                    vertical-stretch: 1;
+                }
+
+                // M6b: timer views.
+                // Always present (sized to 0 when hidden) so the window height can read it.
+                Flickable {
+                    height: root.timer-view ? root.height - 65px : 0px;
+                    visible: root.timer-view;
+                    content-height: timer-body.preferred-height;
+
+                    timer-body := TimerBody {
+                        width: parent.width;
+                        height: self.preferred-height;
+                    }
+                }
+
+                // Placeholder body (the Alarme panel until M7).
+                if !root.picking && TimerUi.view == "": VerticalLayout {
                     vertical-stretch: 1;
                     padding: Theme.space-5;
                     spacing: Theme.space-3;
@@ -110,6 +156,7 @@ export component PanelWindow inherits Window {
                         wrap: word-wrap;
                     }
 
+
                     if root.action-label != "": HorizontalLayout {
                         alignment: center;
 
@@ -122,12 +169,12 @@ export component PanelWindow inherits Window {
                 }
 
                 // Footer: top border, padding 14/20/20.
-                if root.has-footer: Rectangle {
+                if root.has-footer && !root.picking && TimerUi.view == "": Rectangle {
                     height: 1px;
                     background: Theme.line;
                 }
 
-                if root.has-footer: HorizontalLayout {
+                if root.has-footer && !root.picking && TimerUi.view == "": HorizontalLayout {
                     padding-top: Theme.space-3-5;
                     padding-left: Theme.space-5;
                     padding-right: Theme.space-5;
@@ -155,6 +202,13 @@ export component PanelWindow inherits Window {
                         }
                     }
                 }
+            }
+
+            // M6b: task chooser and dialogs over the body (below the 64 + 1 header).
+            if TimerUi.view != "" && !root.picking: TimerOverlays {
+                y: 65px;
+                width: parent.width;
+                height: parent.height - 65px;
             }
         }
     }

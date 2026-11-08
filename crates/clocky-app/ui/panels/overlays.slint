@@ -1,0 +1,46 @@
+// Drawn over the panel body: the "Cronômetro esquecido?" dialog (not in the handoff screens;
+// built from its tokens, spec decision 6). The task picker is the panel window's own.
+import { Theme } from "../theme.slint";
+import { TimerUi } from "timer-ui.slint";
+import { Button } from "common.slint";
+import { DialogCard, DialogTone, Scrim } from "../dialog.slint";
+
+// M7b: the same dialog card as the confirmations of Gerenciar, with the amber timer badge.
+component ForgottenDialog inherits Scrim {
+    DialogCard {
+        x: Theme.space-4;
+        y: max(Theme.space-5, (parent.height - self.height) / 2);
+        width: parent.width - 2 * Theme.space-4;
+        height: self.preferred-height;
+        title: "Cronômetro esquecido?";
+        text: TimerUi.forgotten-text;
+        icon: @image-url("../../icons/stopwatch.svg");
+        tone: DialogTone.pause;
+
+        HorizontalLayout {
+            spacing: Theme.space-2-5;
+
+            Button {
+                horizontal-stretch: 1;
+                height: Theme.size-control;
+                primary: false;
+                text: "Descartar";
+                clicked => { TimerUi.forgotten-discard(); }
+            }
+
+            Button {
+                horizontal-stretch: 1.4;
+                height: Theme.size-control;
+                text: "Registrar tudo";
+                clicked => { TimerUi.forgotten-record(); }
+            }
+        }
+    }
+}
+
+export component TimerOverlays inherits Rectangle {
+    if TimerUi.forgotten-visible: ForgottenDialog {
+        width: root.width;
+        height: root.height;
+    }
+}

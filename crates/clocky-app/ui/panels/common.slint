@@ -1,0 +1,434 @@
+// Building blocks of the timer panels (handoff SPEC 2): field labels, the task line, buttons,
+// progress bars, checkboxes and the dashed box Slint has no border style for.
+import { Theme } from "../theme.slint";
+import { TaskLine } from "timer-ui.slint";
+
+// 13 medium muted field label, with an optional " · opcional" suffix.
+export component FieldLabel inherits HorizontalLayout {
+    in property <string> text;
+    in property <string> hint: "";
+    spacing: 0;
+
+    Text {
+        text: root.text;
+        color: Theme.muted;
+        font-size: Theme.fs-md;
+        font-weight: Theme.fw-medium;
+    }
+
+    if root.hint != "": Text {
+        text: " · " + root.hint;
+        color: Theme.muted;
+        font-size: Theme.fs-md;
+    }
+
+    Rectangle {
+        horizontal-stretch: 1;
+    }
+}
+
+// Dashed rounded outline: straight dashes on the edges and solid quarter arcs on the corners.
+export component DashedBox inherits Rectangle {
+    in property <brush> dash: Theme.line-2;
+    in property <length> radius: Theme.radius-lg;
+    property <length> dash-len: 5px;
+    property <length> step: 9px;
+    property <int> h-count: max(0, floor((self.width - 2 * self.radius) / self.step));
+    property <int> v-count: max(0, floor((self.height - 2 * self.radius) / self.step));
+
+    for i in root.h-count: Rectangle {
+        x: root.radius + i * root.step + 2px;
+        y: 0;
+        width: root.dash-len;
+        height: 1px;
+        background: root.dash;
+    }
+
+    for i in root.h-count: Rectangle {
+        x: root.radius + i * root.step + 2px;
+        y: root.height - 1px;
+        width: root.dash-len;
+        height: 1px;
+        background: root.dash;
+    }
+
+    for i in root.v-count: Rectangle {
+        x: 0;
+        y: root.radius + i * root.step + 2px;
+        width: 1px;
+        height: root.dash-len;
+        background: root.dash;
+    }
+
+    for i in root.v-count: Rectangle {
+        x: root.width - 1px;
+        y: root.radius + i * root.step + 2px;
+        width: 1px;
+        height: root.dash-len;
+        background: root.dash;
+    }
+
+    Path {
+        x: 0;
+        y: 0;
+        width: root.width;
+        height: root.height;
+        viewbox-width: self.width / 1px;
+        viewbox-height: self.height / 1px;
+        stroke: root.dash;
+        stroke-width: 1px;
+        fill: transparent;
+        commands: "M 0.5 " + (root.radius / 1px) + " A " + (root.radius / 1px - 0.5) + " " + (root.radius / 1px - 0.5) + " 0 0 1 " + (root.radius / 1px) + " 0.5"
+            + " M " + (root.width / 1px - root.radius / 1px) + " 0.5 A " + (root.radius / 1px - 0.5) + " " + (root.radius / 1px - 0.5) + " 0 0 1 " + (root.width / 1px - 0.5) + " " + (root.radius / 1px)
+            + " M " + (root.width / 1px - 0.5) + " " + (root.height / 1px - root.radius / 1px) + " A " + (root.radius / 1px - 0.5) + " " + (root.radius / 1px - 0.5) + " 0 0 1 " + (root.width / 1px - root.radius / 1px) + " " + (root.height / 1px - 0.5)
+            + " M " + (root.radius / 1px) + " " + (root.height / 1px - 0.5) + " A " + (root.radius / 1px - 0.5) + " " + (root.radius / 1px - 0.5) + " 0 0 1 0.5 " + (root.height / 1px - root.radius / 1px);
+    }
+}
+
+// Colored project dot.
+export component Dot inherits Rectangle {
+    in property <color> tint;
+    in property <length> size: 10px;
+    width: self.size;
+    height: self.size;
+    border-radius: self.size / 2;
+    background: root.tint;
+}
+
+// "● projeto › tarefa" text (or "Sem tarefa" with a dim dot), for cards and preset rows.
+export component TaskCaption inherits HorizontalLayout {
+    in property <TaskLine> task;
+    in property <length> font-size: Theme.fs-md;
+    spacing: Theme.space-2;
+
+    VerticalLayout {
+        alignment: center;
+
+        Dot {
+            size: 9px;
+            tint: root.task.linked ? root.task.color : Theme.line-2;
+        }
+    }
+
+    Text {
+        horizontal-stretch: 1;
+        vertical-alignment: center;
+        text: root.task.linked ? root.task.project + " › " + root.task.task : "Sem tarefa";
+        color: Theme.muted;
+        font-size: root.font-size;
+        overflow: elide;
+    }
+}
+
+// The task line of every panel: linked = "● projeto › tarefa" + "Trocar"; unlinked = the dashed
+// "Vincular tarefa" button. Both open the task chooser.
+export component TaskLineView inherits Rectangle {
+    in property <TaskLine> task;
+    callback change();
+
+    height: 46px;
+    border-radius: Theme.radius-lg;
+    background: root.task.linked ? Theme.field : (touch.has-hover ? Theme.accent-soft : transparent);
+    border-width: root.task.linked ? 1px : 0;
+    border-color: Theme.line-2;
+
+    if !root.task.linked: DashedBox {
+        width: root.width;
+        height: root.height;
+    }
+
+    if root.task.linked: HorizontalLayout {
+        padding-left: Theme.space-4;
+        padding-right: Theme.space-4;
+        spacing: Theme.space-3;
+
+        VerticalLayout {
+            alignment: center;
+
+            Dot {
+                tint: root.task.color;
+            }
+        }
+
+        HorizontalLayout {
+            horizontal-stretch: 1;
+            spacing: Theme.space-1-5;
+
+            Text {
+                vertical-alignment: center;
+                text: root.task.project;
+                color: Theme.muted;
+                font-size: Theme.fs-base;
+            }
+
+            Text {
+                vertical-alignment: center;
+                text: "›";
+                color: Theme.muted;
+                font-size: Theme.fs-base;
+            }
+
+            Text {
+                horizontal-stretch: 1;
+                vertical-alignment: center;
+                text: root.task.task;
+                color: Theme.text;
+                font-size: Theme.fs-base;
+                font-weight: Theme.fw-medium;
+                overflow: elide;
+            }
+        }
+
+        Text {
+            vertical-alignment: center;
+            text: "Trocar";
+            color: Theme.accent-text;
+            font-size: Theme.fs-md;
+            font-weight: Theme.fw-medium;
+        }
+    }
+
+    if !root.task.linked: HorizontalLayout {
+        padding-left: Theme.space-4;
+        spacing: Theme.space-3;
+
+        VerticalLayout {
+            alignment: center;
+
+            Image {
+                width: 18px;
+                height: 18px;
+                source: @image-url("../../icons/plus.svg");
+                colorize: Theme.muted;
+            }
+        }
+
+        Text {
+            horizontal-stretch: 1;
+            vertical-alignment: center;
+            text: "Vincular tarefa";
+            color: Theme.muted;
+            font-size: Theme.fs-base;
+        }
+    }
+
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.change(); }
+    }
+}
+
+// Full-width or flexible button: primary (accent) or secondary (outline), optional icon.
+export component Button inherits Rectangle {
+    in property <string> text;
+    in property <image> icon;
+    in property <bool> has-icon: false;
+    in property <bool> primary: true;
+    in property <bool> enabled: true;
+    in property <length> font-size: Theme.fs-base;
+    callback clicked();
+
+    min-width: label.preferred-width + 2 * Theme.space-4;
+    height: Theme.size-button-lg;
+    border-radius: Theme.radius-lg;
+    background: !root.primary ? (touch.has-hover && root.enabled ? Theme.accent-soft : transparent)
+        : !root.enabled ? Theme.line-2 : touch.pressed ? Theme.muted : Theme.accent;
+    border-width: root.primary ? 0 : 1px;
+    border-color: Theme.line-2;
+    property <color> fg: root.primary ? Theme.on-accent : Theme.text;
+    opacity: root.enabled ? 1 : 0.5;
+
+    HorizontalLayout {
+        alignment: center;
+        spacing: Theme.space-2-5;
+
+        if root.has-icon: VerticalLayout {
+            alignment: center;
+
+            Image {
+                width: 16px;
+                height: 16px;
+                source: root.icon;
+                colorize: root.fg;
+            }
+        }
+
+        label := Text {
+            vertical-alignment: center;
+            text: root.text;
+            color: root.fg;
+            font-size: root.font-size;
+            font-weight: Theme.fw-medium;
+        }
+    }
+
+    touch := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: root.enabled ? pointer : default;
+        clicked => { root.clicked(); }
+    }
+}
+
+// Square icon button with an outline (Pular fase, 48×48).
+export component IconButton inherits Rectangle {
+    in property <image> icon;
+    in property <bool> enabled: true;
+    callback clicked();
+
+    width: Theme.size-button;
+    height: Theme.size-button;
+    border-radius: Theme.radius-lg;
+    border-width: 1px;
+    border-color: Theme.line-2;
+    background: touch.has-hover && root.enabled ? Theme.accent-soft : transparent;
+    opacity: root.enabled ? 1 : 0.5;
+
+    Image {
+        width: 18px;
+        height: 18px;
+        source: root.icon;
+        colorize: Theme.text;
+    }
+
+    touch := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+// Round 36px action of the Ativos cards: ▶/❚❚ (primary) and ■ (outline).
+export component RoundAction inherits Rectangle {
+    in property <image> icon;
+    in property <bool> primary: true;
+    in property <length> diameter: 36px;
+    callback clicked();
+
+    width: self.diameter;
+    height: self.diameter;
+    border-radius: self.diameter / 2;
+    background: root.primary ? Theme.accent : (touch.has-hover ? Theme.accent-soft : transparent);
+    border-width: root.primary ? 0 : 1px;
+    border-color: Theme.line-2;
+
+    Image {
+        width: 14px;
+        height: 14px;
+        source: root.icon;
+        colorize: root.primary ? Theme.on-accent : Theme.text;
+    }
+
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+// Progress bar: track `line-2`, fill in `fill`.
+export component ProgressBar inherits Rectangle {
+    in property <float> value;
+    in property <brush> fill: Theme.accent;
+    height: 6px;
+    border-radius: self.height / 2;
+    background: Theme.line-2;
+
+    Rectangle {
+        x: 0;
+        width: max(root.height, root.width * clamp(root.value, 0, 1));
+        height: root.height;
+        border-radius: root.height / 2;
+        background: root.fill;
+        visible: root.value > 0;
+    }
+}
+
+// Checkbox of the subtask checklist.
+export component CheckBox inherits Rectangle {
+    in property <bool> checked;
+    callback toggled(bool);
+
+    width: 20px;
+    height: 20px;
+    border-radius: 5px;
+    background: root.checked ? Theme.accent : Theme.panel;
+    border-width: root.checked ? 0 : 1.5px;
+    border-color: Theme.muted;
+
+    if root.checked: Image {
+        width: 16px;
+        height: 16px;
+        source: @image-url("../../icons/check.svg");
+        colorize: Theme.on-accent;
+    }
+
+    TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.toggled(!root.checked); }
+    }
+}
+
+// Chevron arrow of the h/m/s editor.
+export component Arrow inherits Rectangle {
+    in property <bool> up;
+    callback clicked();
+
+    width: 44px;
+    height: 28px;
+    border-radius: Theme.radius-sm;
+    background: touch.has-hover ? Theme.accent-soft : transparent;
+
+    Image {
+        width: 20px;
+        height: 20px;
+        source: root.up ? @image-url("../../icons/chevron-up.svg") : @image-url("../../icons/chevron-down.svg");
+        colorize: Theme.muted;
+    }
+
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+// Outlined chip button (+1 min, shortcuts). `selected` = brighter border and raised background.
+export component Chip inherits Rectangle {
+    in property <string> text;
+    in property <bool> selected: false;
+    callback clicked();
+
+    height: 38px;
+    border-radius: Theme.radius-lg;
+    border-width: root.selected ? 1.5px : 1px;
+    border-color: root.selected ? Theme.accent : Theme.line-2;
+    background: root.selected ? Theme.panel-2 : (touch.has-hover ? Theme.accent-soft : transparent);
+
+    Text {
+        text: root.text;
+        color: Theme.text;
+        font-size: Theme.fs-base;
+        font-weight: Theme.fw-medium;
+    }
+
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+// Top border + padding 14/20/20 footer.
+export component Footer inherits VerticalLayout {
+    Rectangle {
+        height: 1px;
+        background: Theme.line;
+    }
+
+    HorizontalLayout {
+        padding-top: Theme.space-3-5;
+        padding-left: Theme.space-5;
+        padding-right: Theme.space-5;
+        padding-bottom: Theme.space-5;
+        spacing: Theme.space-3;
+
+        @children
+    }
+}
