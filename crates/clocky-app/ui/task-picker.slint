@@ -40,6 +40,7 @@ component PickerLine inherits Rectangle {
     height: root.item.kind == PickerRowKind.header ? 38px : 44px;
     border-radius: Theme.radius-md;
     background: root.item.kind != PickerRowKind.header && root.item.selected ? Theme.accent-soft : (touch.has-hover && root.item.kind != PickerRowKind.header ? Theme.accent-soft : transparent);
+    animate background { duration: Theme.dur-hover; }
 
     if root.item.kind == PickerRowKind.header: HorizontalLayout {
         padding-left: Theme.space-3;
@@ -308,6 +309,7 @@ export component TaskPicker inherits VerticalLayout {
             border-width: 1px;
             border-color: Theme.line-2;
             background: cancel-touch.has-hover ? Theme.accent-soft : transparent;
+            animate background { duration: Theme.dur-hover; }
 
             Text {
                 text: "Cancelar";

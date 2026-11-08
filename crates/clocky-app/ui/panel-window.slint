@@ -188,6 +188,7 @@ export component PanelWindow inherits Window {
                         border-width: 1px;
                         border-color: Theme.line-2;
                         background: close-touch.has-hover ? Theme.accent-soft : transparent;
+                        animate background { duration: Theme.dur-hover; }
 
                         close-label := Text {
                             text: "Fechar";

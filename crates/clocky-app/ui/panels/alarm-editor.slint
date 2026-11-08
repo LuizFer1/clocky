@@ -114,6 +114,7 @@ component SoundBox inherits Rectangle {
                 height: 36px;
                 border-radius: Theme.radius-sm;
                 background: play.has-hover ? Theme.line-2 : Theme.panel-2;
+                animate background { duration: Theme.dur-hover; }
 
                 Image {
                     width: 14px;

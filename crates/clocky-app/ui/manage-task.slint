@@ -65,6 +65,7 @@ component SubtaskLine inherits Rectangle {
                 border-radius: Theme.radius-sm;
                 opacity: hover.has-hover || remove.has-hover ? 1 : 0;
                 background: remove.has-hover ? Theme.accent-soft : transparent;
+                animate background { duration: Theme.dur-hover; }
 
                 Image {
                     width: 14px;
@@ -271,6 +272,7 @@ export component LinkedCard inherits SideCard {
             width: 28px;
             border-radius: Theme.radius-sm;
             background: alarm-touch.has-hover ? Theme.accent-soft : transparent;
+            animate background { duration: Theme.dur-hover; }
 
             Image {
                 width: 16px;

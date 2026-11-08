@@ -35,6 +35,7 @@ component Bump inherits Rectangle {
     border-width: 1px;
     border-color: Theme.line-2;
     background: touch.has-hover ? Theme.accent-soft : transparent;
+    animate background { duration: Theme.dur-hover; }
 
     Image {
         width: 20px;

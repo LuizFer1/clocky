@@ -50,6 +50,7 @@ export component GhostIcon inherits Rectangle {
     height: Theme.size-control;
     border-radius: Theme.radius-lg;
     background: touch.has-hover ? Theme.accent-soft : transparent;
+    animate background { duration: Theme.dur-hover; }
 
     Image {
         width: Theme.size-icon;

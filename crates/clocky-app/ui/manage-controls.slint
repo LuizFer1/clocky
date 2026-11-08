@@ -24,6 +24,7 @@ export component Segmented inherits Rectangle {
             min-width: label.preferred-width + 2 * Theme.space-3-5;
             border-radius: Theme.radius-md;
             background: index == root.selected ? Theme.panel-2 : (touch.has-hover ? Theme.accent-soft : transparent);
+            animate background { duration: Theme.dur-hover; }
             border-width: index == root.selected ? 1px : 0px;
             border-color: Theme.line-2;
 
@@ -56,6 +57,7 @@ export component OutlineIcon inherits Rectangle {
     border-width: root.boxed ? 1px : 0px;
     border-color: Theme.line-2;
     background: root.enabled && touch.has-hover ? Theme.accent-soft : transparent;
+    animate background { duration: Theme.dur-hover; }
     opacity: root.enabled ? 1 : 0.35;
 
     Image {

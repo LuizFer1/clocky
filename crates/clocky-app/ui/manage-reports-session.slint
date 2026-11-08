@@ -80,6 +80,7 @@ component DangerOutline inherits Rectangle {
     border-width: 1px;
     border-color: Theme.danger.with-alpha(0.5);
     background: touch.has-hover ? Theme.danger.with-alpha(0.1) : transparent;
+    animate background { duration: Theme.dur-hover; }
 
     label := Text {
         text: root.text;

@@ -66,17 +66,89 @@ component Content inherits Rectangle {
 
         Header { }
 
-        if ManageState.page == 2 && ManageState.moving-task: MoveCard { }
+        if ManageState.page == 2 && ManageState.moving-task: MoveCard {
 
-        if ManageState.page == 0: AllProjectsPage { }
+            // Fades in when it appears.
 
-        if ManageState.page == 1 || ManageState.page == 3: TaskListPage { }
+            property <bool> shown: false;
 
-        if ManageState.page == 2: TaskPage { }
+            init => { self.shown = true; }
 
-        if ManageState.page == 4: ReportsPage { }
+            opacity: self.shown ? 1 : 0;
 
-        if ManageState.page == 5: SettingsPage { }
+            animate opacity { duration: Theme.dur-page; easing: ease-out; }
+
+        }
+
+        if ManageState.page == 0: AllProjectsPage {
+
+            // Fades in when it appears.
+
+            property <bool> shown: false;
+
+            init => { self.shown = true; }
+
+            opacity: self.shown ? 1 : 0;
+
+            animate opacity { duration: Theme.dur-page; easing: ease-out; }
+
+        }
+
+        if ManageState.page == 1 || ManageState.page == 3: TaskListPage {
+
+            // Fades in when it appears.
+
+            property <bool> shown: false;
+
+            init => { self.shown = true; }
+
+            opacity: self.shown ? 1 : 0;
+
+            animate opacity { duration: Theme.dur-page; easing: ease-out; }
+
+        }
+
+        if ManageState.page == 2: TaskPage {
+
+            // Fades in when it appears.
+
+            property <bool> shown: false;
+
+            init => { self.shown = true; }
+
+            opacity: self.shown ? 1 : 0;
+
+            animate opacity { duration: Theme.dur-page; easing: ease-out; }
+
+        }
+
+        if ManageState.page == 4: ReportsPage {
+
+            // Fades in when it appears.
+
+            property <bool> shown: false;
+
+            init => { self.shown = true; }
+
+            opacity: self.shown ? 1 : 0;
+
+            animate opacity { duration: Theme.dur-page; easing: ease-out; }
+
+        }
+
+        if ManageState.page == 5: SettingsPage {
+
+            // Fades in when it appears.
+
+            property <bool> shown: false;
+
+            init => { self.shown = true; }
+
+            opacity: self.shown ? 1 : 0;
+
+            animate opacity { duration: Theme.dur-page; easing: ease-out; }
+
+        }
 
         Rectangle {
             vertical-stretch: 1;
