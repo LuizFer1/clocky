@@ -19,6 +19,9 @@ pub mod keys {
     pub const DOCK: &str = "dock_placement";
     /// Default alarm sound: a file path, or empty for the built-in sound (read by the alarms).
     pub const ALARM_SOUND: &str = "alarm.default_sound";
+    /// Set once the old `settings.json` import was tried (whatever came of it), so it never runs
+    /// again: a file that becomes readable later must not overwrite newer settings.
+    pub const LEGACY_IMPORTED: &str = "settings_json_imported";
 }
 
 const LIGHT: &str = "light";
@@ -73,8 +76,8 @@ impl Settings {
 }
 
 /// Imports the old `settings.json` at `legacy` (when given) into the table, then reads the
-/// table. The import runs only while the table has no theme: it always writes one, so it
-/// happens once. Screenshot runs pass `None` and never read the user's file.
+/// table. The import is tried once ([`keys::LEGACY_IMPORTED`]) and only while the table has no
+/// theme. Screenshot runs pass `None` and never read the user's file.
 pub fn load(core: &mut AppCore, legacy: Option<&Path>) -> Settings {
     if let Some(path) = legacy {
         import_legacy(core, path);
@@ -83,6 +86,14 @@ pub fn load(core: &mut AppCore, legacy: Option<&Path>) -> Settings {
 }
 
 fn import_legacy(core: &mut AppCore, path: &Path) {
+    match core.setting(keys::LEGACY_IMPORTED) {
+        Ok(None) => {}
+        Ok(Some(_)) => return,
+        Err(e) => return tracing::warn!("cannot check the settings table: {e}"),
+    }
+    if let Err(e) = core.set_setting(keys::LEGACY_IMPORTED, "1") {
+        tracing::warn!("cannot mark the settings import as done: {e}");
+    }
     match core.setting(keys::THEME) {
         Ok(None) => {}
         Ok(Some(_)) => return,
@@ -218,8 +229,34 @@ mod tests {
         let path = dir.path().join("broken.json");
         fs::write(&path, "{ not json").unwrap();
         assert_eq!(load(&mut core, Some(&path)), Settings::default());
-        // Nothing was imported, so a later valid file still can be.
         assert_eq!(core.setting(keys::THEME).unwrap(), None);
+    }
+
+    #[test]
+    fn a_corrupt_old_file_is_tried_once_and_never_overwrites_newer_settings() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        fs::write(&path, "{ not json").unwrap();
+        let mut core = core();
+        assert_eq!(load(&mut core, Some(&path)), Settings::default());
+        assert_eq!(
+            core.setting(keys::LEGACY_IMPORTED).unwrap().as_deref(),
+            Some("1")
+        );
+        // The dock moves; later the old file becomes readable with another position.
+        let newer = DockPlacement {
+            y_fraction: 0.75,
+            ..placement()
+        };
+        save_dock(&mut core, &newer).unwrap();
+        let old = Settings {
+            dark_theme: false,
+            dock: Some(placement()),
+        };
+        fs::write(&path, serde_json::to_string(&old).unwrap()).unwrap();
+        let loaded = load(&mut core, Some(&path));
+        assert_eq!(loaded.dock, Some(newer));
+        assert!(loaded.dark_theme);
     }
 
     #[test]
