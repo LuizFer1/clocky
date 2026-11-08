@@ -9,6 +9,7 @@ use std::time::Duration;
 use slint::ComponentHandle;
 
 use super::TimerPanels;
+use super::actions_overview::TaskTarget;
 use super::demo::{self, DemoTimers};
 use super::state::View;
 use crate::panel::PanelKind;
@@ -27,6 +28,8 @@ enum Scene {
     WizardStep1,
     PomodoroTimer,
     Overview,
+    /// The temporary task chooser over the stopwatch.
+    Chooser,
     Forgotten,
 }
 
@@ -39,7 +42,7 @@ enum Step {
     Shot(&'static str, Scene),
 }
 
-const SCENES: [(&str, Scene); 7] = [
+const SCENES: [(&str, Scene); 8] = [
     ("cronometro-running", Scene::StopwatchRunning),
     ("temporizador-config", Scene::CountdownConfig),
     ("temporizador-running", Scene::CountdownRunning),
@@ -47,6 +50,7 @@ const SCENES: [(&str, Scene); 7] = [
     ("pomodoro-wizard-step1", Scene::WizardStep1),
     ("pomodoro-timer", Scene::PomodoroTimer),
     ("ativos", Scene::Overview),
+    ("vincular-tarefa", Scene::Chooser),
 ];
 
 fn plan() -> Vec<Step> {
@@ -161,6 +165,9 @@ fn forget(run: &Run) {
 fn show(run: &Run, scene: Scene) {
     let panels = &run.ctx.panels;
     let demo = run.demo.get();
+    if let Some(window) = run.ctx.window.upgrade() {
+        window.global::<ui::TimerUi>().invoke_chooser_cancel();
+    }
     match scene {
         Scene::StopwatchRunning => panels.show(PanelKind::Stopwatch),
         Scene::CountdownConfig => panels.set_view(View::CountdownConfig),
@@ -175,6 +182,10 @@ fn show(run: &Run, scene: Scene) {
             None => panels.show(PanelKind::Pomodoro),
         },
         Scene::Overview => panels.show(PanelKind::Overview),
+        Scene::Chooser => {
+            panels.show(PanelKind::Stopwatch);
+            panels.choose_task(TaskTarget::Stopwatch);
+        }
         Scene::Forgotten => panels.render(),
     }
 }

@@ -71,57 +71,61 @@ component Chooser inherits Rectangle {
     // Swallows clicks so nothing under the chooser reacts.
     TouchArea { }
 
-    VerticalLayout {
-        padding: Theme.space-5;
-        padding-top: Theme.space-4;
-        spacing: Theme.space-3;
+    HorizontalLayout {
+        x: Theme.space-5;
+        y: Theme.space-4;
+        width: parent.width - 2 * Theme.space-5;
+        height: 28px;
 
-        HorizontalLayout {
-            Text {
-                horizontal-stretch: 1;
-                vertical-alignment: center;
-                text: "Vincular tarefa";
-                color: Theme.text;
-                font-size: Theme.fs-lg;
-                font-weight: Theme.fw-medium;
-            }
-
-            Text {
-                vertical-alignment: center;
-                text: "Cancelar";
-                color: Theme.accent-text;
-                font-size: Theme.fs-md;
-                font-weight: Theme.fw-medium;
-
-                TouchArea {
-                    mouse-cursor: pointer;
-                    clicked => { TimerUi.chooser-cancel(); }
-                }
-            }
+        Text {
+            horizontal-stretch: 1;
+            vertical-alignment: center;
+            text: "Vincular tarefa";
+            color: Theme.text;
+            font-size: Theme.fs-lg;
+            font-weight: Theme.fw-medium;
         }
 
-        Flickable {
-            vertical-stretch: 1;
-            content-height: rows.preferred-height;
+        Text {
+            vertical-alignment: center;
+            text: "Cancelar";
+            color: Theme.accent-text;
+            font-size: Theme.fs-md;
+            font-weight: Theme.fw-medium;
 
-            rows := VerticalLayout {
-                spacing: 2px;
+            TouchArea {
+                mouse-cursor: pointer;
+                clicked => { TimerUi.chooser-cancel(); }
+            }
+        }
+    }
 
-                ChooserItem {
-                    text: "Sem tarefa";
-                    linked: false;
-                    selected: TimerUi.chooser-none-selected;
-                    picked => { TimerUi.chooser-pick(-1); }
-                }
+    // The list fills the rest of the body and scrolls.
+    Flickable {
+        x: Theme.space-3;
+        y: Theme.space-4 + 28px + Theme.space-3;
+        width: parent.width - 2 * Theme.space-3;
+        height: parent.height - self.y - Theme.space-3;
+        content-height: rows.preferred-height;
 
-                for row in TimerUi.chooser-rows: ChooserItem {
-                    text: row.task;
-                    project: row.project;
-                    tint: row.color;
-                    linked: true;
-                    selected: row.selected;
-                    picked => { TimerUi.chooser-pick(row.id); }
-                }
+        rows := VerticalLayout {
+            alignment: start;
+            spacing: 2px;
+
+            ChooserItem {
+                text: "Sem tarefa";
+                linked: false;
+                selected: TimerUi.chooser-none-selected;
+                picked => { TimerUi.chooser-pick(-1); }
+            }
+
+            for row in TimerUi.chooser-rows: ChooserItem {
+                text: row.task;
+                project: row.project;
+                tint: row.color;
+                linked: true;
+                selected: row.selected;
+                picked => { TimerUi.chooser-pick(row.id); }
             }
         }
     }
