@@ -194,7 +194,20 @@ impl Manage {
         if let Some(task) = &view.task {
             self.apply_task(task, view);
         }
-        match self.section.get() {
+        let section = self.section.get();
+        if section != Section::Projects {
+            // No project row stays selected over Relatórios and Configurações.
+            let items: Vec<ui::ProjectItem> = view
+                .projects
+                .iter()
+                .map(|p| ui::ProjectItem {
+                    selected: false,
+                    ..p.clone()
+                })
+                .collect();
+            state.set_projects(model(items));
+        }
+        match section {
             Section::Projects => {}
             Section::Reports => self.apply_reports(),
             Section::Settings => self.apply_settings(),
