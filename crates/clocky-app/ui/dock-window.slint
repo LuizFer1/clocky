@@ -1,0 +1,45 @@
+// Floating dock window: frameless, transparent, always on top. The Rust side places it at the
+// monitor edge and resizes it.
+//
+// Plan B for click-through (M0 report): while `compact`, the window shrinks to the visible slice
+// of the collapsed hub (30×60) and the RadialMenu is shifted so the hub stays at the same screen
+// spot. Hovering the hub opens the menu; the Rust side then grows the window back to 320×360.
+
+import { Theme } from "theme.slint";
+import { RadialMenu } from "radial-menu.slint";
+
+export component DockWindow inherits Window {
+    in-out property <bool> open <=> menu.open;
+    in property <int> active-count <=> menu.active-count;
+    in property <bool> left-side <=> menu.left-side;
+    in property <bool> compact: false;
+    out property <bool> pointer-inside: menu.pointer-inside;
+    callback option-selected(string);
+    callback open-changed(bool);
+    callback hub-drag(length, length);
+    callback hub-drag-end();
+
+    // Collapsed size: half the hub (28) + 2 for the badge, hub height (56) + 2 + 2.
+    out property <length> compact-w: Theme.size-hub / 2 + 2px;
+    out property <length> compact-h: Theme.size-hub + 4px;
+
+    title: "Clocky";
+    no-frame: true;
+    always-on-top: true;
+    background: transparent;
+    default-font-family: Theme.font-sans;
+    width: root.compact ? root.compact-w : 320px;
+    height: root.compact ? root.compact-h : 360px;
+
+    changed open => {
+        root.open-changed(self.open);
+    }
+
+    menu := RadialMenu {
+        x: root.compact ? (root.left-side ? 0px : root.compact-w - 320px) : 0px;
+        y: root.compact ? root.compact-h / 2 - 180px : 0px;
+        option-selected(id) => { root.option-selected(id); }
+        hub-drag(dx, dy) => { root.hub-drag(dx, dy); }
+        hub-drag-end() => { root.hub-drag-end(); }
+    }
+}

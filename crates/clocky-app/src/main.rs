@@ -11,10 +11,14 @@ mod ui {
 }
 
 mod app;
+mod dock;
+mod geometry;
 mod log;
 mod manage;
+mod panel;
 mod paths;
 mod screenshot;
+mod settings;
 
 fn main() {
     let log_file = log::init(&paths::log_dir()).ok();
@@ -33,9 +37,10 @@ fn main() {
 
 fn run() -> anyhow::Result<()> {
     select_backend()?;
-    let app = app::App::new()?;
-    app.start();
-    if let Some(dir) = screenshot::dir_from_env() {
+    let screenshot_dir = screenshot::dir_from_env();
+    let app = app::App::new(screenshot_dir.is_none())?;
+    app.start()?;
+    if let Some(dir) = screenshot_dir {
         app.schedule_screenshots(dir);
     }
     slint::run_event_loop()?;

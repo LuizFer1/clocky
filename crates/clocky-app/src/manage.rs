@@ -1,6 +1,7 @@
 //! Manage window (projects and tasks). Closing it only hides it: the app stays in the tray.
 
 use slint::ComponentHandle;
+use slint::winit_030::WinitWindowAccessor;
 
 use crate::ui;
 
@@ -24,6 +25,19 @@ impl Manage {
             return false;
         }
         true
+    }
+
+    /// Shows the window and brings it to the front. Only for user actions (tray, second launch,
+    /// radial menu): on Windows `focus_window` simulates an Alt key press to get past the
+    /// foreground lock.
+    pub fn bring_to_front(&self) {
+        if !self.show() {
+            return;
+        }
+        self.ui.window().with_winit_window(|w| {
+            w.set_minimized(false);
+            w.focus_window();
+        });
     }
 
     pub fn set_dark(&self, dark: bool) {

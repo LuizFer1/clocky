@@ -723,6 +723,8 @@ dependencies = [
  "clocky-core",
  "directories",
  "image",
+ "serde",
+ "serde_json",
  "slint",
  "slint-build",
  "tempfile",
