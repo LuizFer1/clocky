@@ -307,10 +307,20 @@ impl TimerPanels {
             let handle = self.core.borrow();
             handle.tracker().forgotten(handle.now())
         };
-        let ids = found
-            .inspect_err(|e| tracing::warn!("cannot check forgotten stopwatches: {e}"))
-            .ok()?;
         let mut state = self.state.borrow_mut();
+        let ids = match found {
+            Ok(ids) => {
+                state.forgotten_failing = false;
+                ids
+            }
+            Err(e) => {
+                // Retried every second: log once per failure streak.
+                if !std::mem::replace(&mut state.forgotten_failing, true) {
+                    tracing::warn!("cannot check forgotten stopwatches (retrying): {e}");
+                }
+                return None;
+            }
+        };
         if state.forgotten.is_some_and(|id| !ids.contains(&id)) {
             state.forgotten = None;
         }

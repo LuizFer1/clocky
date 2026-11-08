@@ -65,6 +65,8 @@ pub struct State {
     pub forgotten_asked: BTreeSet<TimerId>,
     /// A tick failed and the failure was logged; cleared by the next good tick.
     pub tick_failing: bool,
+    /// The forgotten-stopwatch check is failing (logged once per streak).
+    pub forgotten_failing: bool,
 }
 
 impl State {
@@ -86,6 +88,7 @@ impl State {
             forgotten: None,
             forgotten_asked: BTreeSet::new(),
             tick_failing: false,
+            forgotten_failing: false,
         }
     }
 
