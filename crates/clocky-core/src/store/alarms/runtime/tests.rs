@@ -66,7 +66,7 @@ fn snooze_survives_reopening_the_file() {
     let id = daily(&mut store, 10, 0);
     store.mark_alarm_fired(id, nov(2, 10, 0)).unwrap();
     let until = store.snooze_alarm(id, nov(2, 10, 1)).unwrap();
-    assert_eq!(until, nov(2, 10, 6));
+    assert_eq!(until, Some(nov(2, 10, 6)));
     drop(store);
 
     let mut store = Store::open(db.path()).unwrap();
@@ -97,7 +97,7 @@ fn snoozing_a_fired_once_alarm_enables_it_until_the_snooze_rings() {
     store.mark_alarm_fired(id, nov(2, 10, 0)).unwrap();
     assert_eq!(
         store.snooze_alarm(id, nov(2, 10, 0)).unwrap(),
-        nov(2, 10, 9)
+        Some(nov(2, 10, 9))
     );
     assert!(store.alarm(id).unwrap().enabled);
     store.mark_alarm_fired(id, nov(2, 10, 9)).unwrap();
@@ -153,4 +153,43 @@ fn a_corrupted_alarm_fails_the_runtime_operations() {
     assert!(store.next_alarm(nov(2, 10, 0), &brt()).is_err());
     assert!(store.mark_alarm_fired(id, nov(2, 10, 0)).is_err());
     assert!(store.snooze_alarm(id, nov(2, 10, 0)).is_err());
+}
+
+#[test]
+fn snoozing_a_disabled_repeating_alarm_does_nothing() {
+    let mut store = Store::open_in_memory().unwrap();
+    let id = daily(&mut store, 10, 0);
+    store.mark_alarm_fired(id, nov(2, 10, 0)).unwrap();
+    store.set_alarm_enabled(id, false, nov(2, 10, 1)).unwrap();
+    assert_eq!(store.snooze_alarm(id, nov(2, 10, 1)).unwrap(), None);
+    let alarm = store.alarm(id).unwrap();
+    assert!(!alarm.enabled);
+    assert_eq!(alarm.snoozed_until, None);
+
+    store.set_alarm_enabled(id, true, nov(3, 9, 0)).unwrap();
+    assert_eq!(store.pending_alarms(nov(3, 9, 0), &brt()).unwrap(), vec![]);
+    let pending = store.pending_alarms(nov(3, 10, 0), &brt()).unwrap();
+    assert_eq!(pending, vec![(id, nov(3, 10, 0), Firing::OnTime)]);
+}
+
+#[test]
+fn reenabling_clears_a_leftover_snooze() {
+    let mut store = Store::open_in_memory().unwrap();
+    let id = daily(&mut store, 10, 0);
+    store.mark_alarm_fired(id, nov(2, 10, 0)).unwrap();
+    store
+        .conn
+        .execute(
+            "UPDATE alarms SET enabled = 0, snoozed_until_ms = ?1",
+            [nov(2, 10, 6).as_millis()],
+        )
+        .unwrap();
+
+    store.set_alarm_enabled(id, true, nov(3, 9, 0)).unwrap();
+    assert_eq!(store.alarm(id).unwrap().snoozed_until, None);
+    assert_eq!(store.pending_alarms(nov(3, 9, 0), &brt()).unwrap(), vec![]);
+    assert_eq!(
+        store.next_alarm(nov(3, 9, 0), &brt()).unwrap(),
+        Some((id, nov(3, 10, 0)))
+    );
 }

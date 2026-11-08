@@ -60,41 +60,49 @@ impl Store {
     /// [`StoreError::NotFound`] if the alarm does not exist; [`StoreError::Corrupt`] or
     /// [`StoreError::OutOfRange`] if a stored value is invalid.
     pub fn mark_alarm_fired(&mut self, id: AlarmId, at: Timestamp) -> Result<(), StoreError> {
-        self.change_schedule(id, |alarm| Ok(alarm.schedule().after_fired(at)))?;
+        self.change_schedule(id, |alarm| Ok(Some(alarm.schedule().after_fired(at))))?;
         Ok(())
     }
 
     /// Snoozes the ringing alarm at `now` for its `snooze_minutes`, and returns when it rings
-    /// again. A fired once-alarm is enabled again until the snooze rings.
+    /// again.
+    ///
+    /// A fired once-alarm is enabled again until the snooze rings. A repeating alarm the user
+    /// disabled while it rang is left alone and `None` is returned: the overlay just closes,
+    /// and no snooze is left behind to ring when the alarm is enabled again.
     ///
     /// # Errors
     /// [`StoreError::NotFound`] if the alarm does not exist; [`StoreError::Corrupt`] or
     /// [`StoreError::OutOfRange`] if a stored value is invalid.
-    pub fn snooze_alarm(&mut self, id: AlarmId, now: Timestamp) -> Result<Timestamp, StoreError> {
+    pub fn snooze_alarm(
+        &mut self,
+        id: AlarmId,
+        now: Timestamp,
+    ) -> Result<Option<Timestamp>, StoreError> {
         let schedule = self.change_schedule(id, |alarm| {
-            alarm
-                .schedule()
-                .snooze(now, alarm.snooze_minutes)
-                .map_err(|error| StoreError::Corrupt {
-                    what: "alarm snooze minutes",
-                    value: error.to_string(),
-                })
+            if !alarm.enabled && !alarm.repeat.is_once() {
+                return Ok(None);
+            }
+            let snoozed = alarm.schedule().snooze(now, alarm.snooze_minutes);
+            snoozed.map(Some).map_err(|error| StoreError::Corrupt {
+                what: "alarm snooze minutes",
+                value: error.to_string(),
+            })
         })?;
-        schedule.snoozed_until.ok_or(StoreError::Corrupt {
-            what: "alarm snooze",
-            value: "not set after snoozing".to_owned(),
-        })
+        Ok(schedule.and_then(|schedule| schedule.snoozed_until))
     }
 
     /// Reads an alarm, applies `change` to its schedule and writes the result, in one
-    /// transaction.
+    /// transaction. Nothing is written if `change` returns `None`.
     fn change_schedule(
         &mut self,
         id: AlarmId,
-        change: impl FnOnce(&Alarm) -> Result<AlarmSchedule, StoreError>,
-    ) -> Result<AlarmSchedule, StoreError> {
+        change: impl FnOnce(&Alarm) -> Result<Option<AlarmSchedule>, StoreError>,
+    ) -> Result<Option<AlarmSchedule>, StoreError> {
         let tx = self.conn.transaction()?;
-        let schedule = change(&alarm_in(&tx, id)?)?;
+        let Some(schedule) = change(&alarm_in(&tx, id)?)? else {
+            return Ok(None);
+        };
         tx.execute(
             "UPDATE alarms SET enabled = ?2, snoozed_until_ms = ?3, last_fired_at_ms = ?4
              WHERE id = ?1",
@@ -106,7 +114,7 @@ impl Store {
             ],
         )?;
         tx.commit()?;
-        Ok(schedule)
+        Ok(Some(schedule))
     }
 }
 

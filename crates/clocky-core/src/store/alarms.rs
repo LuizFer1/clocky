@@ -249,9 +249,9 @@ impl Store {
 
     /// Turns an alarm on or off.
     ///
-    /// Turning on a disabled alarm re-arms it (`created_at` becomes `now`); turning on an
-    /// enabled one changes nothing, so a pending occurrence is not lost. Turning it off clears
-    /// the snooze.
+    /// Turning on a disabled alarm re-arms it: `created_at` becomes `now` and any snooze left
+    /// behind is cleared. Turning on an enabled one changes nothing, so a pending occurrence is
+    /// not lost. Turning it off clears the snooze.
     ///
     /// # Errors
     /// [`StoreError::NotFound`] if it does not exist.
@@ -264,6 +264,7 @@ impl Store {
         let changed = if enabled {
             self.conn.execute(
                 "UPDATE alarms SET created_at_ms = CASE WHEN enabled THEN created_at_ms ELSE ?2 END,
+                     snoozed_until_ms = CASE WHEN enabled THEN snoozed_until_ms ELSE NULL END,
                      enabled = 1
                  WHERE id = ?1",
                 params![id.0, now.as_millis()],
