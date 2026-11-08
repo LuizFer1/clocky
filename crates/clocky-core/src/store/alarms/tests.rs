@@ -106,6 +106,37 @@ fn a_version_1_file_migrates_through_active_timers_and_alarms() {
 }
 
 #[test]
+fn a_version_2_file_migrates_to_version_3_and_keeps_its_active_timer() {
+    let db = TempDb::new("alarms-migrate-v2");
+    let mut old = Store::open_with(db.path(), &MIGRATIONS[..2]).unwrap();
+    assert_eq!(old.schema_version().unwrap(), 2);
+    let task = old.create_task(None, "report", at(1)).unwrap();
+    old.conn
+        .execute_batch(&format!(
+            "INSERT INTO active_timers (id, kind, task_id) VALUES (7, 'stopwatch', {});
+             INSERT INTO active_timer_segments (timer_id, start_ms) VALUES (7, 1000);",
+            task.0
+        ))
+        .unwrap();
+    assert!(!has_table(&old, "alarms"));
+    drop(old);
+
+    let mut store = Store::open(db.path()).unwrap();
+    assert_eq!(store.schema_version().unwrap(), 3);
+    let links = store.task_links(task).unwrap();
+    assert_eq!(links.active_timers.len(), 1);
+    assert_eq!(links.active_timers[0].timer, TimerId(7));
+    let alarm = store.create_alarm(&wake(Some(task)), at(2)).unwrap();
+    assert_eq!(store.task_links(task).unwrap().alarms[0].id, alarm);
+
+    let backup = Connection::open(backup_path(db.path())).unwrap();
+    let version: i64 = backup
+        .pragma_query_value(None, "user_version", |row| row.get(0))
+        .unwrap();
+    assert_eq!(version, 2);
+}
+
+#[test]
 fn alarms_roundtrip_and_sort_by_time_then_id() {
     let mut store = Store::open_in_memory().unwrap();
     let task = store.create_task(None, "standup", at(0)).unwrap();
