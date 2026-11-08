@@ -1,0 +1,166 @@
+// Generic floating panel (handoff SPEC 2): 380 wide, header (back · title · option icon), body
+// and an optional footer. M5 shows a placeholder body per option; M6 fills the real contents.
+// Esc and a click outside (window focus lost, handled in Rust) close it.
+import { Theme } from "theme.slint";
+import { FabIcon, GhostIcon, PrimaryButton } from "components.slint";
+
+export component PanelWindow inherits Window {
+    in property <string> panel-title: "Clocky";
+    in property <string> panel-subtitle: "";
+    in property <image> panel-icon: @image-url("../icons/clock.svg");
+    in property <string> empty-title: "";
+    in property <string> empty-text: "";
+    // Empty = no button in the body.
+    in property <string> action-label: "";
+    in property <bool> has-footer: true;
+    callback back();
+    callback dismiss();
+    callback action();
+
+    title: "Clocky · " + root.panel-title;
+    no-frame: true;
+    always-on-top: true;
+    background: transparent;
+    default-font-family: Theme.font-sans;
+    width: Theme.size-panel-width;
+    height: 420px;
+    forward-focus: keys;
+
+    keys := FocusScope {
+        key-pressed(event) => {
+            if (event.text == Key.Escape) {
+                root.dismiss();
+                return accept;
+            }
+            reject
+        }
+
+        Rectangle {
+            background: Theme.panel;
+            border-radius: Theme.radius-panel;
+            border-width: 1px;
+            border-color: Theme.line;
+            clip: true;
+
+            VerticalLayout {
+                // Header 64: back · title (+ subtitle) · option icon (continuity of the pill).
+                HorizontalLayout {
+                    height: 64px;
+                    padding-left: Theme.space-2-5;
+                    padding-right: Theme.space-3;
+                    spacing: Theme.space-2;
+
+                    VerticalLayout {
+                        alignment: center;
+
+                        GhostIcon {
+                            icon: @image-url("../icons/chevron-left.svg");
+                            clicked => { root.back(); }
+                        }
+                    }
+
+                    VerticalLayout {
+                        horizontal-stretch: 1;
+                        alignment: center;
+
+                        Text {
+                            text: root.panel-title;
+                            color: Theme.text;
+                            font-size: Theme.fs-lg;
+                            font-weight: Theme.fw-medium;
+                        }
+
+                        if root.panel-subtitle != "": Text {
+                            text: root.panel-subtitle;
+                            color: Theme.muted;
+                            font-size: Theme.fs-sm;
+                        }
+                    }
+
+                    FabIcon {
+                        source: root.panel-icon;
+                    }
+                }
+
+                Rectangle {
+                    height: 1px;
+                    background: Theme.line;
+                }
+
+                // Body (placeholder until M6).
+                VerticalLayout {
+                    vertical-stretch: 1;
+                    padding: Theme.space-5;
+                    spacing: Theme.space-3;
+                    alignment: center;
+
+                    Text {
+                        horizontal-alignment: center;
+                        text: root.empty-title;
+                        color: Theme.text;
+                        font-size: Theme.fs-base;
+                        font-weight: Theme.fw-medium;
+                    }
+
+                    Text {
+                        horizontal-alignment: center;
+                        text: root.empty-text;
+                        color: Theme.muted;
+                        font-size: Theme.fs-sm;
+                        wrap: word-wrap;
+                    }
+
+                    if root.action-label != "": HorizontalLayout {
+                        alignment: center;
+
+                        PrimaryButton {
+                            text: root.action-label;
+                            has-icon: false;
+                            clicked => { root.action(); }
+                        }
+                    }
+                }
+
+                // Footer: top border, padding 14/20/20.
+                if root.has-footer: Rectangle {
+                    height: 1px;
+                    background: Theme.line;
+                }
+
+                if root.has-footer: HorizontalLayout {
+                    padding-top: Theme.space-3-5;
+                    padding-left: Theme.space-5;
+                    padding-right: Theme.space-5;
+                    padding-bottom: Theme.space-5;
+                    alignment: end;
+
+                    Rectangle {
+                        height: Theme.size-control;
+                        width: close-label.preferred-width + 2 * Theme.space-5;
+                        border-radius: Theme.radius-lg;
+                        border-width: 1px;
+                        border-color: Theme.line-2;
+                        background: close-touch.has-hover ? Theme.accent-soft : transparent;
+
+                        close-label := Text {
+                            text: "Fechar";
+                            color: Theme.text;
+                            font-size: Theme.fs-base;
+                            font-weight: Theme.fw-medium;
+                        }
+
+                        close-touch := TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => { root.dismiss(); }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Gives the keyboard focus to the panel so Esc works right after it opens.
+    public function focus-keys() {
+        keys.focus();
+    }
+}

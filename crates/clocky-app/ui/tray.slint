@@ -1,0 +1,23 @@
+// Tray icon: Slint's built-in SystemTrayIcon (Shell_NotifyIconW on Windows, AppKit on macOS,
+// StatusNotifierItem over D-Bus on Linux, without GTK). Menu events arrive on the UI thread.
+export component ClockyTray inherits SystemTrayIcon {
+    callback open-manage();
+    callback quit();
+
+    icon: @image-url("../icons/tray.svg");
+    tooltip: "Clocky";
+
+    Menu {
+        MenuItem {
+            title: "Abrir Gerenciar";
+            activated => { root.open-manage(); }
+        }
+
+        MenuSeparator { }
+
+        MenuItem {
+            title: "Sair";
+            activated => { root.quit(); }
+        }
+    }
+}

@@ -61,6 +61,11 @@ jobs:
           ref: ${{ env.SHA }}
       - run: rustup show
       - uses: Swatinem/rust-cache@v2
+      - name: System packages (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libasound2-dev libfontconfig1-dev
       - name: Set version
         shell: bash
         run: bash scripts/set-version.sh "${{ needs.version.outputs.next }}"
@@ -69,13 +74,17 @@ jobs:
         shell: bash
         run: |
           name="clocky-${{ needs.version.outputs.next }}-${{ matrix.target }}"
-          mkdir -p dist
+          # The embedded fonts (OFL-1.1) and icons (Feather MIT notice) ship their notices.
+          mkdir -p dist stage/licenses
+          cp LICENSE README.md stage/
+          cp crates/clocky-app/fonts/OFL.txt stage/licenses/fonts-OFL.txt
+          cp crates/clocky-app/icons/LICENSE.md stage/licenses/icons-LICENSE.md
           if [ "$RUNNER_OS" = "Windows" ]; then
-            7z a "dist/${name}.zip" ./target/release/clocky.exe ./LICENSE ./README.md
+            cp target/release/clocky.exe stage/
+            (cd stage && 7z a "../dist/${name}.zip" .)
           else
-            cp target/release/clocky LICENSE README.md dist/
-            tar -czf "dist/${name}.tar.gz" -C dist clocky LICENSE README.md
-            rm dist/clocky dist/LICENSE dist/README.md
+            cp target/release/clocky stage/
+            tar -czf "dist/${name}.tar.gz" -C stage .
           fi
       - uses: actions/upload-artifact@v4
         with:

@@ -1,0 +1,206 @@
+// Floating icon (hub) + radial menu, from the handoff's radial-menu.slint (SPEC 1).
+// Additions for the app: mirroring for the left edge (`left-side`), dragging by the hub and the
+// `pointer-inside` flag the Rust side reads to close a ring the cursor never entered.
+
+import { Theme } from "theme.slint";
+
+export struct RadialOption {
+    id: string,
+    label: string,
+    icon: image,
+    // Direction on the ring (cos, -sin of the angle): the item center is hub + radius * (ax, ay).
+    ax: float,
+    ay: float,
+}
+
+// Ring option. On hover it becomes a pill that grows away from the screen edge and shows the
+// label before the icon (after it when mirrored).
+export component RadialItem inherits Rectangle {
+    in property <string> label;
+    in property <image> icon;
+    // Left edge: the pill keeps its left side fixed and grows to the right.
+    in property <bool> mirrored: false;
+    out property <bool> hovered: touch.has-hover;
+    callback clicked();
+
+    height: Theme.size-radial-item;
+    width: touch.has-hover ? txt.preferred-width + Theme.size-radial-item + 22px : Theme.size-radial-item;
+    border-radius: self.height / 2;
+    background: Theme.fab;
+    border-width: 1px;
+    border-color: Theme.fab-border;
+    clip: true;
+    animate width { duration: Theme.dur-pill-expand; easing: ease; }
+
+    txt := Text {
+        x: root.mirrored ? Theme.size-radial-item + 2px : 20px;
+        y: (parent.height - self.height) / 2;
+        text: root.label;
+        color: Theme.fab-text;
+        font-family: Theme.font-sans;
+        font-size: Theme.fs-md;
+        font-weight: Theme.fw-medium;
+        opacity: touch.has-hover ? 1.0 : 0.0;
+        animate opacity { duration: Theme.dur-fade; }
+    }
+
+    Image {
+        x: (root.mirrored ? 0px : parent.width - Theme.size-radial-item) + (Theme.size-radial-item - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        width: Theme.size-icon-fab;
+        height: Theme.size-icon-fab;
+        source: root.icon;
+        colorize: Theme.fab-text;
+    }
+
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+// 320×360 area stuck to a screen edge.
+// Closed: only half of the hub shows (hub center = edge). Open: hub center 105px from the edge.
+export component RadialMenu inherits Rectangle {
+    in-out property <bool> open: false;
+    in property <int> active-count: 0;
+    in property <bool> left-side: false;
+    out property <bool> pointer-inside: area.has-hover;
+    in property <[RadialOption]> options: [
+        { id: "alarme",       label: "Alarme",       icon: @image-url("../icons/alarm.svg"),     ax: 0.0,    ay: -1.0 },
+        { id: "temporizador", label: "Temporizador", icon: @image-url("../icons/hourglass.svg"), ax: 0.866,  ay: -0.5 },
+        { id: "cronometro",   label: "Cronômetro",   icon: @image-url("../icons/stopwatch.svg"), ax: 0.866,  ay: 0.5 },
+        { id: "pomodoro",     label: "Pomodoro",     icon: @image-url("../icons/pomodoro.svg"),  ax: 0.0,    ay: 1.0 },
+        { id: "visualizar",   label: "Visualizar",   icon: @image-url("../icons/eye.svg"),       ax: -0.866, ay: 0.5 },
+        { id: "gerenciar",    label: "Gerenciar",    icon: @image-url("../icons/manage.svg"),    ax: -0.866, ay: -0.5 },
+    ];
+    callback option-selected(string);
+    // Cursor offset since the press, in logical px.
+    callback hub-drag(length, length);
+    callback hub-drag-end();
+
+    width: 320px;
+    height: 360px;
+    background: transparent;
+
+    property <string> hovered-id: "";
+    // 0 = collapsed, 1 = open. One animation drives the hub and the items.
+    property <float> t: root.open ? 1.0 : 0.0;
+    animate t { duration: Theme.dur-radial-open; easing: cubic-bezier(0.2, 0.8, 0.2, 1); }
+
+    property <length> cy: root.height / 2;
+    property <length> hub-closed-x: root.left-side ? 0px : root.width;
+    property <length> hub-open-x: root.left-side ? Theme.size-hub-edge-offset-open : root.width - Theme.size-hub-edge-offset-open;
+    property <length> hub-cx: root.hub-closed-x + (root.hub-open-x - root.hub-closed-x) * root.t;
+
+    area := TouchArea {
+        // Leaving the whole area closes the menu.
+        changed has-hover => {
+            if (!self.has-hover) {
+                root.open = false;
+                root.hovered-id = "";
+            }
+        }
+
+        for opt in root.options: RadialItem {
+            property <length> ccx: root.hub-cx + Theme.size-radial-radius * (root.left-side ? -opt.ax : opt.ax) * root.t;
+            property <length> ccy: root.cy + Theme.size-radial-radius * opt.ay * root.t;
+            label: opt.label;
+            icon: opt.icon;
+            mirrored: root.left-side;
+            // The side next to the screen edge stays fixed, so the pill grows away from it.
+            x: root.left-side ? self.ccx - Theme.size-radial-item / 2 : self.ccx + Theme.size-radial-item / 2 - self.width;
+            y: self.ccy - Theme.size-radial-item / 2;
+            opacity: root.t * ((root.hovered-id != "" && root.hovered-id != opt.id) ? 0.55 : 1.0);
+            visible: root.t > 0.01;
+            changed hovered => {
+                if (self.hovered) {
+                    root.hovered-id = opt.id;
+                } else if (root.hovered-id == opt.id) {
+                    root.hovered-id = "";
+                }
+            }
+            clicked => { root.option-selected(opt.id); }
+        }
+
+        hub := Rectangle {
+            x: root.hub-cx - Theme.size-hub / 2;
+            y: root.cy - Theme.size-hub / 2;
+            width: Theme.size-hub;
+            height: Theme.size-hub;
+            border-radius: self.width / 2;
+            background: root.open ? Theme.panel-2 : Theme.fab;
+            border-width: 1px;
+            border-color: Theme.fab-border;
+            animate background { duration: Theme.dur-fade; }
+
+            Image {
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                width: 28px;
+                height: 28px;
+                source: @image-url("../icons/clock.svg");
+                colorize: Theme.fab-text;
+            }
+
+            // Active items badge (collapsed only), on the corner away from the edge.
+            if root.active-count > 0 && !root.open: Rectangle {
+                x: root.left-side ? parent.width - self.width + 2px : -2px;
+                y: -2px;
+                width: max(20px, badge.preferred-width + 10px);
+                height: 20px;
+                border-radius: 10px;
+                background: Theme.pause;
+                border-width: 2px;
+                border-color: Theme.bg;
+
+                badge := Text {
+                    text: root.active-count;
+                    color: #0a0a0a;
+                    font-size: Theme.fs-xs;
+                    font-weight: Theme.fw-semibold;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+            }
+
+            TouchArea {
+                // Drag = pressed + moved more than 4px, so hover and click keep working.
+                property <bool> dragging: false;
+                property <bool> suppress-click: false;
+                mouse-cursor: self.dragging ? MouseCursor.grabbing : MouseCursor.pointer;
+                changed has-hover => {
+                    if (self.has-hover) {
+                        root.open = true;
+                    }
+                }
+                pointer-event(ev) => {
+                    if (ev.kind == PointerEventKind.down) {
+                        self.suppress-click = false;
+                    } else if (ev.kind == PointerEventKind.up && self.dragging) {
+                        self.dragging = false;
+                        self.suppress-click = true;
+                        root.hub-drag-end();
+                    }
+                }
+                moved => {
+                    if (self.pressed) {
+                        if (!self.dragging && (abs(self.mouse-x - self.pressed-x) > 4px || abs(self.mouse-y - self.pressed-y) > 4px)) {
+                            self.dragging = true;
+                        }
+                        if (self.dragging) {
+                            root.hub-drag(self.mouse-x - self.pressed-x, self.mouse-y - self.pressed-y);
+                        }
+                    }
+                }
+                clicked => {
+                    if (self.suppress-click) {
+                        self.suppress-click = false;
+                    } else {
+                        root.open = !root.open;
+                    }
+                }
+            }
+        }
+    }
+}
