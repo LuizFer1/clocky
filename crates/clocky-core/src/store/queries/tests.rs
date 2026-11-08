@@ -133,3 +133,62 @@ fn corrupted_tracked_time_is_an_error() {
     ));
     assert!(store.task_summaries(None, true).is_err());
 }
+
+fn ids(tasks: &[Task]) -> Vec<TaskId> {
+    tasks.iter().map(|task| task.id).collect()
+}
+
+#[test]
+fn recent_tasks_follow_the_last_session() {
+    let mut store = Store::open_in_memory().unwrap();
+    let a = store.create_task(None, "a", at(0)).unwrap();
+    let b = store.create_task(None, "b", at(0)).unwrap();
+    let c = store.create_task(None, "c", at(0)).unwrap();
+    store.create_task(None, "never tracked", at(0)).unwrap();
+    record(&mut store, a, 0, 10);
+    record(&mut store, b, 20, 30);
+    record(&mut store, a, 40, 50);
+    record(&mut store, c, 60, 70);
+    assert_eq!(ids(&store.recent_tasks(10).unwrap()), vec![c, a, b]);
+    assert_eq!(ids(&store.recent_tasks(2).unwrap()), vec![c, a]);
+}
+
+#[test]
+fn recent_tasks_skip_archived_tasks_and_projects() {
+    let mut store = Store::open_in_memory().unwrap();
+    let hidden = store.create_project("hidden", "#000000", at(0)).unwrap();
+    let in_hidden = store.create_task(Some(hidden), "in hidden", at(0)).unwrap();
+    let archived = store.create_task(None, "archived", at(0)).unwrap();
+    let visible = store.create_task(None, "visible", at(0)).unwrap();
+    for task in [in_hidden, archived, visible] {
+        record(&mut store, task, 0, 10);
+    }
+    store.archive_project(hidden, at(20)).unwrap();
+    store.archive_task(archived, at(20)).unwrap();
+    assert_eq!(ids(&store.recent_tasks(10).unwrap()), vec![visible]);
+}
+
+#[test]
+fn search_matches_task_or_project_name_ignoring_case() {
+    let mut store = Store::open_in_memory().unwrap();
+    let connect = store.create_project("Connect", "#000000", at(0)).unwrap();
+    let work = store.create_task(Some(connect), "work", at(0)).unwrap();
+    let report = store.create_task(None, "Weekly report", at(0)).unwrap();
+    store.create_task(None, "groceries", at(0)).unwrap();
+    assert_eq!(ids(&store.search_tasks("REPORT").unwrap()), vec![report]);
+    assert_eq!(ids(&store.search_tasks("connect").unwrap()), vec![work]);
+    assert_eq!(ids(&store.search_tasks("w").unwrap()), vec![report, work]);
+    assert_eq!(store.search_tasks("").unwrap().len(), 3);
+}
+
+#[test]
+fn search_skips_archived_tasks_and_projects() {
+    let mut store = Store::open_in_memory().unwrap();
+    let hidden = store.create_project("hidden", "#000000", at(0)).unwrap();
+    store.create_task(Some(hidden), "task one", at(0)).unwrap();
+    let archived = store.create_task(None, "task two", at(0)).unwrap();
+    let visible = store.create_task(None, "task three", at(0)).unwrap();
+    store.archive_project(hidden, at(1)).unwrap();
+    store.archive_task(archived, at(1)).unwrap();
+    assert_eq!(ids(&store.search_tasks("task").unwrap()), vec![visible]);
+}

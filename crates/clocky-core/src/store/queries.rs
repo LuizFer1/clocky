@@ -130,5 +130,43 @@ impl Store {
     }
 }
 
+impl Store {
+    /// The latest `limit` tasks with sessions, by their last session ("Recent" in the picker).
+    ///
+    /// # Errors
+    /// [`StoreError::Sqlite`] if SQLite fails.
+    pub fn recent_tasks(&self, limit: u32) -> Result<Vec<Task>, StoreError> {
+        let sql = format!(
+            "SELECT {TASK_COLUMNS} FROM tasks t
+             JOIN sessions s ON s.task_id = t.id
+             LEFT JOIN projects p ON p.id = t.project_id
+             WHERE t.archived_at_ms IS NULL AND p.archived_at_ms IS NULL
+             GROUP BY t.id
+             ORDER BY MAX(s.ended_at_ms) DESC, t.id
+             LIMIT ?1"
+        );
+        collect(&self.conn, &sql, [limit], task_from_row)
+    }
+
+    /// Tasks whose name or project name contains `text` (task picker), by name.
+    ///
+    /// Case is ignored for ASCII letters only (SQLite `lower`), so accented letters must match
+    /// exactly.
+    ///
+    /// # Errors
+    /// [`StoreError::Sqlite`] if SQLite fails.
+    pub fn search_tasks(&self, text: &str) -> Result<Vec<Task>, StoreError> {
+        let sql = format!(
+            "SELECT {TASK_COLUMNS} FROM tasks t
+             LEFT JOIN projects p ON p.id = t.project_id
+             WHERE t.archived_at_ms IS NULL AND p.archived_at_ms IS NULL
+                 AND (instr(lower(t.name), lower(?1)) > 0
+                      OR instr(lower(COALESCE(p.name, '')), lower(?1)) > 0)
+             ORDER BY t.name, t.id"
+        );
+        collect(&self.conn, &sql, [text], task_from_row)
+    }
+}
+
 #[cfg(test)]
 mod tests;
