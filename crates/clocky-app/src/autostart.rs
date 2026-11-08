@@ -14,9 +14,12 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
+// Each OS uses only its own entry (the tests use all of them), hence the `dead_code` gates.
 /// Name of the Run value and of the files.
+#[cfg_attr(not(any(windows, target_os = "linux")), allow(dead_code))]
 const NAME: &str = "Clocky";
 /// Label of the macOS `LaunchAgent` (also its file name).
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 const LAUNCH_AGENT_LABEL: &str = "app.clocky";
 
 /// Turns the start with the system on and off.
@@ -89,15 +92,15 @@ impl Autostart for Fake {
 }
 
 /// An entry that is one file (Linux `.desktop`, macOS plist) with content made from the exe.
-#[cfg_attr(windows, allow(dead_code))]
+#[cfg_attr(not(any(target_os = "linux", target_os = "macos")), allow(dead_code))]
 pub struct FileEntry {
     path: PathBuf,
     content: fn(&Path) -> String,
 }
 
-#[cfg_attr(windows, allow(dead_code))]
 impl FileEntry {
     /// `<dir>/clocky.desktop` (XDG autostart).
+    #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
     pub fn desktop(dir: &Path) -> Self {
         Self {
             path: dir.join("clocky.desktop"),
@@ -106,6 +109,7 @@ impl FileEntry {
     }
 
     /// `<dir>/app.clocky.plist` (`LaunchAgent`).
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
     pub fn launch_agent(dir: &Path) -> Self {
         Self {
             path: dir.join(format!("{LAUNCH_AGENT_LABEL}.plist")),
@@ -137,7 +141,7 @@ impl Autostart for FileEntry {
 /// The XDG autostart entry. `Exec` quotes the path (it may hold spaces) with the escapes of the
 /// Desktop Entry spec: `\`, `"`, `` ` `` and `$` inside the quotes, then `\` again for the
 /// string value, and `%` doubled (field codes).
-#[cfg_attr(windows, allow(dead_code))]
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 pub fn desktop_entry(exe: &Path) -> String {
     let mut quoted = String::from('"');
     for c in exe.to_string_lossy().chars() {
@@ -160,7 +164,7 @@ pub fn desktop_entry(exe: &Path) -> String {
 }
 
 /// The `LaunchAgent`: runs the exe at login (`RunAtLoad`), without restarting it on exit.
-#[cfg_attr(windows, allow(dead_code))]
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 pub fn launch_agent_plist(exe: &Path) -> String {
     let exe = xml_escape(&exe.to_string_lossy());
     format!(
@@ -176,7 +180,7 @@ pub fn launch_agent_plist(exe: &Path) -> String {
     )
 }
 
-#[cfg_attr(windows, allow(dead_code))]
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 fn xml_escape(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
     for c in text.chars() {
