@@ -1,13 +1,19 @@
 // Shown instead of the app when the database cannot be opened (spec, section 7): the file path
-// and the error, and a single "Sair" button. The file is never overwritten.
+// and the error, and a "Sair" button. The file is never overwritten. When only the saved active
+// timers cannot be restored, it also offers "Descartar timers ativos" (the history stays).
 import { Theme } from "theme.slint";
 import { PrimaryButton } from "components.slint";
+import { SecondaryButton } from "widgets.slint";
 
 export component ErrorWindow inherits Window {
     in property <string> heading: "Não foi possível abrir o banco de dados";
     in property <string> path;
     in property <string> message;
+    in property <string> hint: "O Clocky não alterou o arquivo. Confira o caminho e o erro abaixo, depois abra o app de novo.";
+    // The saved active timers are the problem: offer to discard them and open the app.
+    in property <bool> can-discard;
     callback quit();
+    callback discard();
 
     title: "Clocky";
     icon: @image-url("../icons/tray.svg");
@@ -29,7 +35,7 @@ export component ErrorWindow inherits Window {
         }
 
         Text {
-            text: "O Clocky não alterou o arquivo. Confira o caminho e o erro abaixo, depois abra o app de novo.";
+            text: root.hint;
             color: Theme.muted;
             font-size: Theme.fs-md;
             wrap: word-wrap;
@@ -89,6 +95,12 @@ export component ErrorWindow inherits Window {
 
         HorizontalLayout {
             alignment: end;
+            spacing: Theme.space-2-5;
+
+            if root.can-discard: SecondaryButton {
+                text: "Descartar timers ativos";
+                clicked => { root.discard(); }
+            }
 
             PrimaryButton {
                 text: "Sair";

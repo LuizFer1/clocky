@@ -1,23 +1,30 @@
 //! Opening the database at startup. A failure shows [`ErrorWindow`](crate::ui::ErrorWindow)
-//! with the path and the error instead of the app (spec, section 7). The file is never touched.
+//! with the path and the error instead of the app (spec, section 7). The file is never touched,
+//! except when the saved active timers cannot be restored and the user picks "Descartar timers
+//! ativos": then only those timers are deleted (the history stays) and the app opens.
 
+use std::cell::RefCell;
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 use std::time::Duration;
 
+use clocky_core::clock::SystemClock;
 use clocky_core::store::StoreError;
-
-use crate::core::{OpenError, Reopened};
+use clocky_core::tracker::{TrackerError, TrackerOpenError};
 use slint::ComponentHandle;
 
-use crate::core::AppCore;
+use crate::core::{AppCore, OpenError, Reopened};
 use crate::{paths, screenshot, ui};
 
 /// Why the database could not be opened, ready for the error window.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug)]
 pub struct OpenFailure {
     pub path: String,
     /// User-facing message, in PT-BR.
     pub message: String,
+    /// The saved active timers could not be decoded: the opened store, to discard them on
+    /// request. `None` for every other failure (I/O, a locked or newer database...).
+    pub timers: Option<TrackerOpenError>,
 }
 
 /// Opens the database (see [`paths::db_path`]), creating its directory when needed.
@@ -27,6 +34,7 @@ pub fn open_core() -> Result<(AppCore, Reopened), OpenFailure> {
         return Err(OpenFailure {
             path: String::new(),
             message: "O sistema não informou uma pasta de dados para o usuário.".into(),
+            timers: None,
         });
     };
     open_at(&path)
@@ -36,6 +44,7 @@ fn open_at(path: &Path) -> Result<(AppCore, Reopened), OpenFailure> {
     let failure = |message: String| OpenFailure {
         path: path.display().to_string(),
         message,
+        timers: None,
     };
     if let Some(dir) = path.parent().filter(|dir| !dir.as_os_str().is_empty()) {
         std::fs::create_dir_all(dir).map_err(|e| {
@@ -49,7 +58,15 @@ fn open_at(path: &Path) -> Result<(AppCore, Reopened), OpenFailure> {
     AppCore::open(path).map_err(|e| {
         // Logged as is (English); the window gets the PT-BR text.
         tracing::error!("cannot open the database {}: {e}", path.display());
-        failure(user_message(&e))
+        let message = user_message(&e);
+        let timers = match e {
+            OpenError::Timers(e) if can_discard(&e.error) => Some(e),
+            _ => None,
+        };
+        OpenFailure {
+            timers,
+            ..failure(message)
+        }
     })
 }
 
@@ -57,9 +74,18 @@ fn open_at(path: &Path) -> Result<(AppCore, Reopened), OpenFailure> {
 fn user_message(error: &OpenError) -> String {
     match error {
         OpenError::Store(e) => store_message(e),
-        OpenError::Timers(_) => {
-            "Os timers ativos salvos no banco não puderam ser restaurados.".into()
-        }
+        OpenError::Timers(e) if can_discard(&e.error) => "Os timers que estavam rodando não \
+             puderam ser restaurados. O histórico continua guardado: descarte só esses timers \
+             para abrir o Clocky."
+            .into(),
+        OpenError::Timers(e) => store_message_of(&e.error),
+    }
+}
+
+fn store_message_of(error: &TrackerError) -> String {
+    match error {
+        TrackerError::Store(e) => store_message(e),
+        TrackerError::Engine(_) => "Erro ao abrir o banco.".into(),
     }
 }
 
@@ -74,12 +100,62 @@ fn store_message(error: &StoreError) -> String {
     }
 }
 
-/// Shows the error window and runs the event loop until it is closed. In screenshot mode the
-/// window is saved to `<dir>/db-error-<theme>.png` and the app quits.
-pub fn show_failure(failure: &OpenFailure, screenshot_dir: Option<PathBuf>) -> anyhow::Result<()> {
+/// Whether a failed restore comes from the saved timers themselves (invalid rows the engine or
+/// the decoder refuses), so discarding them fixes it. I/O errors and a locked database do not.
+fn can_discard(error: &TrackerError) -> bool {
+    match error {
+        TrackerError::Engine(_) => true,
+        TrackerError::Store(e) => matches!(
+            e,
+            StoreError::Corrupt { .. } | StoreError::Invalid { .. } | StoreError::OutOfRange(_)
+        ),
+    }
+}
+
+/// Shows the error window; the caller runs the event loop and keeps the returned window alive.
+/// "Descartar timers ativos" (only offered when [`OpenFailure::timers`] is set) deletes the saved
+/// timers, opens the core again and hands it to `on_opened` in place of the window. In
+/// screenshot mode the window is saved to `<dir>/db-error-<theme>.png` and the app quits.
+pub fn show_failure(
+    failure: OpenFailure,
+    screenshot_dir: Option<PathBuf>,
+    on_opened: impl FnOnce(AppCore, Reopened) + 'static,
+) -> anyhow::Result<ui::ErrorWindow> {
     let window = ui::ErrorWindow::new()?;
     window.set_path(failure.path.clone().into());
     window.set_message(failure.message.clone().into());
+    if failure.timers.is_some() {
+        window.set_heading("Não foi possível restaurar os timers ativos".into());
+        window.set_hint(
+            "Descartar apaga só os timers que estavam rodando quando o Clocky fechou; projetos, \
+             tarefas e sessões registradas ficam."
+                .into(),
+        );
+        window.set_can_discard(true);
+    }
+    let pending = Rc::new(RefCell::new(Some((failure.timers, on_opened))));
+    let weak = window.as_weak();
+    window.on_discard(move || {
+        let Some((Some(timers), on_opened)) = pending.borrow_mut().take() else {
+            return;
+        };
+        let Some(window) = weak.upgrade() else { return };
+        match discard_and_open(timers) {
+            Ok((core, reopened)) => {
+                if let Err(e) = window.hide() {
+                    tracing::warn!("failed to hide the error window: {e}");
+                }
+                on_opened(core, reopened);
+            }
+            Err(e) => {
+                tracing::error!("cannot discard the active timers: {e}");
+                window.set_can_discard(false);
+                window.set_message(
+                    "Não foi possível descartar os timers ativos. Os detalhes estão no log.".into(),
+                );
+            }
+        }
+    });
     window.on_quit(crate::app::quit);
     window.window().on_close_requested(|| {
         crate::app::quit();
@@ -95,8 +171,14 @@ pub fn show_failure(failure: &OpenFailure, screenshot_dir: Option<PathBuf>) -> a
             crate::app::quit();
         });
     }
-    slint::run_event_loop_until_quit()?;
-    Ok(())
+    Ok(window)
+}
+
+/// Deletes the saved active timers (history stays) and opens the core again.
+fn discard_and_open(timers: TrackerOpenError) -> anyhow::Result<(AppCore, Reopened)> {
+    let store = timers.discard_active_timers()?;
+    tracing::warn!("discarded the active timers that could not be restored");
+    AppCore::with_store(store, Box::new(SystemClock)).map_err(|e| anyhow::anyhow!("{}", e.error))
 }
 
 #[cfg(test)]
@@ -131,5 +213,55 @@ mod tests {
         });
         assert!(message.contains("versão mais nova"));
         assert!(message.contains("99"));
+    }
+
+    #[test]
+    fn only_invalid_saved_timers_can_be_discarded() {
+        let corrupt = StoreError::Corrupt {
+            what: "active timer",
+            value: "{".into(),
+        };
+        assert!(can_discard(&TrackerError::Store(corrupt)));
+        let io = StoreError::Sqlite(rusqlite_busy());
+        assert!(!can_discard(&TrackerError::Store(io)));
+        let newer = StoreError::UnsupportedSchema {
+            found: 9,
+            supported: 3,
+        };
+        assert!(!can_discard(&TrackerError::Store(newer)));
+    }
+
+    #[test]
+    fn a_corrupt_saved_timer_offers_the_discard_and_reopens_without_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("clocky.db");
+        {
+            let (mut core, _) = AppCore::open(&path).unwrap();
+            let now = core.now();
+            core.tracker_mut().start_stopwatch(None, now).unwrap();
+        }
+        corrupt_active_timers(&path);
+        let failure = open_at(&path).err().unwrap();
+        assert!(failure.message.contains("histórico continua guardado"));
+        let timers = failure.timers.expect("the discard is offered");
+        let (core, _) = discard_and_open(timers).unwrap();
+        assert_eq!(core.tracker().timers().iter().count(), 0);
+    }
+
+    fn rusqlite_busy() -> rusqlite::Error {
+        rusqlite::Error::SqliteFailure(
+            rusqlite::ffi::Error::new(rusqlite::ffi::SQLITE_BUSY),
+            Some("database is locked".into()),
+        )
+    }
+
+    fn corrupt_active_timers(path: &Path) {
+        let conn = rusqlite::Connection::open(path).unwrap();
+        // A countdown without a target: no engine timer can be built from it.
+        conn.execute(
+            "UPDATE active_timers SET kind = 'countdown', target_ms = NULL",
+            [],
+        )
+        .unwrap();
     }
 }

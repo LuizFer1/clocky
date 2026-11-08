@@ -65,14 +65,25 @@ fn run() -> anyhow::Result<()> {
     // Only the primary instance logs: a second launch must not touch the running one's log.
     start_logging();
     select_backend()?;
-    let (mut core, reopened) = match startup::open_core() {
-        Ok(opened) => opened,
-        Err(failure) => {
-            // The cause was logged by `open_core`; the window shows it in PT-BR.
-            startup::show_failure(&failure, screenshot_dir)?;
-            anyhow::bail!("the database could not be opened");
-        }
+    let app = match startup::open_core() {
+        Ok((core, reopened)) => start_app(core, &reopened, screenshot_dir)?,
+        Err(failure) => return recover(failure, screenshot_dir),
     };
+    // The app lives in the tray: closing every window does not end it, only "Sair" does.
+    let result = slint::run_event_loop_until_quit();
+    // Drops the windows and the tray icon before the process exits.
+    app::shutdown(app);
+    result?;
+    Ok(())
+}
+
+/// Creates the app on an opened core: the single-instance channel, the demo data (if asked),
+/// the windows and the screenshot tour.
+fn start_app(
+    mut core: core::AppCore,
+    reopened: &core::Reopened,
+    screenshot_dir: Option<std::path::PathBuf>,
+) -> anyhow::Result<std::rc::Rc<app::App>> {
     // Listen before creating the windows: that can take seconds on a cold start, and a launch
     // during it must reach this instance instead of starting a second one.
     if screenshot_dir.is_none() {
@@ -84,14 +95,42 @@ fn run() -> anyhow::Result<()> {
             Err(e) => tracing::warn!("failed to seed the demo data: {e}"),
         }
     }
-    let app = app::App::new(core, &reopened, screenshot_dir.is_some())?;
+    let app = app::App::new(core, reopened, screenshot_dir.is_some())?;
     app.start()?;
     if let Some(dir) = screenshot_dir {
         app.schedule_screenshots(dir);
     }
-    // The app lives in the tray: closing every window does not end it, only "Sair" does.
+    Ok(app)
+}
+
+/// The database could not be opened: the error window instead of the app. When the problem is
+/// only the saved active timers, the user may discard them and the app starts from there, in
+/// the same event loop.
+fn recover(
+    failure: startup::OpenFailure,
+    screenshot_dir: Option<std::path::PathBuf>,
+) -> anyhow::Result<()> {
+    let started = std::rc::Rc::new(std::cell::RefCell::new(None));
+    let (slot, dir) = (started.clone(), screenshot_dir.clone());
+    // The cause was logged by `open_core`; the window shows it in PT-BR.
+    let _window =
+        startup::show_failure(
+            failure,
+            screenshot_dir,
+            move |core, reopened| match start_app(core, &reopened, dir) {
+                Ok(app) => *slot.borrow_mut() = Some(app),
+                Err(e) => {
+                    tracing::error!("cannot start after discarding the active timers: {e:#}");
+                    app::quit();
+                }
+            },
+        )?;
     let result = slint::run_event_loop_until_quit();
-    // Drops the windows and the tray icon before the process exits.
+    let app = started.borrow_mut().take();
+    let Some(app) = app else {
+        result?;
+        anyhow::bail!("the database could not be opened");
+    };
     app::shutdown(app);
     result?;
     Ok(())

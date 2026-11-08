@@ -770,6 +770,7 @@ dependencies = [
  "interprocess",
  "notify-rust",
  "rodio",
+ "rusqlite",
  "serde",
  "serde_json",
  "slint",
