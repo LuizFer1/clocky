@@ -120,15 +120,21 @@ impl Alarms {
 
     /// A change from an arrow, chip or stepper: everything is pushed again.
     fn edit(&self, change: impl FnOnce(&mut Draft)) {
-        change(&mut self.draft.borrow_mut());
+        {
+            let mut draft = self.draft.borrow_mut();
+            change(&mut draft);
+            // The push below writes valid digits back over any bad typed text.
+            draft.bad_hour = false;
+            draft.bad_minute = false;
+        }
         self.push(false);
     }
 
-    /// Typed hours or minutes: only the summary follows, the field keeps what was typed.
+    /// Typed hours or minutes: only the summary (and Salvar) follow, the field keeps what was
+    /// typed. A bad value blocks Salvar and says so.
     fn typed(&self, change: impl FnOnce(&mut Draft) -> bool) {
-        if change(&mut self.draft.borrow_mut()) {
-            self.push_summary();
-        }
+        change(&mut self.draft.borrow_mut());
+        self.push_summary();
     }
 
     fn sound_edited(&self, text: &str) {

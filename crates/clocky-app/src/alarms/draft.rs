@@ -14,6 +14,8 @@ pub const SNOOZE_MIN: u32 = 1;
 pub const SNOOZE_MAX: u32 = 30;
 /// Snooze of a new alarm (minutes).
 pub const SNOOZE_DEFAULT: u32 = 5;
+/// Summary while a typed field is not a valid time.
+pub const INVALID_TIME: &str = "Horário inválido: use 00–23 e 00–59";
 /// The minute arrows move by this much, snapping to its multiples.
 pub const MINUTE_STEP: u8 = 5;
 
@@ -33,6 +35,10 @@ pub struct Draft {
     pub sound: Option<String>,
     pub snooze: u32,
     pub message: String,
+    /// The typed hours or minutes are not a valid time: Salvar waits until they are fixed (the
+    /// arrows or any other change put the draft's value back in the fields).
+    pub bad_hour: bool,
+    pub bad_minute: bool,
 }
 
 impl Draft {
@@ -49,6 +55,8 @@ impl Draft {
             sound: None,
             snooze: SNOOZE_DEFAULT,
             message: String::new(),
+            bad_hour: false,
+            bad_minute: false,
         }
     }
 
@@ -78,6 +86,8 @@ impl Draft {
             sound: alarm.sound.clone(),
             snooze: alarm.snooze_minutes.clamp(SNOOZE_MIN, SNOOZE_MAX),
             message: alarm.message.clone(),
+            bad_hour: false,
+            bad_minute: false,
         }
     }
 
@@ -118,12 +128,16 @@ impl Draft {
 
     /// Typed hours: applied when it is a number from 0 to 23. Returns whether it was.
     pub fn set_hour_text(&mut self, text: &str) -> bool {
-        parse_in(text, 23).map(|h| self.hour = h).is_some()
+        let ok = parse_in(text, 23).map(|h| self.hour = h).is_some();
+        self.bad_hour = !ok;
+        ok
     }
 
     /// Typed minutes: applied when it is a number from 0 to 59. Returns whether it was.
     pub fn set_minute_text(&mut self, text: &str) -> bool {
-        parse_in(text, 59).map(|m| self.minute = m).is_some()
+        let ok = parse_in(text, 59).map(|m| self.minute = m).is_some();
+        self.bad_minute = !ok;
+        ok
     }
 
     /// Turns the chip of day `index` (0 = Monday) on or off.
@@ -161,11 +175,19 @@ impl Draft {
     }
 
     /// "Dias da semana" needs at least one day (an empty set would ring once).
+    /// A typed field holds something that is not a valid hour or minute.
+    pub fn bad_time(&self) -> bool {
+        self.bad_hour || self.bad_minute
+    }
+
     pub fn can_save(&self) -> bool {
-        !self.repeating || !self.days.is_once()
+        !self.bad_time() && (!self.repeating || !self.days.is_once())
     }
 
     pub fn summary(&self) -> String {
+        if self.bad_time() {
+            return INVALID_TIME.to_owned();
+        }
         self.time()
             .map(|time| summary::ring_summary(time, self.repeat()))
             .unwrap_or_default()
@@ -257,6 +279,22 @@ mod tests {
         assert!(!d.set_hour_text(""));
         assert!(!d.set_hour_text("007"));
         assert_eq!(d.time().unwrap().to_string(), "09:07");
+    }
+
+    #[test]
+    fn a_bad_typed_time_blocks_saving_until_both_fields_are_valid() {
+        let mut d = Draft::new(7, 30);
+        for bad in ["", "24", "7a", "123"] {
+            assert!(!d.set_hour_text(bad));
+            assert!(!d.can_save() && d.to_new().is_none());
+            assert_eq!(d.summary(), INVALID_TIME);
+        }
+        assert!(!d.set_minute_text("60"));
+        assert!(d.set_hour_text("8"));
+        assert!(!d.can_save(), "the minutes are still bad");
+        assert!(d.set_minute_text("05"));
+        assert!(d.can_save());
+        assert_eq!(d.to_new().unwrap().time.to_string(), "08:05");
     }
 
     #[test]
