@@ -379,3 +379,49 @@ fn a_suspension_gap_stops_the_pomodoro_even_within_the_grace() {
     assert_eq!(running(&slept), (Phase::ShortBreak, false));
     assert_eq!(SUSPENSION_GAP, secs(60));
 }
+
+#[test]
+fn deleting_through_the_tracker_unlinks_the_timers_at_once() {
+    let mut tracker = tracker();
+    let task = tracker
+        .store_mut()
+        .create_task(None, "report", at(0))
+        .unwrap();
+    let timer_preset = tracker
+        .store_mut()
+        .create_timer_preset("tea", mins(5), None)
+        .unwrap();
+    let pomodoro_preset = tracker
+        .store_mut()
+        .create_pomodoro_preset(&crate::store::NewPomodoroPreset {
+            name: "quick",
+            focus: secs(10),
+            short_break: secs(10),
+            long_break: secs(10),
+            focus_per_round: 2,
+            auto_start: false,
+            task: None,
+        })
+        .unwrap();
+    let cd = tracker
+        .start_countdown(Some(task), mins(5), Some(timer_preset), at(0))
+        .unwrap();
+    let pomo = tracker
+        .start_pomodoro(Some(task), quick(false), Some(pomodoro_preset), at(0))
+        .unwrap();
+
+    tracker.delete_task(task).unwrap();
+    assert_eq!(tracker.timers().get(cd).unwrap().task, None);
+    assert_eq!(tracker.timers().get(pomo).unwrap().task, None);
+    tracker.delete_timer_preset(timer_preset).unwrap();
+    assert_eq!(tracker.timers().get(cd).unwrap().preset, None);
+    tracker.delete_pomodoro_preset(pomodoro_preset).unwrap();
+    assert_eq!(tracker.timers().get(pomo).unwrap().preset, None);
+    assert!(tracker.delete_task(task).is_err());
+
+    let other = tracker.store_mut().create_task(None, "b", at(0)).unwrap();
+    tracker.set_task(cd, Some(other)).unwrap();
+    tracker.store_mut().delete_task(other).unwrap();
+    tracker.refresh_links().unwrap();
+    assert_eq!(tracker.timers().get(cd).unwrap().task, None);
+}

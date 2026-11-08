@@ -105,11 +105,49 @@ impl Tracker {
     /// The store, for CRUD (projects, tasks, presets, settings, sessions).
     ///
     /// The tracker reads the task and preset of its timers back from the database before its
-    /// next command, so deleting a task or preset here unlinks the timers too. Do not save or
-    /// delete active timers through it: use the tracker commands.
+    /// next command, so deleting a task or preset here unlinks the timers too. Until then (or
+    /// [`Tracker::refresh_links`]) [`Tracker::timers`] may still show the deleted link: prefer
+    /// [`Tracker::delete_task`] and the preset deletes, which refresh right away.
     pub fn store_mut(&mut self) -> &mut Store {
         self.links_stale = true;
         &mut self.store
+    }
+
+    /// Reads the task and preset of every timer back from the database now.
+    ///
+    /// # Errors
+    /// [`TrackerError::Store`] if the database fails (the links are read again before the next
+    /// command).
+    pub fn refresh_links(&mut self) -> Result<(), TrackerError> {
+        self.links_stale = true;
+        self.sync_links()
+    }
+
+    /// Deletes a task (its sessions become "No task") and unlinks the timers that had it.
+    ///
+    /// # Errors
+    /// [`TrackerError::Store`] if the task does not exist or the database fails.
+    pub fn delete_task(&mut self, task: TaskId) -> Result<(), TrackerError> {
+        self.store.delete_task(task)?;
+        self.refresh_links()
+    }
+
+    /// Deletes a saved countdown timer and unlinks the countdowns started from it.
+    ///
+    /// # Errors
+    /// [`TrackerError::Store`] if the preset does not exist or the database fails.
+    pub fn delete_timer_preset(&mut self, preset: TimerPresetId) -> Result<(), TrackerError> {
+        self.store.delete_timer_preset(preset)?;
+        self.refresh_links()
+    }
+
+    /// Deletes a saved pomodoro and unlinks the pomodoros started from it.
+    ///
+    /// # Errors
+    /// [`TrackerError::Store`] if the preset does not exist or the database fails.
+    pub fn delete_pomodoro_preset(&mut self, preset: PomodoroPresetId) -> Result<(), TrackerError> {
+        self.store.delete_pomodoro_preset(preset)?;
+        self.refresh_links()
     }
 
     /// Starts a stopwatch.
