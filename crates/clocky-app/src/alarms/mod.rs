@@ -117,8 +117,8 @@ impl Alarms {
         }
     }
 
-    pub fn set_dark(&self, dark: bool) {
-        self.overlay.set_dark(dark);
+    pub fn set_theme(&self, mode: crate::settings::ThemeMode) {
+        self.overlay.set_theme(mode);
     }
 
     /// The overlay window (screenshots).

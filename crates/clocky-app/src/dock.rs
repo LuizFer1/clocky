@@ -96,8 +96,8 @@ impl Dock {
         self.anchor.get()
     }
 
-    pub fn set_dark(&self, dark: bool) {
-        self.ui.global::<ui::Theme>().set_dark(dark);
+    pub fn set_theme(&self, mode: crate::settings::ThemeMode) {
+        mode.apply(&self.ui.global::<ui::Theme>());
     }
 
     /// Shows the dock at the saved placement (or the right edge of the current monitor).

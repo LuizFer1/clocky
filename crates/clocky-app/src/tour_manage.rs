@@ -178,7 +178,7 @@ fn set_theme(app: &App, dark: bool) {
     app.manage
         .ui
         .global::<ui::SettingsState>()
-        .invoke_set_theme(dark);
+        .invoke_set_theme(crate::settings::ThemeMode::from_dark(dark).index());
 }
 
 fn state(app: &App) -> ui::ManageState<'_> {

@@ -104,13 +104,13 @@ export component SettingsPage inherits VerticalLayout {
 
         SettingRow {
             label: "Tema";
-            help: "Vale para o ícone flutuante, os painéis e esta janela.";
+            help: "Vale para o ícone flutuante, os painéis e esta janela. Sistema segue o modo claro ou escuro do computador.";
 
             Segmented {
-                width: 196px;
-                options: ["Escuro", "Claro"];
-                selected: SettingsState.dark ? 0 : 1;
-                picked(index) => { SettingsState.set-theme(index == 0); }
+                width: 276px;
+                options: ["Escuro", "Claro", "Sistema"];
+                selected: SettingsState.theme;
+                picked(index) => { SettingsState.set-theme(index); }
             }
         }
     }
