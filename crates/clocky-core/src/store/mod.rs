@@ -8,9 +8,11 @@ mod error;
 mod migrations;
 mod projects;
 mod rows;
+mod tasks;
 
 pub use error::StoreError;
 pub use projects::Project;
+pub use tasks::Task;
 
 use std::path::{Path, PathBuf};
 
