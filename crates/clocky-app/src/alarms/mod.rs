@@ -183,7 +183,8 @@ impl Alarms {
             self.ringer.notify(&title, &body);
             self.queue.borrow_mut().push(ring);
         }
-        self.refresh_overlay();
+        // A new ring is always audible, even when it queues behind one whose sound auto-stopped.
+        self.show_queue(true);
         self.emit(Event::Changed);
     }
 
@@ -211,6 +212,11 @@ impl Alarms {
 
     /// Shows the first ring (restarting the sound when it changed), or hides the overlay.
     fn refresh_overlay(&self) {
+        self.show_queue(false);
+    }
+
+    /// [`Self::refresh_overlay`]; `presented` (new rings just arrived) restarts the sound too.
+    fn show_queue(&self, presented: bool) {
         let queue = self.queue.borrow();
         let Some(current) = queue.current().cloned() else {
             drop(queue);
@@ -221,8 +227,12 @@ impl Alarms {
         };
         let total = queue.count();
         drop(queue);
-        let same = matches!(&*self.sounding.borrow(), Some((id, due, _)) if *id == current.id && *due == current.due);
-        if !same {
+        let sounding = self
+            .sounding
+            .borrow()
+            .as_ref()
+            .map(|(id, due, _)| (*id, *due));
+        if restart_sound(sounding, (current.id, current.due), presented) {
             let notice = self
                 .ringer
                 .start(self.sound_for(current.sound.as_deref()).as_deref())
@@ -323,5 +333,58 @@ impl Alarms {
     /// The sound to play for an alarm whose own file is `own` (see [`effective_sound`]).
     fn sound_for(&self, own: Option<&str>) -> Option<String> {
         effective_sound(own, self.default_sound().as_deref())
+    }
+}
+
+/// Whether the sound must (re)start for the ring shown first: it changed, or new rings were
+/// just presented (the loop of an unanswered ring may have auto-stopped meanwhile).
+fn restart_sound(
+    sounding: Option<(AlarmId, Timestamp)>,
+    current: (AlarmId, Timestamp),
+    presented: bool,
+) -> bool {
+    presented || sounding != Some(current)
+}
+
+#[cfg(test)]
+mod tests {
+    use clocky_core::alarms::AlarmTime;
+
+    use super::*;
+
+    fn ring(id: i64, due: i64) -> Ringing {
+        Ringing {
+            id: AlarmId(id),
+            due: Timestamp::from_millis(due),
+            name: format!("a{id}"),
+            message: String::new(),
+            time: AlarmTime::new(7, 30).unwrap(),
+            task: None,
+            sound: None,
+            snooze_minutes: 5,
+            late: None,
+        }
+    }
+
+    #[test]
+    fn a_ring_queued_behind_a_silent_one_restarts_the_sound() {
+        let a = (AlarmId(1), Timestamp::from_millis(0));
+        // Alarm A still shows (its loop auto-stopped); alarm B queues behind it.
+        let mut queue = Queue::default();
+        queue.push(ring(1, 0));
+        assert!(!queue.push(ring(2, 0)));
+        let current = queue.current().map(|r| (r.id, r.due)).unwrap();
+        assert!(restart_sound(Some(a), current, true));
+        // A ring replaced in place behind the first one is a new presentation too.
+        assert!(!queue.push(ring(2, 5)));
+        assert!(restart_sound(Some(a), current, true));
+        // Without new rings, the same ring keeps its sound; a different first ring restarts it.
+        assert!(!restart_sound(Some(a), current, false));
+        assert!(restart_sound(
+            Some(a),
+            (AlarmId(2), Timestamp::from_millis(0)),
+            false
+        ));
+        assert!(restart_sound(None, current, false));
     }
 }
