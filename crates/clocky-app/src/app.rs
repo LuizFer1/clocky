@@ -111,9 +111,8 @@ impl App {
             let weak = weak.clone();
             slint::Timer::single_shot(Duration::ZERO, move || {
                 let Some(app) = weak.upgrade() else { return };
-                if let Some(panel) = app.timers.start_for_task(kind, task) {
-                    app.open_panel(panel, true);
-                }
+                let panel = app.timers.start_for_task(kind, task);
+                app.open_panel(panel, true);
                 app.manage.refresh();
             });
         });

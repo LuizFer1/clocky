@@ -13,6 +13,10 @@ use super::wizard::Defaults;
 use crate::manage::TimerStart;
 use crate::panel::PanelKind;
 
+/// Shown when the wizard defaults in the settings do not make a valid pomodoro.
+pub const INVALID_DEFAULTS: &str =
+    "Os valores padrão do pomodoro são inválidos. Crie um pomodoro em “Novo pomodoro”.";
+
 /// The pomodoro a task starts: its first saved pomodoro, else the wizard defaults.
 pub fn task_pomodoro(
     saved: &[PomodoroPreset],
@@ -35,18 +39,20 @@ pub fn task_pomodoro(
 }
 
 impl TimerPanels {
-    /// Starts `kind` with `task` and selects it; returns the panel to open (`None` if the
-    /// tracker refused, which the notice explains).
-    pub fn start_for_task(&self, kind: TimerStart, task: TaskId) -> Option<PanelKind> {
+    /// Starts `kind` with `task` and selects it; returns the panel to open. When the start
+    /// fails, that panel opens with the notice saying so, where the user clicked.
+    pub fn start_for_task(&self, kind: TimerStart, task: TaskId) -> PanelKind {
         match kind {
             TimerStart::Stopwatch => {
-                let id = self.command("start stopwatch", |t, now| {
+                let started = self.command("start stopwatch", |t, now| {
                     t.start_stopwatch(Some(task), now)
-                })?;
-                let mut state = self.state.borrow_mut();
-                state.stopwatch = Some(id);
-                state.view = View::Stopwatch;
-                Some(PanelKind::Stopwatch)
+                });
+                if let Some(id) = started {
+                    let mut state = self.state.borrow_mut();
+                    state.stopwatch = Some(id);
+                    state.view = View::Stopwatch;
+                }
+                PanelKind::Stopwatch
             }
             TimerStart::Pomodoro => {
                 let saved = {
@@ -58,14 +64,21 @@ impl TimerPanels {
                         .unwrap_or_default()
                 };
                 let defaults = self.state.borrow().wizard_defaults;
-                let (config, preset) = task_pomodoro(&saved, defaults)?;
-                let id = self.command("start pomodoro", |t, now| {
+                let Some((config, preset)) = task_pomodoro(&saved, defaults) else {
+                    let mut state = self.state.borrow_mut();
+                    INVALID_DEFAULTS.clone_into(&mut state.notice);
+                    state.notice_seen = false;
+                    return PanelKind::Pomodoro;
+                };
+                let started = self.command("start pomodoro", |t, now| {
                     t.start_pomodoro(Some(task), config, preset, now)
-                })?;
-                let mut state = self.state.borrow_mut();
-                state.pomodoro = PomodoroPick::Active(Some(id));
-                state.view = View::PomodoroTimer;
-                Some(PanelKind::Pomodoro)
+                });
+                if let Some(id) = started {
+                    let mut state = self.state.borrow_mut();
+                    state.pomodoro = PomodoroPick::Active(Some(id));
+                    state.view = View::PomodoroTimer;
+                }
+                PanelKind::Pomodoro
             }
         }
     }
@@ -100,6 +113,15 @@ mod tests {
         let (_, id) =
             task_pomodoro(&[preset(1, 50, 0), preset(2, 25, 4)], Defaults::default()).unwrap();
         assert_eq!(id, Some(PomodoroPresetId(2)));
+    }
+
+    #[test]
+    fn invalid_defaults_start_nothing() {
+        let defaults = Defaults {
+            rounds: 0,
+            ..Defaults::default()
+        };
+        assert!(task_pomodoro(&[], defaults).is_none());
     }
 
     #[test]

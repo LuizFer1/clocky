@@ -32,7 +32,10 @@ impl TimerPanels {
             Ok(value) => Some(value),
             Err(e) => {
                 tracing::warn!("{what} failed: {e}");
-                FAILED.clone_into(&mut self.state.borrow_mut().notice);
+                let mut state = self.state.borrow_mut();
+                FAILED.clone_into(&mut state.notice);
+                // A new notice: the next panel opened must show it, not clear it.
+                state.notice_seen = false;
                 None
             }
         }
