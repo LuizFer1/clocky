@@ -152,10 +152,7 @@ const STEPS: &[Step] = &[
         prepare: |app, _| {
             resize(app, WIDE);
             app.manage.open_settings();
-            app.manage
-                .ui
-                .global::<ui::SettingsState>()
-                .invoke_set_theme(false);
+            set_theme(app, false);
             app.open_panel(PanelKind::Overview, false);
             app.dock.ui.set_open(true);
         },
@@ -164,12 +161,7 @@ const STEPS: &[Step] = &[
         name: "theme-restore",
         shot: Shot::None,
         dark_only: true,
-        prepare: |app, _| {
-            app.manage
-                .ui
-                .global::<ui::SettingsState>()
-                .invoke_set_theme(true);
-        },
+        prepare: |app, _| set_theme(app, true),
     },
 ];
 
@@ -179,6 +171,14 @@ fn reports(tab: Tab, range: Range, date: NaiveDate) -> ReportNav {
         range,
         ..ReportNav::new(date)
     }
+}
+
+/// Switches the theme the way Configurações does (stored, so the page shows it selected).
+fn set_theme(app: &App, dark: bool) {
+    app.manage
+        .ui
+        .global::<ui::SettingsState>()
+        .invoke_set_theme(dark);
 }
 
 fn state(app: &App) -> ui::ManageState<'_> {
@@ -208,7 +208,7 @@ pub fn run(app: &Weak<App>, dir: PathBuf) {
     if !app.manage.show() {
         tracing::warn!("the manage window could not be shown");
     }
-    app.set_dark(true);
+    set_theme(&app, true);
     let tour = Rc::new(Tour {
         dir,
         dark: Cell::new(true),
@@ -245,7 +245,7 @@ fn targets(app: &App) -> Targets {
 fn next(app: &Rc<App>, tour: Rc<Tour>, index: usize) {
     let Some(current) = STEPS.get(index) else {
         if tour.dark.replace(false) {
-            app.set_dark(false);
+            set_theme(app, false);
             return next(app, tour, 0);
         }
         return quit();
