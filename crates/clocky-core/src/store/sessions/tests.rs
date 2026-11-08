@@ -226,3 +226,95 @@ fn corrupted_sessions_are_errors() {
     );
     assert!(matches!(result, Err(StoreError::Corrupt { .. })));
 }
+
+#[test]
+fn deleting_a_session_keeps_its_events_without_session() {
+    let (mut store, task, subtask) = fixture();
+    store
+        .complete_subtask(subtask, at(10), Some(TimerId(1)))
+        .unwrap();
+    let span = completed(TimerKind::Stopwatch, &[(0, 30)]);
+    let id = store
+        .record_session(Some(task), TimerId(1), None, &span)
+        .unwrap();
+    store.delete_session(id).unwrap();
+    assert!(store.session(id).is_err());
+    assert_eq!(count(&store, "session_segments"), 0);
+    let events = store.subtask_events(subtask).unwrap();
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0].session, None);
+}
+
+#[test]
+fn changing_the_task_of_a_session_changes_only_the_task() {
+    let (mut store, task, subtask) = fixture();
+    let other = store.create_task(None, "review", at(0)).unwrap();
+    store
+        .complete_subtask(subtask, at(10), Some(TimerId(1)))
+        .unwrap();
+    let span = completed(TimerKind::Stopwatch, &[(0, 10), (20, 30)]);
+    let id = store
+        .record_session(Some(task), TimerId(1), None, &span)
+        .unwrap();
+    let before = store.session(id).unwrap();
+    store.set_session_task(id, Some(other)).unwrap();
+    let after = store.session(id).unwrap();
+    assert_eq!(after.session.task, Some(other));
+    let mut expected = before;
+    expected.session.task = Some(other);
+    assert_eq!(after, expected);
+    store.set_session_task(id, None).unwrap();
+    assert_eq!(store.session(id).unwrap().session.task, None);
+}
+
+#[test]
+fn deleting_a_task_keeps_its_sessions_without_task() {
+    let (mut store, task, _) = fixture();
+    let span = completed(TimerKind::Stopwatch, &[(0, 30)]);
+    let id = store
+        .record_session(Some(task), TimerId(1), None, &span)
+        .unwrap();
+    store.delete_task(task).unwrap();
+    assert_eq!(store.session(id).unwrap().session.task, None);
+}
+
+#[test]
+fn recent_sessions_are_newest_first_and_limited() {
+    let (mut store, task, _) = fixture();
+    let mut ids = Vec::new();
+    for start in [0, 100, 200] {
+        let span = completed(TimerKind::Stopwatch, &[(start, start + 30)]);
+        ids.push(
+            store
+                .record_session(Some(task), TimerId(1), None, &span)
+                .unwrap(),
+        );
+    }
+    let other = completed(TimerKind::Stopwatch, &[(300, 330)]);
+    store
+        .record_session(None, TimerId(2), None, &other)
+        .unwrap();
+    let recent: Vec<_> = store
+        .recent_sessions(task, 2)
+        .unwrap()
+        .iter()
+        .map(|session| session.id)
+        .collect();
+    assert_eq!(recent, vec![ids[2], ids[1]]);
+}
+
+#[test]
+fn editing_a_missing_session_is_not_found() {
+    let (mut store, task, _) = fixture();
+    assert!(matches!(
+        store.delete_session(SessionId(5)),
+        Err(StoreError::NotFound { id: 5, .. })
+    ));
+    assert!(store.set_session_task(SessionId(5), Some(task)).is_err());
+    let span = completed(TimerKind::Stopwatch, &[(0, 30)]);
+    let id = store.record_session(None, TimerId(1), None, &span).unwrap();
+    assert!(matches!(
+        store.set_session_task(id, Some(TaskId(99))),
+        Err(StoreError::Sqlite(_))
+    ));
+}

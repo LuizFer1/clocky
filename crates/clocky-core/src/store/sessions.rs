@@ -7,7 +7,7 @@ use rusqlite::{Connection, Row, params};
 use super::convert::{
     duration_from_ms, duration_to_ms, timer_id_from_sql, timer_id_to_sql, u32_from_sql,
 };
-use super::rows::{collect, first};
+use super::rows::{collect, ensure_found, first};
 use super::subtasks::{EVENT_COLUMNS, event_from_row};
 use super::{Store, StoreError, SubtaskEvent};
 use crate::domain::{SessionId, TaskId, TimerId};
@@ -193,6 +193,48 @@ impl Store {
             segments,
             events,
         })
+    }
+}
+
+impl Store {
+    /// Deletes a session and its segments; its subtask events stay, without a session.
+    ///
+    /// # Errors
+    /// [`StoreError::NotFound`] if it does not exist.
+    pub fn delete_session(&mut self, id: SessionId) -> Result<(), StoreError> {
+        let changed = self
+            .conn
+            .execute("DELETE FROM sessions WHERE id = ?1", [id.0])?;
+        ensure_found(changed, "session", id.0)
+    }
+
+    /// Changes only the task of a session (`None` = "No task").
+    ///
+    /// # Errors
+    /// [`StoreError::NotFound`] if the session does not exist; [`StoreError::Sqlite`] if the
+    /// task does not exist.
+    pub fn set_session_task(
+        &mut self,
+        id: SessionId,
+        task: Option<TaskId>,
+    ) -> Result<(), StoreError> {
+        let changed = self.conn.execute(
+            "UPDATE sessions SET task_id = ?1 WHERE id = ?2",
+            params![task.map(|t| t.0), id.0],
+        )?;
+        ensure_found(changed, "session", id.0)
+    }
+
+    /// The latest `limit` sessions of `task`, newest first.
+    ///
+    /// # Errors
+    /// [`StoreError::Corrupt`] or [`StoreError::OutOfRange`] if a stored value is invalid.
+    pub fn recent_sessions(&self, task: TaskId, limit: u32) -> Result<Vec<Session>, StoreError> {
+        let sql = format!(
+            "SELECT {SESSION_COLUMNS} FROM sessions s WHERE s.task_id = ?1
+             ORDER BY s.started_at_ms DESC, s.id DESC LIMIT ?2"
+        );
+        collect(&self.conn, &sql, params![task.0, limit], session_from_row)
     }
 }
 
