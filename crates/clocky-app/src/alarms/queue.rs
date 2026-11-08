@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use clocky_core::alarms::{AlarmTime, Firing};
 use clocky_core::domain::{AlarmId, TaskId};
-use clocky_core::store::PendingAlarm;
+use clocky_core::store::{Alarm, PendingAlarm};
 use clocky_core::time::Timestamp;
 
 /// One ringing alarm, copied from the database when it started ringing.
@@ -76,6 +76,20 @@ impl Queue {
         Some(self.items.remove(index))
     }
 
+    /// Copies the fields of a saved `alarm` into its ring (the occurrence and lateness stay).
+    /// `None` when it is not ringing; otherwise whether its sound changed.
+    pub fn refresh(&mut self, alarm: &Alarm) -> Option<bool> {
+        let ring = self.items.iter_mut().find(|r| r.id == alarm.id)?;
+        let sound_changed = ring.sound != alarm.sound;
+        ring.name.clone_from(&alarm.name);
+        ring.message.clone_from(&alarm.message);
+        ring.time = alarm.time;
+        ring.task = alarm.task;
+        ring.sound.clone_from(&alarm.sound);
+        ring.snooze_minutes = alarm.snooze_minutes;
+        Some(sound_changed)
+    }
+
     pub fn get(&self, id: AlarmId) -> Option<&Ringing> {
         self.items.iter().find(|r| r.id == id)
     }
@@ -88,7 +102,6 @@ impl Queue {
 #[cfg(test)]
 mod tests {
     use clocky_core::alarms::Weekdays;
-    use clocky_core::store::Alarm;
 
     use super::*;
 
@@ -168,5 +181,22 @@ mod tests {
         };
         assert!(q.push(first_again));
         assert_eq!(q.count(), 2);
+    }
+
+    #[test]
+    fn a_saved_alarm_refreshes_its_ring_and_keeps_the_occurrence() {
+        let mut q = Queue::default();
+        q.push(ring(1));
+        let mut saved = pending(1, Firing::OnTime).alarm;
+        saved.name = "novo".into();
+        saved.snooze_minutes = 10;
+        assert_eq!(q.refresh(&saved), Some(false));
+        saved.sound = Some("C:/galo.mp3".into());
+        assert_eq!(q.refresh(&saved), Some(true));
+        let r = q.get(AlarmId(1)).unwrap();
+        assert_eq!((r.name.as_str(), r.snooze_minutes), ("novo", 10));
+        assert_eq!(r.due, Timestamp::from_millis(1000));
+        saved.id = AlarmId(9);
+        assert_eq!(q.refresh(&saved), None);
     }
 }

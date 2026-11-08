@@ -217,7 +217,7 @@ impl Alarms {
     }
 
     /// [`Self::refresh_overlay`]; `presented` (new rings just arrived) restarts the sound too.
-    fn show_queue(&self, presented: bool) {
+    pub(super) fn show_queue(&self, presented: bool) {
         let queue = self.queue.borrow();
         let Some(current) = queue.current().cloned() else {
             drop(queue);

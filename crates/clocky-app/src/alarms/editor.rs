@@ -176,6 +176,9 @@ impl Alarms {
         };
         match saved {
             Ok(()) => {
+                if let Some(id) = draft.editing {
+                    self.refresh_ringing(id);
+                }
                 let text = draft.summary();
                 let mut lower = text.chars();
                 let first = lower.next().map(|c| c.to_lowercase().to_string());
@@ -252,6 +255,23 @@ impl Alarms {
             g.set_notice(slint::SharedString::new());
             g.set_confirm_delete(false);
             g.set_sound_editing(false);
+        }
+    }
+}
+
+/// A saved alarm that is ringing.
+impl Alarms {
+    /// Copies the saved fields into its queued ring, so the overlay shows the new name, text,
+    /// sound and snooze length; a new sound on the ring shown first starts right away.
+    fn refresh_ringing(&self, id: AlarmId) {
+        let alarm = match self.core.borrow().alarm(id) {
+            Ok(alarm) => alarm,
+            Err(e) => return tracing::warn!("cannot reread alarm {}: {e}", id.0),
+        };
+        let refreshed = self.queue.borrow_mut().refresh(&alarm);
+        if let Some(sound_changed) = refreshed {
+            let first = self.queue.borrow().current().is_some_and(|r| r.id == id);
+            self.show_queue(first && sound_changed);
         }
     }
 }
