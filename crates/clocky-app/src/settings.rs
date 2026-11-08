@@ -105,6 +105,19 @@ mod tests {
     }
 
     #[test]
+    fn save_overwrites_an_existing_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        Settings::default().save(&path).unwrap();
+        let moved = Settings {
+            dark_theme: true,
+            dock: Some(placement()),
+        };
+        moved.save(&path).unwrap();
+        assert_eq!(Settings::load(&path), moved);
+    }
+
+    #[test]
     fn missing_file_gives_defaults() {
         let dir = tempfile::tempdir().unwrap();
         assert_eq!(

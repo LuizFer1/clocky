@@ -494,6 +494,25 @@ mod tests {
     }
 
     #[test]
+    fn restore_clamps_a_height_fraction_outside_0_to_1() {
+        // A hand-edited or corrupt settings file.
+        let monitors = both();
+        let above = Some(("DISPLAY2", Edge::Right, -0.5));
+        let (anchor, _) = restore(&monitors, above, None).unwrap();
+        assert_eq!(anchor.center_y, 180);
+        let below = Some(("DISPLAY2", Edge::Right, 7.0));
+        let (anchor, _) = restore(&monitors, below, None).unwrap();
+        assert_eq!(anchor.center_y, 1080 - 180);
+        let nan = Some(("DISPLAY2", Edge::Right, f64::NAN));
+        let (anchor, _) = restore(&monitors, nan, None).unwrap();
+        assert!(
+            (180..=900).contains(&anchor.center_y),
+            "{}",
+            anchor.center_y
+        );
+    }
+
+    #[test]
     fn restore_without_monitors_is_none() {
         assert!(restore(&[], None, None).is_none());
     }
