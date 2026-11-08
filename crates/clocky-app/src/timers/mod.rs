@@ -145,6 +145,7 @@ impl TimerPanels {
             if std::mem::take(&mut state.notice_seen) {
                 state.notice.clear();
             }
+            state::forget_ended(&mut state, timers);
             state.view = match kind {
                 PanelKind::Alarm => View::Hidden,
                 PanelKind::Stopwatch => View::Stopwatch,

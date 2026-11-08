@@ -4,7 +4,7 @@
 use std::collections::BTreeSet;
 
 use clocky_core::domain::{PomodoroPresetId, TaskId, TimerId};
-use clocky_core::engine::timers::{Timer, Timers};
+use clocky_core::engine::timers::Timers;
 
 use super::cards::{Kind, Ringing};
 use super::hms::Hms;
@@ -94,38 +94,70 @@ impl State {
     }
 }
 
-/// The timer of `kind` a panel shows: the selected one while it is active, else the most
-/// recent active one.
+/// The timer of `kind` a view shows: the selected one while it is active, none once it ended,
+/// and the most recent one when nothing is selected. A view whose timer ended goes back to its
+/// root instead of jumping to another timer of that kind, so a second click on "Parar" (a
+/// double click, or two timers of the same kind) never stops another timer.
 pub fn pick(timers: &Timers, kind: Kind, selected: Option<TimerId>) -> Option<TimerId> {
-    let of_kind = |id: &TimerId| {
+    let of_kind = |id: TimerId| {
         timers
-            .get(*id)
+            .get(id)
             .is_some_and(|active| Kind::of(&active.timer) == kind)
     };
-    selected.filter(of_kind).or_else(|| {
-        timers
+    match selected {
+        Some(id) => of_kind(id).then_some(id),
+        None => timers
             .iter()
             .filter(|active| Kind::of(&active.timer) == kind)
             .map(clocky_core::engine::timers::ActiveTimer::id)
-            .max()
-    })
+            .max(),
+    }
 }
 
-/// The countdown the Temporizador shows: a selected ringing one, the selected active one, any
-/// ringing one, then the most recent active one.
+/// The countdown the Temporizador shows: the selected one while it rings or runs (none once it
+/// ended, as [`pick`]); with no selection, a ringing one, then the most recent active one.
 pub fn pick_countdown(
     timers: &Timers,
     ringing: &[Ringing],
     selected: Option<TimerId>,
 ) -> Option<TimerId> {
-    if let Some(id) = selected.filter(|id| ringing.iter().any(|r| r.timer == *id)) {
-        return Some(id);
+    match selected {
+        Some(id) if ringing.iter().any(|r| r.timer == id) => Some(id),
+        Some(id) => pick(timers, Kind::Countdown, Some(id)),
+        None => ringing
+            .last()
+            .map(|r| r.timer)
+            .or_else(|| pick(timers, Kind::Countdown, None)),
     }
-    let active = selected
-        .filter(|id| matches!(timers.get(*id), Some(a) if matches!(a.timer, Timer::Countdown(_))));
-    active
-        .or_else(|| ringing.last().map(|r| r.timer))
-        .or_else(|| pick(timers, Kind::Countdown, None))
+}
+
+/// Selects `id` in its panel (`kind`), so the view stays on it, and on its end state once it
+/// stops, instead of moving to another timer of that kind.
+pub fn select(state: &mut State, kind: Kind, id: TimerId) {
+    match kind {
+        Kind::Stopwatch => state.stopwatch = Some(id),
+        Kind::Countdown => state.countdown = Some(id),
+        Kind::Pomodoro => state.pomodoro = PomodoroPick::Active(Some(id)),
+    }
+}
+
+/// Drops the selections whose timer ended: a panel opened from the menu shows the most recent
+/// timer of its kind again.
+pub fn forget_ended(state: &mut State, timers: &Timers) {
+    let gone = |id: Option<TimerId>| id.is_some_and(|id| timers.get(id).is_none());
+    if gone(state.stopwatch) {
+        state.stopwatch = None;
+    }
+    let ringing =
+        |id: Option<TimerId>| id.is_some_and(|id| state.ringing.iter().any(|r| r.timer == id));
+    if gone(state.countdown) && !ringing(state.countdown) {
+        state.countdown = None;
+    }
+    if let PomodoroPick::Active(selected) = state.pomodoro
+        && gone(selected)
+    {
+        state.pomodoro = PomodoroPick::Active(None);
+    }
 }
 
 /// Falls back to the panel root when the timer a view shows is gone (stopped, finished).
@@ -151,6 +183,7 @@ mod tests {
 
     use clocky_core::engine::countdown::Countdown;
     use clocky_core::engine::stopwatch::Stopwatch;
+    use clocky_core::engine::timers::Timer;
     use clocky_core::time::Timestamp;
 
     use super::*;
@@ -172,9 +205,26 @@ mod tests {
         let (timers, [a, b, c]) = timers();
         assert_eq!(pick(&timers, Kind::Stopwatch, Some(a)), Some(a));
         assert_eq!(pick(&timers, Kind::Stopwatch, None), Some(b));
-        // A selection of another kind is ignored.
-        assert_eq!(pick(&timers, Kind::Stopwatch, Some(c)), Some(b));
+        // A selection that is not an active timer of that kind shows none.
+        assert_eq!(pick(&timers, Kind::Stopwatch, Some(c)), None);
         assert_eq!(pick(&timers, Kind::Pomodoro, None), None);
+    }
+
+    #[test]
+    fn a_stopped_selection_never_moves_to_another_timer_of_its_kind() {
+        let (mut timers, [a, b, c]) = timers();
+        let mut state = State::new();
+        select(&mut state, Kind::Stopwatch, a);
+        select(&mut state, Kind::Countdown, c);
+        // "Parar" on `a` and "Cancelar" on `c`: a second click finds nothing to stop.
+        timers.discard(a).unwrap();
+        timers.discard(c).unwrap();
+        assert_eq!(pick(&timers, Kind::Stopwatch, state.stopwatch), None);
+        assert_eq!(pick_countdown(&timers, &[], state.countdown), None);
+        // Opening the panel again from the menu shows the remaining stopwatch.
+        forget_ended(&mut state, &timers);
+        assert_eq!(pick(&timers, Kind::Stopwatch, state.stopwatch), Some(b));
+        assert_eq!(state.countdown, None);
     }
 
     #[test]

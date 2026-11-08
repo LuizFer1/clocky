@@ -76,7 +76,13 @@ impl TimerPanels {
     }
 
     /// Stops a timer; a stopwatch session gets the "Sessão de … registrada" notice.
-    pub(super) fn stop(&self, id: TimerId) {
+    /// Stops `id`. Returns whether the tracker did; the panel stays on that timer's end state
+    /// (see [`super::state::pick`]), so a second click cannot stop another one.
+    pub(super) fn stop(&self, id: TimerId) -> bool {
+        let kind = super::kind_of(&self.core.borrow(), id);
+        if let Some(kind) = kind {
+            super::state::select(&mut self.state.borrow_mut(), kind, id);
+        }
         // The ready stopwatch keeps the task of the session that just ended (screen 32).
         let stopwatch_task = {
             let handle = self.core.borrow();
@@ -94,10 +100,11 @@ impl TimerPanels {
         }
         let Some(events) = self.command("stop", |t, now| t.stop(id, now)) else {
             self.render();
-            return;
+            return false;
         };
         self.notice_recorded(&events);
         self.render();
+        true
     }
 
     fn notice_recorded(&self, events: &[TrackerEvent]) {

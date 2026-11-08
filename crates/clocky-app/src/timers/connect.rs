@@ -132,7 +132,9 @@ fn overview(g: &ui::TimerUi<'_>, weak: &Weak<TimerPanels>) {
     let w = weak.clone();
     g.on_card_stop(move |id| {
         if let Some(id) = timer_from_ui(id) {
-            with(&w, |p| p.stop(id));
+            with(&w, |p| {
+                p.stop(id);
+            });
         }
     });
     let w = weak.clone();
