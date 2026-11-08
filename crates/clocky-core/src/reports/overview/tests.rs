@@ -185,3 +185,27 @@ fn equal_totals_are_ordered_by_id_with_the_no_group_last() {
         [Some(fx.api), Some(fx.docs)]
     );
 }
+
+#[test]
+fn moved_task_is_grouped_under_its_current_project() {
+    let mut fx = fixture();
+    record(&mut fx.store, Some(fx.api), &[(wed(9, 0), wed(9, 30))]);
+    fx.store.set_task_project(fx.api, Some(fx.home)).unwrap();
+
+    let overview = overview(&fx.store, wednesday()).unwrap();
+    assert_eq!(project_ids(&overview), [Some(fx.home)]);
+    assert_eq!(task_ids(&overview.projects[0]), [Some(fx.api)]);
+    assert_eq!(overview.projects[0].total, min(30));
+}
+
+#[test]
+fn deleted_project_moves_its_tasks_to_no_project() {
+    let mut fx = fixture();
+    record(&mut fx.store, Some(fx.api), &[(wed(9, 0), wed(9, 30))]);
+    fx.store.delete_project(fx.work).unwrap();
+
+    let overview = overview(&fx.store, wednesday()).unwrap();
+    assert_eq!(project_ids(&overview), [None]);
+    assert_eq!(task_ids(&overview.projects[0]), [Some(fx.api)]);
+    assert_eq!(overview.total, min(30));
+}

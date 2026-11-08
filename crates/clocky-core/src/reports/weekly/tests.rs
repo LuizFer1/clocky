@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use chrono::{Datelike, FixedOffset, Weekday};
-use chrono_tz::America::New_York;
+use chrono_tz::America::{New_York, Sao_Paulo};
 
 use super::*;
 use crate::domain::{ProjectId, TaskId};
@@ -164,4 +164,44 @@ fn fall_back_sunday_counts_25_hours() {
     assert_eq!(weekly.days[5].total, hours(2));
     assert_eq!(weekly.days[6].total, hours(25) + min(20));
     assert_eq!(weekly.total, hours(27) + min(20));
+}
+
+#[test]
+fn skipped_midnight_starts_the_day_at_the_first_valid_minute() {
+    // Brazil started DST on 2018-11-04 at 00:00, jumping straight to 01:00.
+    let (mut store, _, [api, _]) = fixture();
+    let start = local(&Sao_Paulo, (2018, 11, 3), (23, 30));
+    let end = local(&Sao_Paulo, (2018, 11, 4), (1, 30));
+    record(&mut store, Some(api), &[(start, end)]);
+
+    let weekly = weekly(&store, date(2018, 11, 4), &Sao_Paulo).unwrap();
+    let sunday = &weekly.days[6];
+    assert_eq!(
+        sunday.period.start(),
+        local(&Sao_Paulo, (2018, 11, 4), (1, 0))
+    );
+    assert_eq!(sunday.period.length(), hours(23));
+    assert_eq!(weekly.days[5].total, min(30));
+    assert_eq!(sunday.total, min(30));
+    assert_eq!(weekly.total, hours(1));
+}
+
+#[test]
+fn days_tile_the_week_without_gaps_or_overlaps() {
+    let (store, _, _) = fixture();
+    let weeks = [
+        (date(2026, 3, 2), &New_York),
+        (date(2026, 10, 26), &New_York),
+        (date(2018, 10, 29), &Sao_Paulo),
+    ];
+    for (monday, tz) in weeks {
+        let weekly = weekly(&store, monday, tz).unwrap();
+        assert_eq!(weekly.days[0].period.start(), weekly.period.start());
+        assert_eq!(weekly.days[6].period.end(), weekly.period.end());
+        for pair in weekly.days.windows(2) {
+            assert_eq!(pair[0].period.end(), pair[1].period.start(), "{monday}");
+        }
+        let lengths: Duration = weekly.days.iter().map(|day| day.period.length()).sum();
+        assert_eq!(lengths, weekly.period.length(), "{monday}");
+    }
 }
