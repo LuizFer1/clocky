@@ -11,8 +11,10 @@ allow-print-in-tests = true
 allow-dbg-in-tests = true
 
 # The clock is only read by the real `Clock` implementation (spec, section 10.3).
-# When `chrono` becomes a dependency, add `chrono::Utc::now` and `chrono::Local::now`.
 disallowed-methods = [
     { path = "std::time::SystemTime::now", reason = "use the Clock trait" },
     { path = "std::time::Instant::now", reason = "use the Clock trait" },
+    # Only reachable when chrono's `clock` feature is on (the app enables it).
+    { path = "chrono::Utc::now", reason = "use the Clock trait", allow-invalid = true },
+    { path = "chrono::Local::now", reason = "use the Clock trait", allow-invalid = true },
 ]
