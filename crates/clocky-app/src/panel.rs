@@ -1,16 +1,24 @@
 //! Floating panel opened by a radial option, anchored next to the dock. One window is reused
-//! for every option. M5 shows a placeholder body; M6 fills the contents.
+//! for every option: the timer panels fill its body (`crate::timers`), the Alarme option shows a
+//! placeholder until M7. The task picker ("Vincular tarefa") opens inside it: see
+//! [`Panel::pick_task`].
 
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::rc::{Rc, Weak};
 use std::time::Duration;
 
+use clocky_core::domain::TaskId;
 use slint::winit_030::{EventResult, WinitWindowAccessor, winit};
 use slint::{ComponentHandle, PhysicalPosition};
 
+use crate::core::AppCore;
 use crate::dock::hide_from_taskbar;
-use crate::geometry::Anchor;
+use crate::geometry::{Anchor, PANEL_H, PANEL_MAX_H};
+use crate::picker_ui::TaskPicker;
 use crate::ui;
+
+/// Height of the panel while it shows the task picker (logical px).
+pub const PICKER_H: f64 = 680.0;
 
 /// Radial options that open a panel ("Gerenciar" opens the manage window instead).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -92,18 +100,30 @@ impl PanelKind {
 
 pub struct Panel {
     pub ui: ui::PanelWindow,
+    pub picker: Rc<TaskPicker>,
+    /// Where the panel was last placed (the picker re-places it with its own height).
+    anchor: Cell<Option<Anchor>>,
     /// Taskbar and focus-out handling are set once, when the winit window first exists.
     prepared: Cell<bool>,
     weak: Weak<Panel>,
 }
 
 impl Panel {
-    pub fn new() -> anyhow::Result<Rc<Self>> {
+    pub fn new(core: Rc<RefCell<AppCore>>) -> anyhow::Result<Rc<Self>> {
         let ui = ui::PanelWindow::new()?;
+        let picker = TaskPicker::new(core, &ui);
         let panel = Rc::new_cyclic(|weak| Self {
             ui,
+            picker,
+            anchor: Cell::new(None),
             prepared: Cell::new(false),
             weak: weak.clone(),
+        });
+        let weak = panel.weak.clone();
+        panel.picker.set_on_close(move || {
+            if let Some(p) = weak.upgrade() {
+                p.place(PANEL_H);
+            }
         });
         let weak = panel.weak.clone();
         panel.ui.on_dismiss(move || {
@@ -121,13 +141,12 @@ impl Panel {
     /// Shows the panel of `kind` next to the dock. `focus` brings it to the front (user clicks
     /// only: on Windows `focus_window` simulates an Alt key press).
     pub fn open(&self, kind: PanelKind, anchor: Option<Anchor>, focus: bool) {
-        self.fill(kind);
-        if let Some(anchor) = anchor {
-            let origin = anchor.panel_origin();
-            self.ui
-                .window()
-                .set_position(PhysicalPosition::new(origin.x, origin.y));
+        if self.picker.is_open() {
+            self.picker.finish(false);
         }
+        self.fill(kind);
+        self.anchor.set(anchor);
+        self.place(PANEL_H);
         if let Err(e) = self.ui.show() {
             tracing::warn!("failed to show the {kind:?} panel: {e}");
             return;
@@ -144,6 +163,53 @@ impl Panel {
         if let Err(e) = spawned {
             tracing::warn!("failed to prepare the panel window: {e}");
         }
+    }
+
+    /// Sizes the placeholder or the picker to `height` logical px and the timer views up to
+    /// the monitor's cap, then places the window for the height it asks for (known before it is
+    /// shown, unlike its size). Later content changes re-place it on resize (see
+    /// [`Panel::prepare`]).
+    fn place(&self, height: f64) {
+        let cap = self
+            .anchor
+            .get()
+            .map_or(PANEL_MAX_H, |anchor| anchor.panel_max_height());
+        #[expect(clippy::cast_possible_truncation, reason = "a few hundred px")]
+        {
+            self.ui.set_height_cap(cap as f32);
+            self.ui.set_panel_height(height.min(cap) as f32);
+        }
+        self.place_for(f64::from(self.ui.get_wanted_height()));
+    }
+
+    /// Places the window next to the dock for its current height (after a resize).
+    fn reposition(&self) {
+        let window = self.ui.window();
+        let height = f64::from(window.size().height) / f64::from(window.scale_factor());
+        if height > 0.0 {
+            self.place_for(height);
+        }
+    }
+
+    fn place_for(&self, height: f64) {
+        if let Some(anchor) = self.anchor.get() {
+            let origin = anchor.panel_origin_for(height);
+            self.ui
+                .window()
+                .set_position(PhysicalPosition::new(origin.x, origin.y));
+        }
+    }
+
+    /// Opens the task picker in this panel with `current` selected. `on_done` runs with the
+    /// choice on "Vincular" (`None` = "Sem tarefa"); cancelling does not call it. This is the
+    /// entry point the M6b timer panels use for their task line.
+    pub fn pick_task(
+        &self,
+        current: Option<TaskId>,
+        on_done: impl FnOnce(Option<TaskId>) + 'static,
+    ) {
+        self.place(PICKER_H);
+        self.picker.open(current, on_done);
     }
 
     fn fill(&self, kind: PanelKind) {
@@ -170,7 +236,16 @@ impl Panel {
         hide_from_taskbar(window);
         let weak = self.weak.clone();
         // A click outside the panel takes the focus away from it: close it, as the handoff asks.
+        // A new height (the timer view changed) places it again so it stays on screen.
         self.ui.window().on_winit_window_event(move |_, event| {
+            if matches!(event, winit::event::WindowEvent::Resized(_)) {
+                let weak = weak.clone();
+                slint::Timer::single_shot(Duration::ZERO, move || {
+                    if let Some(p) = weak.upgrade() {
+                        p.reposition();
+                    }
+                });
+            }
             if matches!(event, winit::event::WindowEvent::Focused(false)) {
                 let weak = weak.clone();
                 // Hiding from inside the event handler is deferred to the next loop iteration.
@@ -185,6 +260,9 @@ impl Panel {
     }
 
     pub fn hide(&self) {
+        if self.picker.is_open() {
+            self.picker.finish(false);
+        }
         if let Err(e) = self.ui.hide() {
             tracing::warn!("failed to hide the panel: {e}");
         }

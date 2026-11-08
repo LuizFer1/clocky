@@ -1,0 +1,93 @@
+// Small pieces of the alarm screens: the 44×26 toggle of the Ativos cards (SPEC 2.5), the round
+// day chip (44×44, SPEC 2.1) and the boxed text field of the editor.
+import { Theme } from "../theme.slint";
+
+// On = `accent` track with an `on-accent` knob on the right (screen 50).
+export component AlarmSwitch inherits Rectangle {
+    in property <bool> on;
+    callback toggled(bool);
+
+    width: 44px;
+    height: 26px;
+    border-radius: 13px;
+    background: root.on ? Theme.accent : Theme.line-2;
+
+    Rectangle {
+        x: root.on ? parent.width - self.width - 3px : 3px;
+        width: 20px;
+        height: 20px;
+        border-radius: 10px;
+        background: root.on ? Theme.on-accent : Theme.muted;
+
+        animate x { duration: Theme.dur-fade; }
+    }
+
+    TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.toggled(!root.on); }
+    }
+}
+
+// Day chip: active = `accent` with `on-accent` text; inactive = `line-2` outline, muted text.
+export component DayChip inherits Rectangle {
+    in property <string> text;
+    in property <bool> on;
+    callback clicked();
+
+    width: Theme.size-day-chip;
+    height: Theme.size-day-chip;
+    border-radius: self.height / 2;
+    background: root.on ? Theme.accent : (touch.has-hover ? Theme.accent-soft : transparent);
+    border-width: root.on ? 0 : 1px;
+    border-color: Theme.line-2;
+
+    Text {
+        text: root.text;
+        color: root.on ? Theme.on-accent : Theme.muted;
+        font-size: Theme.fs-base;
+        font-weight: Theme.fw-medium;
+    }
+
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+// 44 high field box (radius 12, `field`, `line-2` border) around a single-line input.
+export component BoxedInput inherits Rectangle {
+    in-out property <string> text;
+    in property <string> placeholder;
+    callback edited(string);
+
+    height: Theme.size-control;
+    border-radius: Theme.radius-lg;
+    background: Theme.field;
+    border-width: 1px;
+    border-color: input.has-focus ? Theme.accent : Theme.line-2;
+
+    Rectangle {
+        x: Theme.space-3-5;
+        width: parent.width - 2 * Theme.space-3-5;
+
+        input := TextInput {
+            width: 100%;
+            height: 100%;
+            vertical-alignment: center;
+            text <=> root.text;
+            color: Theme.text;
+            font-size: Theme.fs-base;
+            single-line: true;
+            edited => { root.edited(self.text); }
+        }
+
+        if input.text == "": Text {
+            width: 100%;
+            height: 100%;
+            vertical-alignment: center;
+            text: root.placeholder;
+            color: Theme.muted;
+            font-size: Theme.fs-base;
+        }
+    }
+}

@@ -1,0 +1,244 @@
+// Geral (time per project → task) and Semanal (stacked day columns + project totals).
+import { Theme } from "theme.slint";
+import { DotCell } from "widgets.slint";
+import { Card, CardTitle } from "manage-controls.slint";
+import { ReportRow, ReportsState, StackPart } from "manage-reports-state.slint";
+
+// A bar on a line-2 track, in the project color (muted for "Sem projeto").
+component Bar inherits Rectangle {
+    in property <float> fill;
+    in property <brush> bar-color;
+
+    border-radius: self.height / 2;
+    background: Theme.line;
+    clip: true;
+
+    Rectangle {
+        x: 0;
+        width: max(parent.height, parent.width * clamp(root.fill, 0, 1));
+        height: parent.height;
+        border-radius: parent.height / 2;
+        background: root.bar-color;
+    }
+}
+
+// A project (with its share) or an indented task, with the bar under the name.
+export component ReportLine inherits Rectangle {
+    in property <ReportRow> item;
+    in property <bool> first;
+    property <color> tint: root.item.none ? Theme.muted : root.item.color;
+
+    min-height: root.item.is-task ? 46px : 56px;
+
+    if !root.first && !root.item.is-task: Rectangle {
+        y: 0;
+        height: 1px;
+        background: Theme.line;
+    }
+
+    VerticalLayout {
+        padding-left: root.item.is-task ? 22px : 0px;
+        padding-top: root.item.is-task ? Theme.space-1-5 : Theme.space-3;
+        padding-bottom: root.item.is-task ? Theme.space-1-5 : Theme.space-2-5;
+        spacing: Theme.space-2;
+
+        HorizontalLayout {
+            spacing: Theme.space-2-5;
+
+            if !root.item.is-task: DotCell {
+                dot-color: root.tint;
+                hollow: root.item.none;
+            }
+
+            Text {
+                horizontal-stretch: 1;
+                vertical-alignment: center;
+                text: root.item.name;
+                color: root.item.is-task && root.item.none ? Theme.muted : Theme.text;
+                font-size: root.item.is-task ? Theme.fs-sm : Theme.fs-md;
+                font-weight: root.item.is-task ? Theme.fw-regular : Theme.fw-medium;
+                overflow: elide;
+            }
+
+            if root.item.archived: Text {
+                vertical-alignment: center;
+                text: "arquivado";
+                color: Theme.muted;
+                font-size: Theme.fs-xs;
+            }
+
+            if root.item.share != "": Text {
+                vertical-alignment: center;
+                text: root.item.share;
+                color: Theme.muted;
+                font-size: Theme.fs-sm;
+            }
+
+            Text {
+                min-width: 72px;
+                vertical-alignment: center;
+                horizontal-alignment: right;
+                text: root.item.total;
+                color: Theme.text;
+                font-size: root.item.is-task ? Theme.fs-sm : Theme.fs-md;
+                font-weight: Theme.fw-medium;
+            }
+        }
+
+        Bar {
+            height: root.item.is-task ? 4px : 6px;
+            fill: root.item.bar;
+            bar-color: root.item.is-task ? root.tint.with-alpha(0.55) : root.tint;
+        }
+    }
+}
+
+export component OverviewReport inherits Card {
+    CardTitle {
+        text: "Tempo por projeto";
+        trailing: ReportsState.total;
+    }
+
+    VerticalLayout {
+        for row[index] in ReportsState.rows: ReportLine {
+            item: row;
+            first: index == 0;
+        }
+    }
+}
+
+// Height of the bar area of the week chart.
+global Chart {
+    out property <length> height: 168px;
+}
+
+// One day: total on top, the stacked bar, weekday and day number under it.
+component DayBar inherits VerticalLayout {
+    in property <string> weekday;
+    in property <string> day;
+    in property <string> total;
+    in property <float> fill;
+    in property <[StackPart]> parts;
+    in property <bool> today;
+
+    horizontal-stretch: 1;
+    spacing: Theme.space-1-5;
+
+    Rectangle {
+        height: Chart.height;
+
+        bar := Rectangle {
+            width: min(40px, parent.width - 10px);
+            height: max(root.fill > 0 ? 4px : 0px, Chart.height * root.fill);
+            y: parent.height - self.height;
+            border-radius: 6px;
+            clip: true;
+
+            VerticalLayout {
+                for part in root.parts: Rectangle {
+                    height: bar.height * part.size;
+                    background: part.none ? Theme.muted : part.color;
+                }
+            }
+        }
+
+        if root.total != "": Text {
+            y: bar.y - self.preferred-height - 4px;
+            horizontal-alignment: center;
+            text: root.total;
+            color: Theme.muted;
+            font-size: Theme.fs-caption;
+        }
+    }
+
+    Text {
+        horizontal-alignment: center;
+        text: root.weekday;
+        color: root.today ? Theme.text : Theme.muted;
+        font-size: Theme.fs-xs;
+        font-weight: root.today ? Theme.fw-semibold : Theme.fw-regular;
+    }
+
+    HorizontalLayout {
+        alignment: center;
+
+        Rectangle {
+            width: 26px;
+            height: 22px;
+            border-radius: 11px;
+            background: root.today ? Theme.accent : transparent;
+
+            Text {
+                text: root.day;
+                color: root.today ? Theme.on-accent : Theme.text;
+                font-size: Theme.fs-xs;
+                font-weight: Theme.fw-medium;
+            }
+        }
+    }
+}
+
+export component WeeklyReport inherits VerticalLayout {
+    spacing: Theme.space-5;
+
+    Card {
+        CardTitle {
+            text: "Por dia";
+            trailing: ReportsState.total;
+        }
+
+        HorizontalLayout {
+            padding-top: Theme.space-4;
+            spacing: Theme.space-2;
+
+            // Scale: top, middle and zero, on the gridlines.
+            Rectangle {
+                width: 28px;
+                height: Chart.height;
+
+                for label[index] in [ReportsState.scale-top, ReportsState.scale-mid, "0"]: Text {
+                    y: Chart.height * index / 2 - self.preferred-height / 2;
+                    width: parent.width;
+                    horizontal-alignment: right;
+                    text: label;
+                    color: Theme.muted;
+                    font-size: Theme.fs-caption;
+                }
+            }
+
+            Rectangle {
+                horizontal-stretch: 1;
+
+                for index in 3: Rectangle {
+                    y: Chart.height * index / 2;
+                    height: 1px;
+                    background: index == 2 ? Theme.line-2 : Theme.line;
+                }
+
+                HorizontalLayout {
+                    for column in ReportsState.days: DayBar {
+                        weekday: column.weekday;
+                        day: column.day;
+                        total: column.total;
+                        fill: column.height;
+                        parts: column.parts;
+                        today: column.today;
+                    }
+                }
+            }
+        }
+    }
+
+    Card {
+        CardTitle {
+            text: "Total por projeto";
+        }
+
+        VerticalLayout {
+            for row[index] in ReportsState.week-projects: ReportLine {
+                item: row;
+                first: index == 0;
+            }
+        }
+    }
+}

@@ -1,0 +1,194 @@
+// "Alarme tocando" overlay (spec decision 12; not in the handoff screens, built from its tokens
+// and components): a small frameless, always-on-top window with the ringing alarm's name, time,
+// the "atrasado" tag, the notification text and the task, and Soneca n min · Dispensar. When
+// several alarms ring, it shows the first with "1 de N" and moves on after each answer.
+import { Theme } from "theme.slint";
+import { TaskLine } from "panels/timer-ui.slint";
+import { Button, TaskCaption } from "panels/common.slint";
+
+// Amber pill ("atrasado", "1 de 2").
+component Tag inherits Rectangle {
+    in property <string> text;
+    in property <bool> strong;
+
+    height: 22px;
+    width: label.preferred-width + 2 * Theme.space-2-5;
+    border-radius: 11px;
+    background: root.strong ? Theme.pause : Theme.pause-soft;
+
+    label := Text {
+        text: root.text;
+        color: root.strong ? #0a0a0a : Theme.pause-text;
+        font-size: Theme.fs-xs;
+        font-weight: Theme.fw-semibold;
+    }
+}
+
+export component AlarmOverlay inherits Window {
+    in property <string> name: "Alarme";
+    in property <string> time: "07:30";
+    in property <string> message;
+    in property <TaskLine> task;
+    // "atrasado 12 min"; empty when on time.
+    in property <string> late;
+    // "1 de 2"; empty when only one alarm rings.
+    in property <string> position;
+    in property <int> snooze-minutes: 5;
+    // A custom sound that failed ("tocando o som padrão").
+    in property <string> notice;
+    callback snooze();
+    callback dismiss();
+
+    title: "Clocky · Alarme";
+    no-frame: true;
+    always-on-top: true;
+    background: transparent;
+    default-font-family: Theme.font-sans;
+    width: 360px;
+    height: card.preferred-height;
+
+    card := Rectangle {
+        background: Theme.panel;
+        border-radius: Theme.radius-panel;
+        border-width: 1px;
+        border-color: Theme.pause;
+        clip: true;
+
+        VerticalLayout {
+            // Amber band: the same "ringing" cue as the Ativos card (pause-soft).
+            Rectangle {
+                background: Theme.pause-soft;
+
+                HorizontalLayout {
+                    padding: Theme.space-4;
+                    padding-left: Theme.space-5;
+                    padding-right: Theme.space-5;
+                    spacing: Theme.space-3;
+
+                    Rectangle {
+                        width: 40px;
+                        height: 40px;
+                        border-radius: 20px;
+                        background: Theme.pause;
+
+                        Image {
+                            width: 20px;
+                            height: 20px;
+                            source: @image-url("../icons/alarm.svg");
+                            colorize: #0a0a0a;
+                        }
+                    }
+
+                    VerticalLayout {
+                        horizontal-stretch: 1;
+                        alignment: center;
+                        spacing: 2px;
+
+                        Text {
+                            text: root.late != "" ? "Alarme atrasado" : "Alarme tocando";
+                            color: Theme.pause-text;
+                            font-size: Theme.fs-sm;
+                            font-weight: Theme.fw-medium;
+                        }
+
+                        Text {
+                            text: root.name;
+                            color: Theme.text;
+                            font-size: Theme.fs-lg;
+                            font-weight: Theme.fw-medium;
+                            overflow: elide;
+                        }
+                    }
+
+                    if root.position != "": VerticalLayout {
+                        alignment: center;
+
+                        Tag {
+                            text: root.position;
+                        }
+                    }
+                }
+            }
+
+            Rectangle {
+                height: 1px;
+                background: Theme.line;
+            }
+
+            VerticalLayout {
+                padding: Theme.space-5;
+                spacing: Theme.space-3;
+
+                HorizontalLayout {
+                    spacing: Theme.space-3;
+
+                    Text {
+                        vertical-alignment: center;
+                        text: root.time;
+                        color: Theme.text;
+                        font-family: Theme.font-mono;
+                        font-size: Theme.fs-timer-md;
+                        font-weight: Theme.fw-medium;
+                    }
+
+                    if root.late != "": VerticalLayout {
+                        alignment: center;
+
+                        Tag {
+                            text: "atrasado";
+                            strong: true;
+                        }
+                    }
+
+                    Rectangle {
+                        horizontal-stretch: 1;
+                    }
+                }
+
+                if root.late != "": Text {
+                    text: "Era para tocar às " + root.time + " · " + root.late;
+                    color: Theme.muted;
+                    font-size: Theme.fs-sm;
+                }
+
+                if root.message != "": Text {
+                    text: root.message;
+                    color: Theme.text;
+                    font-size: Theme.fs-base;
+                    wrap: word-wrap;
+                }
+
+                TaskCaption {
+                    task: root.task;
+                }
+
+                if root.notice != "": Text {
+                    text: root.notice;
+                    color: Theme.pause-text;
+                    font-size: Theme.fs-sm;
+                    wrap: word-wrap;
+                }
+
+                HorizontalLayout {
+                    padding-top: Theme.space-2;
+                    spacing: Theme.space-2-5;
+
+                    Button {
+                        horizontal-stretch: 1;
+                        height: Theme.size-button;
+                        primary: false;
+                        text: "Soneca " + root.snooze-minutes + " min";
+                        clicked => { root.snooze(); }
+                    }
+
+                    Button {
+                        horizontal-stretch: 1;
+                        height: Theme.size-button;
+                        text: "Dispensar";
+                        clicked => { root.dismiss(); }
+                    }
+                }
+            }
+        }
+    }
+}

@@ -4,6 +4,7 @@
 //! one row run in a single transaction.
 
 mod active;
+mod alarms;
 mod convert;
 mod error;
 mod migrations;
@@ -18,6 +19,7 @@ mod tasks;
 pub(crate) mod writes;
 
 pub use active::ActiveTimerLink;
+pub use alarms::{Alarm, NewAlarm, PendingAlarm};
 pub use error::StoreError;
 pub use presets::{NewPomodoroPreset, PomodoroPreset, TimerPreset};
 pub use projects::Project;
@@ -91,6 +93,14 @@ pub fn backup_path(db: &Path) -> PathBuf {
     let mut name = db.as_os_str().to_owned();
     name.push(".bak");
     PathBuf::from(name)
+}
+
+impl Store {
+    /// Read access to the connection for the read-only queries of other core modules
+    /// (`reports`).
+    pub(crate) fn conn(&self) -> &Connection {
+        &self.conn
+    }
 }
 
 #[cfg(test)]

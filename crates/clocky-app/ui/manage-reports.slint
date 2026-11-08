@@ -1,0 +1,121 @@
+// Relatórios (designed in M7, spec section 6): tabs [Geral | Semanal | Diário], the period
+// with ‹ › and "Hoje" / "Esta semana", then the tab's report or its empty state. The Sessão
+// detail replaces all of it while open. Below 600px the period row goes under the tabs.
+import { Theme } from "theme.slint";
+import { FilterChip, SecondaryButton } from "widgets.slint";
+import { EmptyState, OutlineIcon, Segmented } from "manage-controls.slint";
+import { ReportsState } from "manage-reports-state.slint";
+import { OverviewReport, WeeklyReport } from "manage-reports-week.slint";
+import { DailyReport } from "manage-reports-day.slint";
+import { SessionReportView } from "manage-reports-session.slint";
+
+component PeriodNav inherits HorizontalLayout {
+    spacing: Theme.space-2;
+
+    OutlineIcon {
+        icon: @image-url("../icons/chevron-left.svg");
+        clicked => { ReportsState.previous(); }
+    }
+
+    Text {
+        min-width: 150px;
+        horizontal-stretch: 1;
+        vertical-alignment: center;
+        horizontal-alignment: center;
+        text: ReportsState.period-label;
+        color: Theme.text;
+        font-size: Theme.fs-md;
+        font-weight: Theme.fw-medium;
+        overflow: elide;
+    }
+
+    OutlineIcon {
+        icon: @image-url("../icons/chevron-right.svg");
+        enabled: !ReportsState.at-current;
+        clicked => { ReportsState.next(); }
+    }
+
+    if !ReportsState.holds-today: VerticalLayout {
+        alignment: center;
+
+        SecondaryButton {
+            height: 36px;
+            text: ReportsState.current-label;
+            clicked => { ReportsState.current(); }
+        }
+    }
+}
+
+component Tabs inherits Segmented {
+    width: 300px;
+    options: ["Geral", "Semanal", "Diário"];
+    selected: ReportsState.tab;
+    picked(index) => { ReportsState.select-tab(index); }
+}
+
+export component ReportsPage inherits VerticalLayout {
+    property <bool> narrow: self.width < 600px;
+
+    alignment: start;
+    spacing: Theme.space-5;
+
+    if ReportsState.session-open: SessionReportView { }
+
+    if !ReportsState.session-open && !root.narrow: HorizontalLayout {
+        spacing: Theme.space-4;
+
+        Tabs { }
+
+        Rectangle {
+            horizontal-stretch: 1;
+        }
+
+        PeriodNav {
+            horizontal-stretch: 0;
+        }
+    }
+
+    if !ReportsState.session-open && root.narrow: VerticalLayout {
+        spacing: Theme.space-3;
+
+        Tabs {
+            width: root.width;
+        }
+
+        PeriodNav { }
+    }
+
+    if !ReportsState.session-open && ReportsState.tab == 0: HorizontalLayout {
+        alignment: start;
+        spacing: Theme.space-2;
+
+        FilterChip {
+            text: "Dia";
+            active: ReportsState.range == 0;
+            clicked => { ReportsState.select-range(0); }
+        }
+
+        FilterChip {
+            text: "Semana";
+            active: ReportsState.range == 1;
+            clicked => { ReportsState.select-range(1); }
+        }
+
+        FilterChip {
+            text: "Mês";
+            active: ReportsState.range == 2;
+            clicked => { ReportsState.select-range(2); }
+        }
+    }
+
+    if !ReportsState.session-open && ReportsState.empty: EmptyState {
+        title: ReportsState.empty-title;
+        text: ReportsState.empty-text;
+    }
+
+    if !ReportsState.session-open && !ReportsState.empty && ReportsState.tab == 0: OverviewReport { }
+
+    if !ReportsState.session-open && !ReportsState.empty && ReportsState.tab == 1: WeeklyReport { }
+
+    if !ReportsState.session-open && !ReportsState.empty && ReportsState.tab == 2: DailyReport { }
+}

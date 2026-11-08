@@ -1,0 +1,275 @@
+// Pomodoro (handoff SPEC 2.4): the list of saved pomodoros (screen 40) and the timer (41–43).
+import { Theme } from "../theme.slint";
+import { TimerUi, PomodoroCard } from "timer-ui.slint";
+import { Button, Footer, IconButton, TaskCaption, TaskLineView } from "common.slint";
+
+// Saved pomodoro card: name + summary, segment bar, task; the chevron opens its timer.
+component PresetCard inherits Rectangle {
+    in property <PomodoroCard> card;
+
+    height: 98px;
+    border-radius: Theme.radius-panel;
+    background: touch.has-hover ? Theme.panel-2 : Theme.field;
+    border-width: 1px;
+    border-color: Theme.line;
+
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { TimerUi.pomo-open-preset(root.card.id); }
+    }
+
+    HorizontalLayout {
+        padding-left: Theme.space-3-5;
+        padding-right: Theme.space-3;
+        spacing: Theme.space-4;
+
+        VerticalLayout {
+            horizontal-stretch: 1;
+            alignment: center;
+            spacing: Theme.space-2-5;
+
+            HorizontalLayout {
+                Text {
+                    horizontal-stretch: 1;
+                    text: root.card.name;
+                    color: Theme.text;
+                    font-size: 17px;
+                    font-weight: Theme.fw-medium;
+                    overflow: elide;
+                }
+
+                Text {
+                    vertical-alignment: center;
+                    text: root.card.summary;
+                    color: Theme.muted;
+                    font-size: Theme.fs-md;
+                }
+            }
+
+            HorizontalLayout {
+                height: 6px;
+                spacing: 3px;
+
+                for part in root.card.parts: Rectangle {
+                    horizontal-stretch: part.fraction;
+                    min-width: 4px;
+                    border-radius: 3px;
+                    background: part.focus ? Theme.accent : Theme.pause;
+                }
+            }
+
+            TaskCaption {
+                task: root.card.task;
+            }
+        }
+
+        VerticalLayout {
+            alignment: center;
+
+            Image {
+                width: 18px;
+                height: 18px;
+                source: @image-url("../../icons/chevron-right.svg");
+                colorize: Theme.muted;
+            }
+        }
+    }
+}
+
+export component PomodoroListView inherits VerticalLayout {
+    VerticalLayout {
+        padding: Theme.space-5;
+        spacing: Theme.space-2-5;
+
+        Text {
+            text: "Seus pomodoros";
+            color: Theme.muted;
+            font-size: Theme.fs-md;
+            font-weight: Theme.fw-medium;
+        }
+
+        if TimerUi.pomo-presets.length == 0: Text {
+            text: "Nenhum pomodoro salvo ainda. Crie o primeiro em “Novo pomodoro”.";
+            color: Theme.muted;
+            font-size: Theme.fs-sm;
+            wrap: word-wrap;
+        }
+
+        // Up to five cards show at once; more scroll.
+        if TimerUi.pomo-presets.length > 0: Flickable {
+            height: min(TimerUi.pomo-presets.length, 5) * 110px - 12px;
+            content-height: TimerUi.pomo-presets.length * 110px - 12px;
+
+            for card[i] in TimerUi.pomo-presets: PresetCard {
+                y: i * 110px;
+                width: parent.width;
+                card: card;
+            }
+        }
+    }
+
+    Footer {
+        Button {
+            horizontal-stretch: 1;
+            text: "Novo pomodoro";
+            has-icon: true;
+            icon: @image-url("../../icons/plus.svg");
+            clicked => { TimerUi.pomo-new(); }
+        }
+    }
+}
+
+// Phase chip: Foco neutral, breaks amber.
+component PhaseChip inherits Rectangle {
+    height: 32px;
+    width: chip-row.preferred-width + 2 * Theme.space-3-5;
+    border-radius: 16px;
+    background: TimerUi.pomo-break ? Theme.pause-soft : Theme.panel-2;
+
+    chip-row := HorizontalLayout {
+        x: Theme.space-3-5;
+        spacing: Theme.space-2;
+
+        VerticalLayout {
+            alignment: center;
+
+            Rectangle {
+                width: 8px;
+                height: 8px;
+                border-radius: 4px;
+                background: TimerUi.pomo-break ? Theme.pause : Theme.text;
+            }
+        }
+
+        Text {
+            vertical-alignment: center;
+            text: TimerUi.pomo-phase;
+            color: TimerUi.pomo-break ? Theme.pause-text : Theme.text;
+            font-size: Theme.fs-md;
+            font-weight: Theme.fw-medium;
+        }
+    }
+}
+
+// 220 ring with stroke 8: the track, the elapsed arc and its head, the time in the middle.
+component Ring inherits Rectangle {
+    width: 220px;
+    height: 220px;
+    property <color> stroke: TimerUi.pomo-break ? Theme.pause : Theme.accent;
+
+    Rectangle {
+        border-radius: 110px;
+        border-width: 8px;
+        border-color: Theme.line-2;
+    }
+
+    Path {
+        width: 220px;
+        height: 220px;
+        viewbox-width: 220;
+        viewbox-height: 220;
+        commands: TimerUi.pomo-arc;
+        stroke: root.stroke;
+        stroke-width: 8px;
+        fill: transparent;
+    }
+
+    if TimerUi.pomo-started: Rectangle {
+        x: TimerUi.pomo-head-x * 1px - 6px;
+        y: TimerUi.pomo-head-y * 1px - 6px;
+        width: 12px;
+        height: 12px;
+        border-radius: 6px;
+        background: root.stroke;
+    }
+
+    VerticalLayout {
+        alignment: center;
+        spacing: Theme.space-1;
+
+        Text {
+            horizontal-alignment: center;
+            text: TimerUi.pomo-time;
+            color: Theme.text;
+            font-family: Theme.font-mono;
+            font-size: Theme.fs-timer-ring;
+            font-weight: Theme.fw-medium;
+        }
+
+        Text {
+            horizontal-alignment: center;
+            text: TimerUi.pomo-focus-label;
+            color: Theme.muted;
+            font-size: Theme.fs-md;
+        }
+    }
+}
+
+export component PomodoroTimerView inherits VerticalLayout {
+    padding: Theme.space-5;
+    spacing: Theme.space-5;
+
+    HorizontalLayout {
+        alignment: center;
+
+        PhaseChip { }
+    }
+
+    HorizontalLayout {
+        alignment: center;
+
+        Ring { }
+    }
+
+    if TimerUi.pomo-note != "": Text {
+        horizontal-alignment: center;
+        text: TimerUi.pomo-note;
+        color: TimerUi.pomo-break ? Theme.pause-text : Theme.text;
+        font-size: Theme.fs-md;
+    }
+
+    HorizontalLayout {
+        alignment: center;
+        spacing: Theme.space-2-5;
+
+        for dot in TimerUi.pomo-dots: Rectangle {
+            width: 12px;
+            height: 12px;
+            border-radius: 6px;
+            background: dot == 2 ? Theme.text : transparent;
+            border-width: dot == 2 ? 0 : 1.5px;
+            border-color: dot == 1 ? Theme.text : Theme.line-2;
+        }
+    }
+
+    TaskLineView {
+        task: TimerUi.pomo-task;
+        change => { TimerUi.pomo-change-task(); }
+    }
+
+    HorizontalLayout {
+        spacing: Theme.space-2-5;
+
+        Button {
+            horizontal-stretch: 1.7;
+            height: Theme.size-button;
+            text: TimerUi.pomo-primary-label;
+            clicked => { TimerUi.pomo-primary(); }
+        }
+
+        Button {
+            horizontal-stretch: 1;
+            height: Theme.size-button;
+            primary: false;
+            text: "Parar";
+            enabled: TimerUi.pomo-started;
+            clicked => { TimerUi.pomo-stop(); }
+        }
+
+        IconButton {
+            icon: @image-url("../../icons/skip.svg");
+            enabled: TimerUi.pomo-started;
+            clicked => { TimerUi.pomo-skip(); }
+        }
+    }
+}

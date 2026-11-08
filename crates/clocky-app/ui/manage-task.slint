@@ -1,0 +1,410 @@
+// Task page (handoff screen 73): subtasks column + "Vinculado a" and "Tempo registrado".
+import { Theme } from "theme.slint";
+import { SubtaskRow } from "models.slint";
+import { CheckBox, ProgressBar, SecondaryButton, TextAction, TextField } from "widgets.slint";
+import { StrikeText } from "manage-project.slint";
+import { ManageState } from "manage-state.slint";
+
+// A checklist item: checkbox and name. Double-click renames (Enter saves, Esc cancels); the
+// cross on hover deletes it.
+component SubtaskLine inherits Rectangle {
+    in property <SubtaskRow> subtask;
+    in property <bool> first;
+    property <bool> editing;
+
+    min-height: 48px;
+
+    if !root.first: Rectangle {
+        y: 0;
+        height: 1px;
+        background: Theme.line;
+    }
+
+    hover := TouchArea {
+        double-clicked => { root.editing = true; }
+    }
+
+    HorizontalLayout {
+        padding-left: Theme.space-4;
+        padding-right: Theme.space-3;
+        spacing: Theme.space-3;
+
+        CheckBox {
+            checked: root.subtask.done;
+            toggled(done) => { ManageState.set-subtask-done(root.subtask.id, done); }
+        }
+
+        if !root.editing: VerticalLayout {
+            horizontal-stretch: 1;
+            alignment: center;
+
+            StrikeText {
+                text: root.subtask.name;
+                struck: root.subtask.done;
+            }
+        }
+
+        if root.editing: TextField {
+            horizontal-stretch: 1;
+            boxed: false;
+            text: root.subtask.name;
+            init => { self.focus-input(); }
+            accepted(text) => {
+                root.editing = false;
+                ManageState.rename-subtask(root.subtask.id, text);
+            }
+            cancelled => { root.editing = false; }
+        }
+
+        VerticalLayout {
+            alignment: center;
+
+            Rectangle {
+                width: 28px;
+                height: 28px;
+                border-radius: Theme.radius-sm;
+                opacity: hover.has-hover || remove.has-hover ? 1 : 0;
+                background: remove.has-hover ? Theme.accent-soft : transparent;
+
+                Image {
+                    width: 14px;
+                    height: 14px;
+                    source: @image-url("../icons/x.svg");
+                    colorize: Theme.muted;
+                }
+
+                remove := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { ManageState.delete-subtask(root.subtask.id); }
+                }
+            }
+        }
+    }
+}
+
+// "+ Adicionar subtarefa": the last row of the checklist (Enter adds and keeps typing).
+component AddSubtaskLine inherits Rectangle {
+    in property <bool> first;
+    // "Criar subtarefa" bumps the counter to focus the field.
+    property <int> focus-request: ManageState.focus-add-subtask;
+
+    changed focus-request => { field.focus-input(); }
+
+    height: 48px;
+
+    if !root.first: Rectangle {
+        y: 0;
+        height: 1px;
+        background: Theme.line;
+    }
+
+    HorizontalLayout {
+        padding-left: Theme.space-4;
+        padding-right: Theme.space-4;
+        spacing: Theme.space-3;
+
+        VerticalLayout {
+            alignment: center;
+
+            Image {
+                width: 18px;
+                height: 18px;
+                source: @image-url("../icons/plus.svg");
+                colorize: Theme.muted;
+            }
+        }
+
+        field := TextField {
+            horizontal-stretch: 1;
+            boxed: false;
+            placeholder: "Adicionar subtarefa";
+            text <=> ManageState.subtask-draft;
+            accepted(text) => { ManageState.add-subtask(text); }
+            cancelled => { ManageState.subtask-draft = ""; }
+        }
+    }
+
+}
+
+export component SubtasksColumn inherits VerticalLayout {
+    alignment: start;
+    spacing: Theme.space-3;
+
+    HorizontalLayout {
+        Text {
+            horizontal-stretch: 1;
+            text: "Subtarefas";
+            color: Theme.text;
+            font-size: Theme.fs-base;
+            font-weight: Theme.fw-medium;
+        }
+
+        Text {
+            text: ManageState.checklist;
+            color: Theme.muted;
+            font-size: Theme.fs-sm;
+        }
+    }
+
+    ProgressBar {
+        progress: ManageState.checklist-progress;
+    }
+
+    Rectangle {
+        border-radius: Theme.radius-xl;
+        border-width: 1px;
+        border-color: Theme.line;
+        clip: true;
+
+        VerticalLayout {
+            for subtask[index] in ManageState.subtasks: SubtaskLine {
+                subtask: subtask;
+                first: index == 0;
+            }
+
+            AddSubtaskLine {
+                first: ManageState.subtasks.length == 0;
+            }
+        }
+    }
+
+    HorizontalLayout {
+        alignment: start;
+        padding-top: Theme.space-2;
+        spacing: Theme.space-2;
+
+        SecondaryButton {
+            text: "Iniciar pomodoro";
+            has-icon: true;
+            icon: @image-url("../icons/play.svg");
+            clicked => { ManageState.start-pomodoro(); }
+        }
+
+        SecondaryButton {
+            text: "Iniciar cronômetro";
+            has-icon: true;
+            icon: @image-url("../icons/play.svg");
+            clicked => { ManageState.start-stopwatch(); }
+        }
+    }
+
+}
+
+// Card of the side column.
+component SideCard inherits Rectangle {
+    border-radius: Theme.radius-xl;
+    border-width: 1px;
+    border-color: Theme.line;
+    background: Theme.field;
+
+    VerticalLayout {
+        padding: Theme.space-4;
+        spacing: Theme.space-2-5;
+
+        @children
+    }
+}
+
+export component LinkedCard inherits SideCard {
+    HorizontalLayout {
+        Text {
+            horizontal-stretch: 1;
+            vertical-alignment: center;
+            text: "Vinculado a";
+            color: Theme.text;
+            font-size: Theme.fs-base;
+            font-weight: Theme.fw-medium;
+        }
+
+        TextAction {
+            text: "+ Vincular";
+            clicked => { ManageState.link-task(); }
+        }
+    }
+
+    for link in ManageState.links: HorizontalLayout {
+        min-height: 36px;
+        spacing: Theme.space-2-5;
+
+        VerticalLayout {
+            alignment: center;
+
+            Rectangle {
+                width: 30px;
+                height: 30px;
+                border-radius: 15px;
+                background: Theme.fab;
+                border-width: 1px;
+                border-color: Theme.fab-border;
+
+                Image {
+                    width: 16px;
+                    height: 16px;
+                    source: link.is-alarm ? @image-url("../icons/alarm.svg") : link.is-pomodoro ? @image-url("../icons/pomodoro.svg") : @image-url("../icons/hourglass.svg");
+                    colorize: Theme.fab-text;
+                }
+            }
+        }
+
+        VerticalLayout {
+            horizontal-stretch: 1;
+            alignment: center;
+            spacing: 2px;
+
+            Text {
+                text: link.kind;
+                color: Theme.text;
+                font-size: Theme.fs-md;
+                font-weight: Theme.fw-medium;
+            }
+
+            Text {
+                text: link.label;
+                color: Theme.muted;
+                font-size: Theme.fs-xs;
+                overflow: elide;
+            }
+        }
+
+        // M7a: an alarm link opens its editor.
+        if link.is-alarm: Rectangle {
+            width: 28px;
+            border-radius: Theme.radius-sm;
+            background: alarm-touch.has-hover ? Theme.accent-soft : transparent;
+
+            Image {
+                width: 16px;
+                height: 16px;
+                source: @image-url("../icons/chevron-right.svg");
+                colorize: Theme.muted;
+            }
+
+            alarm-touch := TouchArea {
+                mouse-cursor: pointer;
+                clicked => { ManageState.open-alarm(link.alarm-id); }
+            }
+        }
+    }
+
+    if ManageState.links.length == 0: Text {
+        text: "Nenhum alarme, timer ou pomodoro vinculado.";
+        color: Theme.muted;
+        font-size: Theme.fs-sm;
+        wrap: word-wrap;
+    }
+}
+
+export component TrackedCard inherits SideCard {
+    HorizontalLayout {
+        Text {
+            horizontal-stretch: 1;
+            vertical-alignment: center;
+            text: "Tempo registrado";
+            color: Theme.text;
+            font-size: Theme.fs-base;
+            font-weight: Theme.fw-medium;
+        }
+
+        Text {
+            vertical-alignment: center;
+            text: ManageState.task-total;
+            color: Theme.text;
+            font-family: Theme.font-mono;
+            font-size: 18px;
+            font-weight: Theme.fw-semibold;
+        }
+    }
+
+    for session in ManageState.sessions: Rectangle {
+        height: 32px;
+
+        // M7b: a session opens its Sessão detail (Relatórios).
+        session-touch := TouchArea {
+            mouse-cursor: pointer;
+            clicked => { ManageState.open-session(session.id); }
+        }
+
+        Rectangle {
+            y: 0;
+            height: 1px;
+            background: Theme.line;
+        }
+
+        HorizontalLayout {
+            spacing: Theme.space-2-5;
+
+            Text {
+                width: 56px;
+                vertical-alignment: center;
+                text: session.day;
+                color: Theme.muted;
+                font-size: Theme.fs-sm;
+            }
+
+            Text {
+                horizontal-stretch: 1;
+                vertical-alignment: center;
+                text: session.range;
+                color: Theme.text;
+                font-size: Theme.fs-sm;
+            }
+
+            Text {
+                vertical-alignment: center;
+                text: session.kind;
+                color: Theme.muted;
+                font-size: Theme.fs-sm;
+            }
+
+            Text {
+                width: 64px;
+                vertical-alignment: center;
+                horizontal-alignment: right;
+                text: session.duration;
+                color: Theme.text;
+                font-size: Theme.fs-sm;
+                font-weight: Theme.fw-medium;
+            }
+        }
+    }
+
+    if ManageState.sessions.length == 0: Text {
+        text: "Nenhuma sessão registrada ainda.";
+        color: Theme.muted;
+        font-size: Theme.fs-sm;
+    }
+}
+
+// Two columns when there is room (subtasks 3 : side 2), stacked otherwise (screen 74).
+export component TaskPage inherits VerticalLayout {
+    alignment: start;
+    property <bool> wide: self.width >= 620px;
+
+    if root.wide: HorizontalLayout {
+        spacing: Theme.space-6;
+
+        SubtasksColumn {
+            horizontal-stretch: 3;
+        }
+
+        VerticalLayout {
+            horizontal-stretch: 2;
+            alignment: start;
+            spacing: Theme.space-5;
+
+            LinkedCard { }
+
+            TrackedCard { }
+        }
+    }
+
+    if !root.wide: VerticalLayout {
+        spacing: Theme.space-6;
+
+        SubtasksColumn { }
+
+        LinkedCard { }
+
+        TrackedCard { }
+    }
+}

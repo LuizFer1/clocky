@@ -35,9 +35,11 @@ cargo run -p clocky-app
 
 - **Linux build dependencies:** `sudo apt-get install libasound2-dev libfontconfig1-dev` (ALSA for sound, fontconfig for Slint).
 - **Linux display server:** the floating icon must be placed at a screen edge, which Wayland does not allow. Clocky therefore runs through X11 whenever `DISPLAY` is set (XWayland on Wayland desktops).
-- **Files:** settings in `settings.json` in the user config dir (`%APPDATA%\Clocky\config` on Windows) and the log in `clocky.log` in the user data dir (`%LOCALAPPDATA%\Clocky\data\logs` on Windows).
+- **Files:** settings (theme, dock position, pomodoro defaults) live in the database's `settings` table; an older `settings.json` in the user config dir is imported once. The log is `clocky.log` in the user data dir (`%LOCALAPPDATA%\Clocky\data\logs` on Windows).
+- **Start with the system:** the Configurações toggle writes the per-user entry (Windows `HKCU\...\Run`, Linux `~/.config/autostart/clocky.desktop`, macOS `~/Library/LaunchAgents`).
 - **Single instance:** launching Clocky again brings the running one to the front. Debug commands go through the same channel: `clocky --send notify-test`, `clocky --send sound-test` and `clocky --send quit`.
-- **Screenshots:** `CLOCKY_SCREENSHOT_DIR=<dir> clocky` renders each window to `<dir>/<window>-<theme>.png`, in the dark and light themes, and exits. It only renders Clocky's own windows, never the desktop.
+- **Database:** `clocky.db` in the user data dir (`%APPDATA%\Clocky\data` on Windows), or the file named by `CLOCKY_DB`. If it cannot be opened or migrated, Clocky shows the path and the error and does not start; the file is never overwritten.
+- **Screenshots:** `CLOCKY_SCREENSHOT_DIR=<dir> clocky` walks through the windows (dock, panels, manage pages, task picker), saves `<dir>/<step>-<theme>.png` in the dark and light themes, and exits. It only renders Clocky's own windows, never the desktop. Add `CLOCKY_DB=<tmp>/demo.db CLOCKY_DEMO=1` to fill an empty database with demo projects first (only when `CLOCKY_DB` is set).
 
 ### Project structure
 

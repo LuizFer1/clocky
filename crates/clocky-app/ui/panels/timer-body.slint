@@ -1,0 +1,73 @@
+// Body of the panel window for the timer views, plus the overlay drawn over it ("Cronômetro
+// esquecido?" dialog). The view is picked by `TimerUi.view`.
+import { Theme } from "../theme.slint";
+import { TimerUi } from "timer-ui.slint";
+import { StopwatchView } from "stopwatch.slint";
+import { CountdownConfigView, CountdownRunView } from "countdown.slint";
+import { PomodoroListView, PomodoroTimerView } from "pomodoro.slint";
+import { WizardView } from "wizard.slint";
+import { OverviewView } from "overview.slint";
+import { TimerOverlays } from "overlays.slint";
+// M7a: the Alarme panel.
+import { AlarmEditorView } from "alarm-editor.slint";
+
+export { TimerOverlays }
+
+// One-line notice with a close button ("Sessão de 00:12:04 registrada").
+component NoticeBar inherits Rectangle {
+    background: Theme.accent-soft;
+    border-radius: Theme.radius-lg;
+    height: max(40px, label.preferred-height + 2 * Theme.space-2-5);
+
+    HorizontalLayout {
+        padding-left: Theme.space-4;
+        padding-right: Theme.space-2;
+        spacing: Theme.space-2;
+
+        label := Text {
+            horizontal-stretch: 1;
+            vertical-alignment: center;
+            text: TimerUi.notice;
+            color: Theme.text;
+            font-size: Theme.fs-md;
+            wrap: word-wrap;
+        }
+
+        Rectangle {
+            width: 28px;
+            border-radius: Theme.radius-sm;
+            background: close.has-hover ? Theme.accent-soft : transparent;
+
+            Text {
+                text: "×";
+                color: Theme.muted;
+                font-size: Theme.fs-xl;
+            }
+
+            close := TouchArea {
+                mouse-cursor: pointer;
+                clicked => { TimerUi.dismiss-notice(); }
+            }
+        }
+    }
+}
+
+export component TimerBody inherits VerticalLayout {
+    if TimerUi.notice != "": VerticalLayout {
+        padding-left: Theme.space-5;
+        padding-right: Theme.space-5;
+        padding-top: Theme.space-4;
+
+        NoticeBar { }
+    }
+
+    if TimerUi.view == "stopwatch": StopwatchView { }
+    if TimerUi.view == "countdown-config": CountdownConfigView { }
+    if TimerUi.view == "countdown-run": CountdownRunView { }
+    if TimerUi.view == "pomodoro-list": PomodoroListView { }
+    if TimerUi.view == "pomodoro-timer": PomodoroTimerView { }
+    if TimerUi.view == "wizard": WizardView { }
+    if TimerUi.view == "overview": OverviewView { }
+    // M7a: the Alarme panel.
+    if TimerUi.view == "alarm-editor": AlarmEditorView { }
+}

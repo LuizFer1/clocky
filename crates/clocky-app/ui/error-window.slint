@@ -1,0 +1,112 @@
+// Shown instead of the app when the database cannot be opened (spec, section 7): the file path
+// and the error, and a "Sair" button. The file is never overwritten. When only the saved active
+// timers cannot be restored, it also offers "Descartar timers ativos" (the history stays).
+import { Theme } from "theme.slint";
+import { PrimaryButton } from "components.slint";
+import { SecondaryButton } from "widgets.slint";
+
+export component ErrorWindow inherits Window {
+    in property <string> heading: "Não foi possível abrir o banco de dados";
+    in property <string> path;
+    in property <string> message;
+    in property <string> hint: "O Clocky não alterou o arquivo. Confira o caminho e o erro abaixo, depois abra o app de novo.";
+    // The saved active timers are the problem: offer to discard them and open the app.
+    in property <bool> can-discard;
+    callback quit();
+    callback discard();
+
+    title: "Clocky";
+    icon: @image-url("../icons/tray.svg");
+    width: 520px;
+    height: 400px;
+    background: Theme.panel;
+    default-font-family: Theme.font-sans;
+
+    VerticalLayout {
+        padding: Theme.space-6;
+        spacing: Theme.space-4;
+
+        Text {
+            text: root.heading;
+            color: Theme.text;
+            font-size: Theme.fs-lg;
+            font-weight: Theme.fw-medium;
+            wrap: word-wrap;
+        }
+
+        Text {
+            text: root.hint;
+            color: Theme.muted;
+            font-size: Theme.fs-md;
+            wrap: word-wrap;
+        }
+
+        VerticalLayout {
+            spacing: Theme.space-1;
+
+            Text {
+                text: "Arquivo";
+                color: Theme.muted;
+                font-size: Theme.fs-sm;
+                font-weight: Theme.fw-medium;
+            }
+
+            Rectangle {
+                background: Theme.field;
+                border-radius: Theme.radius-md;
+                border-width: 1px;
+                border-color: Theme.line-2;
+
+                VerticalLayout {
+                    padding: Theme.space-3;
+
+                    Text {
+                        text: root.path;
+                        color: Theme.text;
+                        font-family: Theme.font-mono;
+                        font-size: Theme.fs-sm;
+                        wrap: word-wrap;
+                    }
+                }
+            }
+        }
+
+        VerticalLayout {
+            spacing: Theme.space-1;
+
+            Text {
+                text: "Erro";
+                color: Theme.muted;
+                font-size: Theme.fs-sm;
+                font-weight: Theme.fw-medium;
+            }
+
+            Text {
+                text: root.message;
+                color: Theme.danger;
+                font-size: Theme.fs-md;
+                wrap: word-wrap;
+            }
+        }
+
+        Rectangle {
+            vertical-stretch: 1;
+        }
+
+        HorizontalLayout {
+            alignment: end;
+            spacing: Theme.space-2-5;
+
+            if root.can-discard: SecondaryButton {
+                text: "Descartar timers ativos";
+                clicked => { root.discard(); }
+            }
+
+            PrimaryButton {
+                text: "Sair";
+                has-icon: false;
+                clicked => { root.quit(); }
+            }
+        }
+    }
+}

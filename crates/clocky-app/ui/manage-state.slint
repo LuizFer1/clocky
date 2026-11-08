@@ -1,0 +1,108 @@
+// State and actions of the manage window. A global (one per window) so the sidebar and the
+// content read the same values in both layouts (wide and narrow) and nothing is lost when the
+// window crosses 800px. Rust (`src/manage.rs`) fills it after every change.
+import { ChipRow, ProjectItem, TaskRow, SubtaskRow, LinkRow, SessionRow } from "models.slint";
+
+export global ManageState {
+    // 0 = all projects, 1 = project, 2 = task, 3 = search results (`manage_view::Page`),
+    // 4 = Relatórios, 5 = Configurações (`manage::Section`).
+    in property <int> page;
+    in property <[ProjectItem]> projects;
+    in property <string> crumb: "Projetos";
+    in property <string> heading: "Todos os projetos";
+    in property <string> subheading: "0 projetos";
+    in property <bool> has-heading-color;
+    in property <color> heading-color;
+
+    // Project page and search results.
+    in property <[TaskRow]> tasks;
+    in property <bool> show-completed;
+    // "Nova tarefa" typing row.
+    in-out property <bool> adding-task;
+    in-out property <string> task-draft;
+    in-out property <string> search;
+
+    // Task page.
+    in property <bool> task-done;
+    in property <string> task-project: "";
+    in property <string> task-total;
+    in property <[SubtaskRow]> subtasks;
+    in property <string> checklist: "0/0 concluídas";
+    in property <float> checklist-progress;
+    in property <[LinkRow]> links;
+    in property <[SessionRow]> sessions;
+    in-out property <string> subtask-draft;
+    // Bumped by "Criar subtarefa" to focus the "Adicionar subtarefa" field.
+    in-out property <int> focus-add-subtask;
+    // Inline rename of the task title.
+    in-out property <bool> renaming-task;
+    in-out property <string> rename-draft;
+    // "Mover para" chips, wrapped in rows by Rust.
+    in-out property <bool> moving-task;
+    in property <[ChipRow]> move-chips;
+
+    // Project form ("Novo projeto" or "Editar projeto").
+    in-out property <bool> project-form-open;
+    in-out property <bool> project-form-editing;
+    in-out property <string> project-form-name;
+    in-out property <int> project-form-color: 1;
+    in property <[color]> palette;
+
+    // Confirmation dialog.
+    in property <bool> confirm-open;
+    in property <string> confirm-title;
+    in property <string> confirm-text;
+    in property <string> confirm-action: "Apagar";
+
+    // Navigation.
+    callback show-all();
+    callback select-project(int);
+    callback open-task(int);
+    // "connect › Tarefa": back from the task to its project.
+    callback back-to-project();
+    callback search-edited(string);
+    callback set-show-completed(bool);
+    callback open-menu();
+
+    // Projects.
+    callback new-project();
+    callback edit-project();
+    callback save-project(string, int);
+    callback archive-project();
+    callback delete-project();
+
+    // Tasks.
+    callback create-task(string);
+    callback set-task-done(int, bool);
+    // Completes or reopens the task of the task page ("⋯" menu).
+    callback toggle-current-task();
+    callback rename-task(string);
+    callback move-task(int);
+    callback move-to-no-project();
+    callback archive-task();
+    callback delete-task();
+
+    // Subtasks.
+    callback add-subtask(string);
+    callback set-subtask-done(int, bool);
+    callback rename-subtask(int, string);
+    callback delete-subtask(int);
+
+    // Timers (wired by M6b) and links.
+    callback start-pomodoro();
+    callback start-stopwatch();
+    callback link-task();
+    // M7a: an alarm row of "Vinculado a" was clicked.
+    callback open-alarm(int);
+
+    // Confirmation dialog.
+    callback confirm-accepted();
+    callback confirm-cancelled();
+
+    // M7b: Relatórios (page 4) and Configurações (page 5) from the sidebar footer; a session
+    // of "Tempo registrado" opens its Sessão detail. Archiving asks with a neutral dialog.
+    in property <bool> confirm-archive;
+    callback open-reports();
+    callback open-settings();
+    callback open-session(int);
+}
