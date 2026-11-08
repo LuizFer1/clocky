@@ -9,7 +9,7 @@ mod load;
 use rusqlite::{Transaction, params};
 
 use super::convert::{duration_to_ms, timer_id_from_sql, timer_id_to_sql};
-use super::rows::{collect, ensure_found};
+use super::rows::collect;
 use super::{Store, StoreError};
 use crate::domain::{PresetRef, TaskId, TimerId};
 use crate::engine::pomodoro::{Phase, Pomodoro};
@@ -173,32 +173,6 @@ pub(super) fn delete_active_tx(tx: &Transaction<'_>, id: TimerId) -> Result<usiz
 }
 
 impl Store {
-    /// Saves an active timer: inserts or updates its row and replaces its segments
-    /// (zero-length closed segments are dropped), in one transaction.
-    ///
-    /// # Errors
-    /// [`StoreError::Invalid`] if its preset does not match its kind; [`StoreError::Sqlite`] if
-    /// the preset does not exist, or if
-    /// the task does not exist or SQLite fails; [`StoreError::OutOfRange`] if the id or a
-    /// duration does not fit an `INTEGER`.
-    pub fn save_active(&mut self, active: &ActiveTimer) -> Result<(), StoreError> {
-        let tx = self.conn.transaction()?;
-        save_active_tx(&tx, active)?;
-        tx.commit()?;
-        Ok(())
-    }
-
-    /// Deletes an active timer and its segments.
-    ///
-    /// # Errors
-    /// [`StoreError::NotFound`] if it is not saved.
-    pub fn delete_active(&mut self, id: TimerId) -> Result<(), StoreError> {
-        let tx = self.conn.transaction()?;
-        let deleted = delete_active_tx(&tx, id)?;
-        tx.commit()?;
-        ensure_found(deleted, "active timer", timer_id_to_sql(id)?)
-    }
-
     /// Deletes every active timer without recording anything: the way out when a saved timer
     /// is corrupt and the tracker cannot open (history is kept).
     ///
@@ -238,8 +212,35 @@ impl Store {
     }
 }
 
+/// Single-row writes, for tests only: the tracker writes active timers through
+/// `Store::write_timers`, so outside the crate memory and database cannot drift apart.
 #[cfg(test)]
 impl Store {
+    /// Saves an active timer: inserts or updates its row and replaces its segments
+    /// (zero-length closed segments are dropped), in one transaction.
+    ///
+    /// # Errors
+    /// [`StoreError::Invalid`] if its preset does not match its kind; [`StoreError::Sqlite`] if
+    /// the task or preset does not exist or SQLite fails; [`StoreError::OutOfRange`] if the id or
+    /// a duration does not fit an `INTEGER`.
+    pub(crate) fn save_active(&mut self, active: &ActiveTimer) -> Result<(), StoreError> {
+        let tx = self.conn.transaction()?;
+        save_active_tx(&tx, active)?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// Deletes an active timer and its segments.
+    ///
+    /// # Errors
+    /// [`StoreError::NotFound`] if it is not saved.
+    pub(crate) fn delete_active(&mut self, id: TimerId) -> Result<(), StoreError> {
+        let tx = self.conn.transaction()?;
+        let deleted = delete_active_tx(&tx, id)?;
+        tx.commit()?;
+        super::rows::ensure_found(deleted, "active timer", timer_id_to_sql(id)?)
+    }
+
     /// Runs raw SQL against the database (tests plant corrupt rows and failing triggers).
     pub(crate) fn execute_batch_for_tests(&self, sql: &str) {
         self.conn.execute_batch(sql).unwrap();
