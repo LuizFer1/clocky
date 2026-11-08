@@ -63,6 +63,7 @@ pub fn seed_if_empty<Tz: TimeZone>(core: &mut AppCore, tz: &Tz) -> CoreResult<bo
     seeder.faculdade()?;
     seeder.pessoal()?;
     seeder.core.create_task(None, "organizar e-mails")?;
+    seeder.reports()?;
     Ok(true)
 }
 
@@ -197,6 +198,49 @@ impl<Tz: TimeZone> Seeder<'_, Tz> {
         let at = day.and_time(NaiveTime::from_hms_opt(h, m, 0)?);
         let local = self.tz.from_local_datetime(&at).earliest()?;
         Some(Timestamp::from_millis(local.timestamp_millis()))
+    }
+}
+
+/// M7b: a session with pauses and milestones, so the Sessão report and the Diário markers
+/// have something to show. Friday 08:00 (two days before a Sunday), on "ler 20 páginas":
+/// older than the other sessions of the Recentes list, so it leaves that list as it was.
+impl<Tz: TimeZone> Seeder<'_, Tz> {
+    fn reports(&mut self) -> CoreResult<()> {
+        let Some(read) = self
+            .core
+            .search_tasks("ler 20 páginas")?
+            .first()
+            .map(|t| t.id)
+        else {
+            return Ok(());
+        };
+        let Some(start) = self.local(2, 8, 0) else {
+            return Ok(());
+        };
+        self.run += 1;
+        let run = TimerId(self.run);
+        let at = |m: u64| start.plus(minutes(m));
+        for (name, checked) in [
+            ("Capítulo 3", Some(18)),
+            ("Capítulo 4", Some(52)),
+            ("Anotações", None),
+        ] {
+            let sub = self.core.add_subtask(read, name)?;
+            if let Some(m) = checked {
+                self.core.complete_subtask_in_run(sub, at(m), run)?;
+            }
+        }
+        // 08:00–08:25, 08:30–08:50, 08:55–09:10: 60 min of reading, two 5-minute pauses.
+        let segments = [(0, 25), (30, 50), (55, 70)]
+            .map(|(a, b)| Segment {
+                start: at(a),
+                end: at(b),
+            })
+            .to_vec();
+        let Some(session) = CompletedSession::new(TimerKind::Stopwatch, segments) else {
+            return Ok(());
+        };
+        self.core.record_session(Some(read), run, &session)
     }
 }
 
