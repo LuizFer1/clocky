@@ -3,58 +3,36 @@
 import { Theme } from "../theme.slint";
 import { TimerUi } from "timer-ui.slint";
 import { Button } from "common.slint";
+import { DialogCard, DialogTone, Scrim } from "../dialog.slint";
 
-component ForgottenDialog inherits Rectangle {
-    background: Theme.dark ? #000000b3 : #00000059;
-
-    TouchArea { }
-
-    Rectangle {
-        x: Theme.space-5;
-        width: parent.width - 2 * Theme.space-5;
-        height: card.preferred-height;
+// M7b: the same dialog card as the confirmations of Gerenciar, with the amber timer badge.
+component ForgottenDialog inherits Scrim {
+    DialogCard {
+        x: Theme.space-4;
         y: max(Theme.space-5, (parent.height - self.height) / 2);
-        border-radius: Theme.radius-panel;
-        background: Theme.panel;
-        border-width: 1px;
-        border-color: Theme.line-2;
+        width: parent.width - 2 * Theme.space-4;
+        height: self.preferred-height;
+        title: "Cronômetro esquecido?";
+        text: TimerUi.forgotten-text;
+        icon: @image-url("../../icons/stopwatch.svg");
+        tone: DialogTone.pause;
 
-        card := VerticalLayout {
-            padding: Theme.space-5;
-            spacing: Theme.space-3;
+        HorizontalLayout {
+            spacing: Theme.space-2-5;
 
-            Text {
-                text: "Cronômetro esquecido?";
-                color: Theme.text;
-                font-size: 17px;
-                font-weight: Theme.fw-medium;
+            Button {
+                horizontal-stretch: 1;
+                height: Theme.size-control;
+                primary: false;
+                text: "Descartar";
+                clicked => { TimerUi.forgotten-discard(); }
             }
 
-            Text {
-                text: TimerUi.forgotten-text;
-                color: Theme.muted;
-                font-size: Theme.fs-md;
-                wrap: word-wrap;
-            }
-
-            HorizontalLayout {
-                padding-top: Theme.space-2;
-                spacing: Theme.space-2-5;
-
-                Button {
-                    horizontal-stretch: 1;
-                    height: Theme.size-control;
-                    primary: false;
-                    text: "Descartar";
-                    clicked => { TimerUi.forgotten-discard(); }
-                }
-
-                Button {
-                    horizontal-stretch: 1.4;
-                    height: Theme.size-control;
-                    text: "Registrar tudo";
-                    clicked => { TimerUi.forgotten-record(); }
-                }
+            Button {
+                horizontal-stretch: 1.4;
+                height: Theme.size-control;
+                text: "Registrar tudo";
+                clicked => { TimerUi.forgotten-record(); }
             }
         }
     }

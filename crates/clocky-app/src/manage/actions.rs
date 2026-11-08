@@ -5,7 +5,7 @@
 use clocky_core::domain::{ProjectId, SubtaskId, TaskId};
 use slint::SharedString;
 
-use super::{Manage, Pending, TimerStart, clean, db_id};
+use super::{Manage, Pending, Section, TimerStart, clean, db_id};
 use crate::manage_view::Nav;
 use crate::palette;
 
@@ -15,6 +15,9 @@ impl Manage {
         self.connect_projects();
         self.connect_tasks();
         self.connect_subtasks();
+        // M7b: Relatórios and Configurações.
+        self.connect_reports();
+        self.connect_settings();
     }
 
     fn connect_navigation(&self) {
@@ -34,7 +37,7 @@ impl Manage {
         state.on_new_project(self.handler0(Self::new_project));
         state.on_edit_project(self.handler0(Self::edit_project));
         state.on_save_project(self.handler2(Self::save_project));
-        state.on_archive_project(self.handler0(Self::archive_project));
+        state.on_archive_project(self.handler0(Self::ask_archive_project));
         state.on_delete_project(self.handler0(Self::ask_delete_project));
     }
 
@@ -46,7 +49,7 @@ impl Manage {
         state.on_move_to_no_project(self.handler0(|m| m.move_task_to(None)));
         state.on_rename_task(self.handler1(Self::rename_task));
         state.on_move_task(self.handler1(Self::move_task));
-        state.on_archive_task(self.handler0(Self::archive_task));
+        state.on_archive_task(self.handler0(Self::ask_archive_task));
         state.on_delete_task(self.handler0(Self::ask_delete_task));
         state.on_start_pomodoro(self.handler0(|m| m.start_timer(TimerStart::Pomodoro)));
         state.on_start_stopwatch(self.handler0(|m| m.start_timer(TimerStart::Stopwatch)));
@@ -94,7 +97,7 @@ impl Manage {
 
     /// Forgets the project and task pages before they are deleted or archived, so the refresh
     /// that follows does not look for them.
-    fn leave(&self, project: bool) {
+    pub(super) fn leave(&self, project: bool) {
         let mut nav = self.nav.borrow_mut();
         nav.task = None;
         if project {
@@ -103,9 +106,12 @@ impl Manage {
     }
 
     pub fn open_task(&self, id: i32) {
-        let Some(id) = db_id(id).map(TaskId) else {
-            return;
-        };
+        if let Some(id) = db_id(id).map(TaskId) {
+            self.open_task_id(id);
+        }
+    }
+
+    pub(super) fn open_task_id(&self, id: TaskId) {
         let project = self.core.borrow().task(id).map(|t| t.project);
         match project {
             Ok(project) => self.navigate(Nav {
@@ -117,7 +123,7 @@ impl Manage {
         }
     }
 
-    fn back_to_project(&self) {
+    pub(super) fn back_to_project(&self) {
         self.navigate(Nav {
             task: None,
             ..self.nav()
@@ -125,6 +131,7 @@ impl Manage {
     }
 
     fn search_edited(&self, text: SharedString) {
+        self.section.set(Section::Projects);
         let mut nav = self.nav.borrow_mut();
         nav.search = text.to_string();
         // Searching leaves the task page for the matching list.
@@ -199,13 +206,6 @@ impl Manage {
         }
     }
 
-    fn archive_project(&self) {
-        let Some(id) = self.nav().project else { return };
-        self.leave(true);
-        self.mutate("archive the project", |c| c.archive_project(id));
-        self.show_all();
-    }
-
     fn ask_delete_project(&self) {
         let Some(id) = self.nav().project else { return };
         let name = self.core.borrow().project(id).map(|p| p.name);
@@ -222,9 +222,10 @@ impl Manage {
         );
     }
 
-    fn ask(&self, pending: Pending, title: &str, text: &str, action: &str) {
+    pub(super) fn ask(&self, pending: Pending, title: &str, text: &str, action: &str) {
         self.pending.set(Some(pending));
         let state = self.state();
+        state.set_confirm_archive(false);
         state.set_confirm_title(title.into());
         state.set_confirm_text(text.into());
         state.set_confirm_action(action.into());
@@ -250,6 +251,9 @@ impl Manage {
                 self.mutate("delete the task", |c| c.delete_task(id));
                 self.back_to_project();
             }
+            Some(Pending::ArchiveProject(id)) => self.archive_project(id),
+            Some(Pending::ArchiveTask(id)) => self.archive_task(id),
+            Some(Pending::DeleteSession(id)) => self.delete_session(id),
             None => {}
         }
     }
@@ -314,13 +318,6 @@ impl Manage {
                 ..self.nav()
             });
         }
-    }
-
-    fn archive_task(&self) {
-        let Some(id) = self.nav().task else { return };
-        self.leave(false);
-        self.mutate("archive the task", |c| c.archive_task(id));
-        self.back_to_project();
     }
 
     fn ask_delete_task(&self) {
