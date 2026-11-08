@@ -13,6 +13,8 @@ mod ui {
 mod app;
 mod bridge;
 mod command;
+#[expect(dead_code, reason = "the manage window uses the rest of the API next")]
+mod core;
 mod dock;
 mod geometry;
 mod instance;
@@ -24,6 +26,7 @@ mod paths;
 mod screenshot;
 mod settings;
 mod sound;
+mod startup;
 mod tray;
 
 fn main() {
@@ -56,12 +59,24 @@ fn run() -> anyhow::Result<()> {
         }
     }
     select_backend()?;
+    let core = match startup::open_core() {
+        Ok(core) => core,
+        Err(failure) => {
+            tracing::error!(
+                "cannot open the database {}: {}",
+                failure.path,
+                failure.message
+            );
+            startup::show_failure(&failure, screenshot_dir)?;
+            anyhow::bail!("the database could not be opened");
+        }
+    };
     // Listen before creating the windows: that can take seconds on a cold start, and a launch
     // during it must reach this instance instead of starting a second one.
     if screenshot_dir.is_none() {
         instance::listen(app::run_command)?;
     }
-    let app = app::App::new(screenshot_dir.is_some())?;
+    let app = app::App::new(core, screenshot_dir.is_some())?;
     app.start()?;
     if let Some(dir) = screenshot_dir {
         app.schedule_screenshots(dir);

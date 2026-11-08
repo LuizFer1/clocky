@@ -10,6 +10,7 @@ use slint::ComponentHandle;
 
 use crate::bridge::{self, Bridge};
 use crate::command::Command;
+use crate::core::AppCore;
 use crate::dock::Dock;
 use crate::manage::Manage;
 use crate::panel::{Panel, PanelKind};
@@ -29,6 +30,8 @@ pub struct App {
     pub dock: Rc<Dock>,
     pub panel: Rc<Panel>,
     pub manage: Manage,
+    /// The core, shared with the windows that read and change data.
+    core: Rc<RefCell<AppCore>>,
     settings: RefCell<Settings>,
     /// `None` when settings must not be written (no config dir, or screenshot mode).
     settings_path: Option<PathBuf>,
@@ -42,13 +45,14 @@ pub struct App {
 
 impl App {
     /// Creates the windows and registers the app for [`run_command`].
-    pub fn new(screenshot_mode: bool) -> anyhow::Result<Rc<Self>> {
+    pub fn new(core: AppCore, screenshot_mode: bool) -> anyhow::Result<Rc<Self>> {
         let path = settings::default_path();
         let settings = path.as_deref().map(Settings::load).unwrap_or_default();
         let app = Rc::new(Self {
             dock: Dock::new()?,
             panel: Panel::new()?,
             manage: Manage::new()?,
+            core: Rc::new(RefCell::new(core)),
             settings: RefCell::new(settings),
             settings_path: path.filter(|_| !screenshot_mode),
             screenshot_mode,
@@ -99,6 +103,10 @@ impl App {
     /// created right after the loop starts (required on macOS).
     pub fn start(self: &Rc<Self>) -> anyhow::Result<()> {
         let settings = self.settings.borrow().clone();
+        match self.core.borrow().projects() {
+            Ok(projects) => tracing::info!("database open: {} projects", projects.len()),
+            Err(e) => tracing::warn!("failed to read the projects: {e}"),
+        }
         self.set_dark(settings.dark_theme);
         self.dock.show_at(settings.dock)?;
         let weak = Rc::downgrade(self);
