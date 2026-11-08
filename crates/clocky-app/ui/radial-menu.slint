@@ -13,18 +13,55 @@ export struct RadialOption {
     ay: float,
 }
 
-// Ring option. On hover it becomes a pill that grows away from the screen edge and shows the
-// label before the icon (after it when mirrored).
+// Ring option: a circle. The pill with the label is drawn by `RadialPill`, above the hub and
+// the other options (spec 1.4: "a pílula fica por cima").
 export component RadialItem inherits Rectangle {
-    in property <string> label;
     in property <image> icon;
-    // Left edge: the pill keeps its left side fixed and grows to the right.
-    in property <bool> mirrored: false;
     out property <bool> hovered: touch.has-hover;
     callback clicked();
 
+    width: Theme.size-radial-item;
     height: Theme.size-radial-item;
-    width: touch.has-hover ? txt.preferred-width + Theme.size-radial-item + 22px : Theme.size-radial-item;
+    border-radius: self.height / 2;
+    background: Theme.fab;
+    border-width: 1px;
+    border-color: Theme.fab-border;
+
+    Image {
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        width: Theme.size-icon-fab;
+        height: Theme.size-icon-fab;
+        source: root.icon;
+        colorize: Theme.fab-text;
+    }
+
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+// The hovered option as a pill that grows away from the screen edge and shows the label before
+// the icon (after it when mirrored). Its side next to the edge stays on the option's circle.
+component RadialPill inherits Rectangle {
+    in property <string> label;
+    in property <image> icon;
+    in property <bool> mirrored: false;
+    // Center of the option's circle.
+    in property <length> ccx;
+    in property <length> ccy;
+    out property <bool> hovered: touch.has-hover;
+    callback clicked();
+
+    // Grows from the circle once shown (the width animation runs from the circle's size).
+    property <bool> grown: false;
+    init => { self.grown = true; }
+
+    height: Theme.size-radial-item;
+    width: root.grown ? txt.preferred-width + Theme.size-radial-item + 22px : Theme.size-radial-item;
+    x: root.mirrored ? root.ccx - Theme.size-radial-item / 2 : root.ccx + Theme.size-radial-item / 2 - self.width;
+    y: root.ccy - Theme.size-radial-item / 2;
     border-radius: self.height / 2;
     background: Theme.fab;
     border-width: 1px;
@@ -40,7 +77,7 @@ export component RadialItem inherits Rectangle {
         font-family: Theme.font-sans;
         font-size: Theme.fs-md;
         font-weight: Theme.fw-medium;
-        opacity: touch.has-hover ? 1.0 : 0.0;
+        opacity: root.grown ? 1.0 : 0.0;
         animate opacity { duration: Theme.dur-fade; }
     }
 
@@ -83,7 +120,25 @@ export component RadialMenu inherits Rectangle {
     height: 360px;
     background: transparent;
 
-    property <string> hovered-id: "";
+    // Option under the cursor ("" = none). Screenshots set it to capture a pill.
+    in-out property <string> hovered-id: "";
+    // The circle and the pill under the cursor. The pill covers its circle as soon as it shows,
+    // so the hover moves from one to the other; `hover-check` clears `hovered-id` a moment later
+    // only when neither has it (the order of the `changed` handlers is not guaranteed).
+    property <string> item-hover-id: "";
+    property <bool> pill-hovered: false;
+    changed hovered-id => { self.pill-hovered = false; }
+
+    hover-check := Timer {
+        interval: 60ms;
+        running: false;
+        triggered => {
+            self.running = false;
+            if (!root.pill-hovered && root.item-hover-id == "") {
+                root.hovered-id = "";
+            }
+        }
+    }
     // 0 = collapsed, 1 = open. One animation drives the hub and the items.
     property <float> t: root.open ? 1.0 : 0.0;
     animate t { duration: Theme.dur-radial-open; easing: cubic-bezier(0.2, 0.8, 0.2, 1); }
@@ -99,25 +154,35 @@ export component RadialMenu inherits Rectangle {
             if (!self.has-hover) {
                 root.open = false;
                 root.hovered-id = "";
+                root.item-hover-id = "";
             }
         }
 
-        for opt in root.options: RadialItem {
-            property <length> ccx: root.hub-cx + Theme.size-radial-radius * (root.left-side ? -opt.ax : opt.ax) * root.t;
-            property <length> ccy: root.cy + Theme.size-radial-radius * opt.ay * root.t;
-            label: opt.label;
+        for opt[index] in root.options: RadialItem {
+            // Each option leaves the hub 25ms after the previous one (spec 1, "Movimento").
+            property <float> it: root.open ? 1.0 : 0.0;
+            animate it {
+                duration: Theme.dur-radial-open;
+                delay: root.open ? Theme.dur-radial-stagger * index : 0ms;
+                easing: cubic-bezier(0.2, 0.8, 0.2, 1);
+            }
+            property <length> ccx: root.hub-cx + Theme.size-radial-radius * (root.left-side ? -opt.ax : opt.ax) * self.it;
+            property <length> ccy: root.cy + Theme.size-radial-radius * opt.ay * self.it;
             icon: opt.icon;
-            mirrored: root.left-side;
-            // The side next to the screen edge stays fixed, so the pill grows away from it.
-            x: root.left-side ? self.ccx - Theme.size-radial-item / 2 : self.ccx + Theme.size-radial-item / 2 - self.width;
+            x: self.ccx - Theme.size-radial-item / 2;
             y: self.ccy - Theme.size-radial-item / 2;
-            opacity: root.t * ((root.hovered-id != "" && root.hovered-id != opt.id) ? 0.55 : 1.0);
-            visible: root.t > 0.01;
+            opacity: self.it * ((root.hovered-id != "" && root.hovered-id != opt.id) ? 0.55 : 1.0);
+            animate opacity { duration: Theme.dur-fade; }
+            visible: self.it > 0.01;
             changed hovered => {
                 if (self.hovered) {
                     root.hovered-id = opt.id;
-                } else if (root.hovered-id == opt.id) {
-                    root.hovered-id = "";
+                    root.item-hover-id = opt.id;
+                } else {
+                    if (root.item-hover-id == opt.id) {
+                        root.item-hover-id = "";
+                    }
+                    hover-check.running = true;
                 }
             }
             clicked => { root.option-selected(opt.id); }
@@ -200,6 +265,24 @@ export component RadialMenu inherits Rectangle {
                         root.open = !root.open;
                     }
                 }
+            }
+        }
+        // The hovered option's pill, declared last so it is drawn above the hub and the other
+        // options. It covers its own circle, so it keeps the hover while the cursor is on it.
+        for opt in root.options: Rectangle {
+            if root.open && root.hovered-id == opt.id: RadialPill {
+                label: opt.label;
+                icon: opt.icon;
+                mirrored: root.left-side;
+                ccx: root.hub-cx + Theme.size-radial-radius * (root.left-side ? -opt.ax : opt.ax);
+                ccy: root.cy + Theme.size-radial-radius * opt.ay;
+                changed hovered => {
+                    root.pill-hovered = self.hovered;
+                    if (!self.hovered) {
+                        hover-check.running = true;
+                    }
+                }
+                clicked => { root.option-selected(opt.id); }
             }
         }
     }

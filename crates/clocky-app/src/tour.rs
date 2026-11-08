@@ -50,7 +50,33 @@ const STEPS: &[Step] = &[
     Step {
         name: "dock",
         shot: Shot::Dock,
-        prepare: |app, _| app.dock.ui.set_open(true),
+        prepare: |app, _| {
+            app.dock.ui.set_left_side(false);
+            app.dock.ui.set_hovered_id("".into());
+            app.dock.ui.set_open(true);
+        },
+    },
+    // The hovered pill is drawn above the hub and the other options, on both edges.
+    Step {
+        name: "dock-hover-right",
+        shot: Shot::Dock,
+        prepare: |app, _| {
+            app.dock.ui.set_left_side(false);
+            app.dock.ui.set_hovered_id("temporizador".into());
+        },
+    },
+    Step {
+        name: "dock-hover-left",
+        shot: Shot::Dock,
+        prepare: |app, _| {
+            app.dock.ui.set_left_side(true);
+            app.dock.ui.set_hovered_id("cronometro".into());
+        },
+    },
+    Step {
+        name: "dock-hover-left-edge-item",
+        shot: Shot::Dock,
+        prepare: |app, _| app.dock.ui.set_hovered_id("temporizador".into()),
     },
     Step {
         name: "panel",
