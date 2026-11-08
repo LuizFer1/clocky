@@ -99,6 +99,37 @@ fn migrating_a_version_1_file_keeps_its_data() {
     assert_eq!(version, 1);
 }
 
+fn has_table(store: &Store, name: &str) -> bool {
+    store
+        .conn
+        .query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?1",
+            [name],
+            |row| row.get::<_, i64>(0),
+        )
+        .unwrap()
+        == 1
+}
+
+#[test]
+fn a_version_1_file_migrates_through_active_timers_and_alarms() {
+    let db = TempDb::new("alarms-migrate-v1-v3");
+    let mut old = Store::open_with(db.path(), &MIGRATIONS[..1]).unwrap();
+    let task = old.create_task(None, "report", at(1)).unwrap();
+    assert!(!has_table(&old, "active_timers"));
+    assert!(!has_table(&old, "alarms"));
+    drop(old);
+
+    let mut store = Store::open(db.path()).unwrap();
+    assert_eq!(store.schema_version().unwrap(), 3);
+    for table in ["active_timers", "active_timer_segments", "alarms"] {
+        assert!(has_table(&store, table), "missing table {table}");
+    }
+    let alarm = store.create_alarm(&wake(Some(task)), at(2)).unwrap();
+    assert_eq!(store.task_links(task).unwrap().alarms[0].id, alarm);
+    assert_eq!(store.task_links(task).unwrap().active_timers.len(), 0);
+}
+
 #[test]
 fn alarms_roundtrip_and_sort_by_time_then_id() {
     let mut store = Store::open_in_memory().unwrap();
