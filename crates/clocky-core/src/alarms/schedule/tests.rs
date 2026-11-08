@@ -278,3 +278,55 @@ fn pending_follows_the_dst_gap_rule() {
         Some((utc(2026, 3, 8, 7, 0), Firing::Late { by: mins(10) }))
     );
 }
+
+#[test]
+fn an_alarm_still_rings_after_the_clock_moves_back_past_its_last_fire() {
+    let tz = brt();
+    // Fired on Tuesday the 3rd, then the clock was corrected back to Monday the 2nd.
+    let fired = daily().after_fired(nov(&tz, 3, 7, 0));
+    assert_eq!(
+        fired.due_at(nov(&tz, 2, 6, 0), &tz),
+        Some(nov(&tz, 2, 7, 0))
+    );
+    assert_eq!(
+        fired.pending(nov(&tz, 2, 7, 0), &tz),
+        Some((nov(&tz, 2, 7, 0), Firing::OnTime))
+    );
+    let rang_again = fired.after_fired(nov(&tz, 2, 7, 0));
+    assert_eq!(
+        rang_again.pending(nov(&tz, 3, 7, 0), &tz),
+        Some((nov(&tz, 3, 7, 0), Firing::OnTime))
+    );
+}
+
+#[test]
+fn an_alarm_still_rings_after_the_clock_moves_back_past_its_creation() {
+    let tz = brt();
+    let created_later = AlarmSchedule::new(time(7, 0), Weekdays::EVERY_DAY, nov(&tz, 3, 6, 0));
+    assert_eq!(
+        created_later.pending(nov(&tz, 2, 7, 0), &tz),
+        Some((nov(&tz, 2, 7, 0), Firing::OnTime))
+    );
+}
+
+#[test]
+fn a_clock_moved_back_never_reports_handled_history_as_missed() {
+    let tz = brt();
+    // Fired on the 3rd at 07:00, then corrected back 5 minutes: the 2nd's 07:00 was handled.
+    let fired = daily().after_fired(nov(&tz, 3, 7, 0));
+    assert_eq!(fired.pending(nov(&tz, 3, 6, 55), &tz), None);
+    let created_later = AlarmSchedule::new(time(7, 0), Weekdays::EVERY_DAY, nov(&tz, 3, 6, 0));
+    assert_eq!(created_later.pending(nov(&tz, 2, 8, 0), &tz), None);
+}
+
+#[test]
+fn a_small_backward_correction_can_ring_an_occurrence_twice() {
+    let tz = brt();
+    // 07:00 was snoozed and rang again at 07:05; then the clock went back 3 minutes.
+    let snoozed = daily().snooze(nov(&tz, 2, 7, 0), 5).unwrap();
+    let fired = snoozed.after_fired(nov(&tz, 2, 7, 5));
+    assert_eq!(
+        fired.pending(nov(&tz, 2, 7, 2), &tz),
+        Some((nov(&tz, 2, 7, 0), Firing::Late { by: mins(2) }))
+    );
+}

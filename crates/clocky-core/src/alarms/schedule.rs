@@ -4,7 +4,7 @@ use chrono::TimeZone;
 
 use super::alarm_time::AlarmTime;
 use super::error::AlarmError;
-use super::firing::{Firing, classify, snooze_until};
+use super::firing::{Firing, LATE_TOLERANCE, classify, snooze_until};
 use super::next_fire::next_fire;
 use super::weekdays::Weekdays;
 use crate::time::Timestamp;
@@ -96,6 +96,12 @@ impl AlarmSchedule {
     /// Covers the app being closed or the computer suspended: it looks for occurrences
     /// after `last_fired_at` (or `created_at`) up to `now`, inclusive. When several were
     /// missed, only the most recent is reported. While snoozed, only the snooze counts.
+    ///
+    /// If the clock moved back, `last_fired_at` or `created_at` can be later than `now`.
+    /// Such an instant is ignored, so the alarm keeps ringing; history before `now` is then
+    /// unknown, so it looks back at most [`LATE_TOLERANCE`] and never reports a missed
+    /// occurrence from it. Accepted trade-off: after a small backward correction, an
+    /// occurrence that already rang can ring again.
     #[must_use]
     pub fn pending<Tz: TimeZone>(&self, now: Timestamp, tz: &Tz) -> Option<(Timestamp, Firing)> {
         if !self.enabled {
@@ -110,16 +116,14 @@ impl AlarmSchedule {
 
     /// The most recent regular occurrence after the last handled one and up to `now`.
     fn latest_due<Tz: TimeZone>(&self, now: Timestamp, tz: &Tz) -> Option<Timestamp> {
-        let handled = self
-            .last_fired_at
-            .map_or(self.created_at, |fired| fired.max(self.created_at));
+        let handled = self.handled_until(now);
         let due_after =
             |after| next_fire(self.time, self.repeat, after, tz).filter(|due| *due <= now);
         if self.repeat.is_once() {
             // A once-alarm only had one occurrence, however long ago it was.
             return due_after(handled);
         }
-        let window_start = Timestamp::from_millis(now.as_millis().saturating_sub(LOOKBACK_MILLIS));
+        let window_start = millis_before(now, LOOKBACK_MILLIS);
         let mut latest = None;
         let mut cursor = handled.max(window_start);
         while let Some(due) = due_after(cursor) {
@@ -128,6 +132,26 @@ impl AlarmSchedule {
         }
         latest
     }
+
+    /// Occurrences up to this instant are already handled: the later of `last_fired_at` and
+    /// `created_at`, ignoring any later than `now` (the clock moved back).
+    fn handled_until(&self, now: Timestamp) -> Timestamp {
+        let anchors = [Some(self.created_at), self.last_fired_at];
+        let clock_moved_back = anchors.iter().flatten().any(|anchor| *anchor > now);
+        let known = anchors
+            .into_iter()
+            .flatten()
+            .filter(|anchor| *anchor <= now)
+            .max();
+        let tolerance = i64::try_from(LATE_TOLERANCE.as_millis()).unwrap_or(i64::MAX);
+        let floor = clock_moved_back.then(|| millis_before(now, tolerance));
+        known.max(floor).unwrap_or(now)
+    }
+}
+
+/// The instant `millis` milliseconds before `ts` (saturating).
+fn millis_before(ts: Timestamp, millis: i64) -> Timestamp {
+    Timestamp::from_millis(ts.as_millis().saturating_sub(millis))
 }
 
 #[cfg(test)]
