@@ -107,8 +107,9 @@ impl ReportNav {
         }
     }
 
-    /// Moves one period back or forward ("‹" / "›").
-    pub fn shift(&mut self, forward: bool) {
+    /// Moves one period back or forward ("‹" / "›"). Forward never goes past `today`, so every
+    /// tab keeps a way back to the current period.
+    pub fn shift(&mut self, forward: bool, today: NaiveDate) {
         let date = self.date;
         let moved = match (self.unit(), forward) {
             (Range::Day, true) => date.checked_add_days(Days::new(1)),
@@ -118,7 +119,18 @@ impl ReportNav {
             (Range::Month, true) => date.checked_add_months(Months::new(1)),
             (Range::Month, false) => date.checked_sub_months(Months::new(1)),
         };
-        self.date = moved.unwrap_or(date);
+        let moved = moved.unwrap_or(date);
+        self.date = if forward {
+            moved.min(today.max(date))
+        } else {
+            moved
+        };
+    }
+
+    /// Whether the period holds `today` (the "Hoje" / "Esta semana" / "Este mês" button hides).
+    pub fn holds_today(&self, today: NaiveDate) -> bool {
+        let (first, last) = self.bounds();
+        first <= today && today <= last
     }
 
     /// Whether the period holds `today` (or is after it).
@@ -192,6 +204,8 @@ pub struct ReportsView {
     pub period_label: String,
     pub current_label: &'static str,
     pub at_current: bool,
+    /// The period holds today (the current-period button hides).
+    pub holds_today: bool,
     pub total: String,
     pub empty: bool,
     pub empty_title: &'static str,
@@ -231,6 +245,7 @@ where
         period_label: nav.period_label(today),
         current_label: nav.current_label(),
         at_current: nav.at_current(today),
+        holds_today: nav.holds_today(today),
         total: String::new(),
         empty: false,
         empty_title: "",

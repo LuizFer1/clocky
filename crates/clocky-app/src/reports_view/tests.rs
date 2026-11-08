@@ -50,26 +50,26 @@ fn starts_on_this_week() {
 #[test]
 fn arrows_move_by_the_unit_of_the_tab() {
     let mut daily = nav(Tab::Daily, today());
-    daily.shift(false);
+    daily.shift(false, today());
     assert_eq!(daily.date, d(11, 7));
     assert!(!daily.at_current(today()));
     assert_eq!(daily.current_label(), "Hoje");
     assert_eq!(daily.period_label(today()), "sáb, 7 de novembro");
     let mut weekly = nav(Tab::Weekly, today());
-    weekly.shift(false);
+    weekly.shift(false, today());
     assert_eq!(weekly.bounds(), (d(10, 26), d(11, 1)));
     assert_eq!(
         weekly.period_label(today()),
         "26 de outubro a 1 de novembro"
     );
-    weekly.shift(true);
+    weekly.shift(true, today());
     assert!(weekly.at_current(today()));
     let mut month = ReportNav {
         tab: Tab::Overview,
         range: Range::Month,
         ..ReportNav::new(d(3, 31))
     };
-    month.shift(false);
+    month.shift(false, today());
     assert_eq!(month.date, d(2, 28));
     assert_eq!(month.bounds(), (d(2, 1), d(2, 28)));
     assert_eq!(month.current_label(), "Este mês");
@@ -396,4 +396,27 @@ fn a_missing_session_is_an_error() {
         ..ReportNav::new(today())
     };
     assert!(build(&core, &open, today(), &tz()).is_err());
+}
+
+#[test]
+fn moving_forward_stops_at_today_and_the_way_back_always_shows() {
+    // Semanal ‹‹, then Geral by month ›: it stops at today, not on Nov 25.
+    let mut geral = ReportNav::new(today());
+    geral.shift(false, today());
+    geral.shift(false, today());
+    geral.tab = Tab::Overview;
+    geral.range = Range::Month;
+    geral.shift(true, today());
+    assert_eq!(geral.date, today());
+    geral.tab = Tab::Daily;
+    assert!(geral.at_current(today()) && geral.holds_today(today()));
+    // A future date (an older build) still offers "Hoje".
+    let future = nav(Tab::Daily, d(11, 25));
+    assert!(future.at_current(today()));
+    assert!(!future.holds_today(today()));
+    assert_eq!(future.current_label(), "Hoje");
+    // A past period offers it too.
+    let mut past = nav(Tab::Weekly, today());
+    past.shift(false, today());
+    assert!(!past.holds_today(today()));
 }

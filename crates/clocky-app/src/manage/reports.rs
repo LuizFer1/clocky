@@ -19,8 +19,8 @@ impl Manage {
         reports.on_select_range(self.handler1(|m, range| {
             m.edit_reports(|nav| nav.range = Range::from_index(range));
         }));
-        reports.on_previous(self.handler0(|m| m.edit_reports(|nav| nav.shift(false))));
-        reports.on_next(self.handler0(|m| m.edit_reports(|nav| nav.shift(true))));
+        reports.on_previous(self.handler0(|m| m.edit_reports(|nav| nav.shift(false, m.today()))));
+        reports.on_next(self.handler0(|m| m.edit_reports(|nav| nav.shift(true, m.today()))));
         let today = self.weak.clone();
         reports.on_current(move || {
             if let Some(m) = today.upgrade() {
@@ -183,6 +183,7 @@ impl Manage {
         rs.set_period_label(view.period_label.as_str().into());
         rs.set_current_label(view.current_label.into());
         rs.set_at_current(view.at_current);
+        rs.set_holds_today(view.holds_today);
         rs.set_total(view.total.as_str().into());
         rs.set_empty(view.empty);
         rs.set_empty_title(view.empty_title.into());

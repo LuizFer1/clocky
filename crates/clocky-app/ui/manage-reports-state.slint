@@ -112,6 +112,8 @@ export global ReportsState {
     in property <string> current-label: "Esta semana";
     // The period holds today: "›" and the current button are off.
     in property <bool> at-current: true;
+    // The period holds today: the current button hides (it shows for past and future periods).
+    in property <bool> holds-today: true;
     // "14h 20min" in the period.
     in property <string> total;
     in property <bool> empty;
