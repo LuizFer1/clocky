@@ -2,6 +2,7 @@
 // StatusNotifierItem over D-Bus on Linux, without GTK). Menu events arrive on the UI thread.
 export component ClockyTray inherits SystemTrayIcon {
     callback open-manage();
+    callback show-dock();
     callback quit();
 
     icon: @image-url("../icons/tray.svg");
@@ -11,6 +12,11 @@ export component ClockyTray inherits SystemTrayIcon {
         MenuItem {
             title: "Abrir Gerenciar";
             activated => { root.open-manage(); }
+        }
+
+        MenuItem {
+            title: "Mostrar ícone flutuante";
+            activated => { root.show-dock(); }
         }
 
         MenuSeparator { }
