@@ -93,6 +93,7 @@ pub fn session_report(store: &Store, id: SessionId) -> Result<SessionReport, Rep
         task: task.map(|task| TaskInfo {
             id: task.id,
             name: task.name,
+            archived: task.archived_at.is_some(),
         }),
         project: project.map(|project| ProjectInfo {
             id: project.id,

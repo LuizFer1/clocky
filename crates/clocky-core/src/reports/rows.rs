@@ -32,6 +32,8 @@ pub struct TaskInfo {
     pub id: TaskId,
     /// Name.
     pub name: String,
+    /// Whether the task is archived.
+    pub archived: bool,
 }
 
 /// A subtask checked or unchecked, as a marker on the timeline.
@@ -79,7 +81,7 @@ pub(super) fn segments_overlapping(
     store: &Store,
     period: Period,
 ) -> Result<Vec<SegmentRow>, ReportError> {
-    let sql = "SELECT g.session_id, s.kind, s.round, t.id, t.name,
+    let sql = "SELECT g.session_id, s.kind, s.round, t.id, t.name, t.archived_at_ms,
                    p.id, p.name, p.color, p.archived_at_ms, g.start_ms, g.end_ms
                FROM session_segments g
                JOIN sessions s ON s.id = g.session_id
@@ -95,10 +97,10 @@ pub(super) fn segments_overlapping(
             kind: kind_from_sql(row.get(1)?)?,
             round: round_from_sql(row.get(2)?)?,
             task: task_at(row, 3)?,
-            project: project_at(row, 5)?,
+            project: project_at(row, 6)?,
             segment: Segment {
-                start: Timestamp::from_millis(row.get(9)?),
-                end: Timestamp::from_millis(row.get(10)?),
+                start: Timestamp::from_millis(row.get(10)?),
+                end: Timestamp::from_millis(row.get(11)?),
             },
         })
     })
@@ -111,7 +113,7 @@ pub(super) fn subtask_markers<P: Params>(
     params: P,
 ) -> Result<Vec<SubtaskMarker>, ReportError> {
     let sql = format!(
-        "SELECT e.subtask_id, st.name, e.kind, e.at_ms, e.session_id, t.id, t.name,
+        "SELECT e.subtask_id, st.name, e.kind, e.at_ms, e.session_id, t.id, t.name, t.archived_at_ms,
              p.id, p.name, p.color, p.archived_at_ms
          FROM subtask_events e
          JOIN subtasks st ON st.id = e.subtask_id
@@ -130,8 +132,9 @@ pub(super) fn subtask_markers<P: Params>(
             task: TaskInfo {
                 id: TaskId(row.get(5)?),
                 name: row.get(6)?,
+                archived: row.get::<_, Option<i64>>(7)?.is_some(),
             },
-            project: project_at(row, 7)?,
+            project: project_at(row, 8)?,
         })
     })
 }
@@ -152,13 +155,16 @@ pub(super) fn collect<T, P: Params>(
     Ok(items)
 }
 
-/// The task in the columns `id, name` starting at `index` (`NULL` id = no task).
+/// The task in the columns `id, name, archived_at_ms` starting at `index` (`NULL` id = no
+/// task).
 pub(super) fn task_at(row: &Row<'_>, index: usize) -> Result<Option<TaskInfo>, ReportError> {
     let id: Option<i64> = row.get(index)?;
     let name: Option<String> = row.get(index + 1)?;
+    let archived: Option<i64> = row.get(index + 2)?;
     Ok(id.zip(name).map(|(id, name)| TaskInfo {
         id: TaskId(id),
         name,
+        archived: archived.is_some(),
     }))
 }
 

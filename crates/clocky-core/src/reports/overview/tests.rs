@@ -92,7 +92,9 @@ fn totals_group_by_project_then_task_sorted_by_time() {
         ("Work", "#7c5cff")
     );
     assert!(!info.archived);
-    assert_eq!(work.tasks[0].task.as_ref().unwrap().name, "Docs");
+    let docs = work.tasks[0].task.as_ref().unwrap();
+    assert_eq!(docs.name, "Docs");
+    assert!(!docs.archived);
     assert_eq!(overview.projects[1].total, min(20));
 }
 
@@ -156,6 +158,13 @@ fn archived_project_still_shows_as_history() {
     assert!(info.archived);
     assert_eq!(info.color, "#22c55e");
     assert_eq!(task_ids(&overview.projects[0]), [Some(fx.garden)]);
+    assert!(
+        overview.projects[0].tasks[0]
+            .task
+            .as_ref()
+            .unwrap()
+            .archived
+    );
 }
 
 #[test]
