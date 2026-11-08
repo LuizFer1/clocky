@@ -18,8 +18,15 @@ pub const ENV_VAR: &str = "CLOCKY_DEMO";
 
 /// Whether the environment asks for the demo data (`CLOCKY_DEMO=1` and `CLOCKY_DB` set).
 pub fn requested() -> bool {
-    std::env::var_os(ENV_VAR).is_some_and(|v| v == "1")
-        && std::env::var_os(crate::paths::DB_ENV_VAR).is_some_and(|v| !v.is_empty())
+    requested_from(
+        std::env::var_os(ENV_VAR).as_deref(),
+        std::env::var_os(crate::paths::DB_ENV_VAR).as_deref(),
+    )
+}
+
+/// The guard of [`requested`]: the demo is only written to a database named on purpose.
+fn requested_from(demo: Option<&std::ffi::OsStr>, db: Option<&std::ffi::OsStr>) -> bool {
+    demo.is_some_and(|v| v == "1") && db.is_some_and(|v| !v.is_empty())
 }
 
 /// A session of the demo: days before today, local start (h, m), minutes and kind.
@@ -195,5 +202,15 @@ mod tests {
             .unwrap();
         assert_eq!(auth[0].tracked, minutes(220));
         assert_eq!((auth[0].subtasks_done, auth[0].subtasks_total), (1, 3));
+    }
+
+    #[test]
+    fn the_demo_needs_clocky_db() {
+        let os = |s: &'static str| Some(std::ffi::OsStr::new(s));
+        assert!(requested_from(os("1"), os("D:/tmp/clocky.db")));
+        assert!(!requested_from(os("1"), None));
+        assert!(!requested_from(os("1"), os("")));
+        assert!(!requested_from(None, os("D:/tmp/clocky.db")));
+        assert!(!requested_from(os("0"), os("D:/tmp/clocky.db")));
     }
 }

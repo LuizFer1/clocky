@@ -65,7 +65,7 @@ fn run() -> anyhow::Result<()> {
     // Only the primary instance logs: a second launch must not touch the running one's log.
     start_logging();
     select_backend()?;
-    let app = match startup::open_core() {
+    let app = match startup::open_core(screenshot_dir.is_some()) {
         Ok((core, reopened)) => start_app(core, &reopened, screenshot_dir)?,
         Err(failure) => return recover(failure, screenshot_dir),
     };

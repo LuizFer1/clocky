@@ -27,17 +27,31 @@ pub struct OpenFailure {
     pub timers: Option<TrackerOpenError>,
 }
 
-/// Opens the database (see [`paths::db_path`]), creating its directory when needed.
-pub fn open_core() -> Result<(AppCore, Reopened), OpenFailure> {
-    let Some(path) = paths::db_path() else {
-        tracing::error!("no user data directory for the database");
-        return Err(OpenFailure {
-            path: String::new(),
-            message: "O sistema não informou uma pasta de dados para o usuário.".into(),
-            timers: None,
-        });
-    };
-    open_at(&path)
+/// Opens the database (see [`paths::db`]), creating its directory when needed. A screenshot
+/// run without `CLOCKY_DB` gets an empty in-memory database instead of the user's file.
+pub fn open_core(screenshot: bool) -> Result<(AppCore, Reopened), OpenFailure> {
+    match paths::db(screenshot) {
+        paths::Db::File(path) => open_at(&path),
+        paths::Db::Memory => {
+            tracing::info!("screenshot run without CLOCKY_DB: in-memory database");
+            AppCore::open_in_memory(Box::new(SystemClock)).map_err(|e| {
+                tracing::error!("cannot open an in-memory database: {e}");
+                OpenFailure {
+                    path: ":memory:".into(),
+                    message: user_message(&e),
+                    timers: None,
+                }
+            })
+        }
+        paths::Db::Unavailable => {
+            tracing::error!("no user data directory for the database");
+            Err(OpenFailure {
+                path: String::new(),
+                message: "O sistema não informou uma pasta de dados para o usuário.".into(),
+                timers: None,
+            })
+        }
+    }
 }
 
 fn open_at(path: &Path) -> Result<(AppCore, Reopened), OpenFailure> {

@@ -95,13 +95,18 @@ impl AppCore {
         Ok((Self { tracker, clock }, Reopened { events, before }))
     }
 
+    /// An empty in-memory database (screenshot runs without `CLOCKY_DB`).
+    ///
+    /// # Errors
+    /// [`OpenError`] if SQLite fails.
+    pub fn open_in_memory(clock: Box<dyn Clock>) -> Result<(Self, Reopened), OpenError> {
+        Ok(Self::with_store(Store::open_in_memory()?, clock)?)
+    }
+
     /// An empty in-memory core (tests).
     #[cfg(test)]
     pub fn in_memory(clock: Box<dyn Clock>) -> Self {
-        let store = Store::open_in_memory().expect("in-memory database");
-        Self::with_store(store, clock)
-            .expect("an empty database has no timer to restore")
-            .0
+        Self::open_in_memory(clock).expect("in-memory database").0
     }
 
     /// The current instant, from the core's clock (the app never reads the clock elsewhere).
