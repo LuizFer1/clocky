@@ -30,6 +30,7 @@ mod panel;
 mod paths;
 mod picker;
 mod picker_ui;
+mod reports_view;
 mod screenshot;
 mod settings;
 mod sound;
