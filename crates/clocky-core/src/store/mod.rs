@@ -4,6 +4,7 @@
 //! one row run in a single transaction.
 
 mod active;
+mod alarms;
 mod convert;
 mod error;
 mod migrations;
