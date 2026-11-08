@@ -271,6 +271,27 @@ mod tests {
     }
 
     #[test]
+    fn a_failing_project_delete_keeps_task_positions() {
+        let mut store = Store::open_in_memory().unwrap();
+        store.create_task(None, "loose", at(0)).unwrap();
+        let work = store.create_project("work", "#000000", at(0)).unwrap();
+        let a = store.create_task(Some(work), "a", at(0)).unwrap();
+        store
+            .conn
+            .execute_batch(
+                "CREATE TEMP TRIGGER fail_delete BEFORE DELETE ON projects
+                 BEGIN SELECT RAISE(ABORT, 'boom'); END;",
+            )
+            .unwrap();
+        assert!(matches!(
+            store.delete_project(work),
+            Err(StoreError::Sqlite(_))
+        ));
+        assert_eq!(store.task(a).unwrap().position, 1);
+        assert_eq!(store.task(a).unwrap().project, Some(work));
+    }
+
+    #[test]
     fn delete_and_missing_tasks() {
         let mut store = Store::open_in_memory().unwrap();
         let id = store.create_task(None, "report", at(0)).unwrap();

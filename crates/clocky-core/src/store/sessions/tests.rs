@@ -335,3 +335,54 @@ fn bounds_come_from_the_segments_that_are_kept() {
     assert_eq!(detail.session.effective, secs(10));
     assert_eq!(detail.events.len(), 0);
 }
+
+#[test]
+fn a_failing_segment_insert_rolls_back_the_whole_session() {
+    let (mut store, task, subtask) = fixture();
+    store
+        .complete_subtask(subtask, at(10), Some(TimerId(1)))
+        .unwrap();
+    store
+        .conn
+        .execute_batch(
+            "CREATE TEMP TRIGGER fail_segments BEFORE INSERT ON session_segments
+             BEGIN SELECT RAISE(ABORT, 'boom'); END;",
+        )
+        .unwrap();
+    let span = completed(TimerKind::Stopwatch, &[(0, 30)]);
+    assert!(matches!(
+        store.record_session(Some(task), TimerId(1), None, &span),
+        Err(StoreError::Sqlite(_))
+    ));
+    assert_eq!(count(&store, "sessions"), 0);
+    assert_eq!(store.subtask_events(subtask).unwrap()[0].session, None);
+}
+
+#[test]
+fn linking_window_includes_both_edges_only() {
+    let (mut store, task, first) = fixture();
+    let second = store.add_subtask(task, "draft").unwrap();
+    let before = store.add_subtask(task, "before").unwrap();
+    let after = store.add_subtask(task, "after").unwrap();
+    let run = Some(TimerId(1));
+    store.complete_subtask(first, at(10), run).unwrap();
+    store.complete_subtask(second, at(20), run).unwrap();
+    store
+        .complete_subtask(before, Timestamp::from_millis(9_999), run)
+        .unwrap();
+    store
+        .complete_subtask(after, Timestamp::from_millis(20_001), run)
+        .unwrap();
+    let span = completed(TimerKind::Stopwatch, &[(10, 20)]);
+    let id = store
+        .record_session(Some(task), TimerId(1), None, &span)
+        .unwrap();
+    let linked: Vec<_> = store
+        .session(id)
+        .unwrap()
+        .events
+        .iter()
+        .map(|event| event.subtask)
+        .collect();
+    assert_eq!(linked, vec![first, second]);
+}

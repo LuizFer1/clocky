@@ -361,6 +361,25 @@ mod tests {
     }
 
     #[test]
+    fn a_failing_event_insert_leaves_the_subtask_unchanged() {
+        let (mut store, task) = store_with_task();
+        let id = store.add_subtask(task, "outline").unwrap();
+        store
+            .conn
+            .execute_batch(
+                "CREATE TEMP TRIGGER fail_events BEFORE INSERT ON subtask_events
+                 BEGIN SELECT RAISE(ABORT, 'boom'); END;",
+            )
+            .unwrap();
+        assert!(matches!(
+            store.complete_subtask(id, at(10), None),
+            Err(StoreError::Sqlite(_))
+        ));
+        assert_eq!(store.subtasks(task).unwrap()[0].completed_at, None);
+        assert_eq!(store.subtask_events(id).unwrap().len(), 0);
+    }
+
+    #[test]
     fn corrupted_events_are_errors() {
         let (mut store, task) = store_with_task();
         let id = store.add_subtask(task, "outline").unwrap();
