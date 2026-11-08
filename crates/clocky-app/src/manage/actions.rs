@@ -42,6 +42,8 @@ impl Manage {
         let state = self.state();
         state.on_create_task(self.handler1(Self::create_task));
         state.on_set_task_done(self.handler2(Self::set_task_done));
+        state.on_toggle_current_task(self.handler0(Self::toggle_current_task));
+        state.on_move_to_no_project(self.handler0(|m| m.move_task_to(None)));
         state.on_rename_task(self.handler1(Self::rename_task));
         state.on_move_task(self.handler1(Self::move_task));
         state.on_archive_task(self.handler0(Self::archive_task));
@@ -76,13 +78,28 @@ impl Manage {
     }
 
     pub fn select_project(&self, id: i32) {
-        let Some(id) = db_id(id) else { return };
+        if let Some(id) = db_id(id) {
+            self.go_to_project(ProjectId(id));
+        }
+    }
+
+    fn go_to_project(&self, id: ProjectId) {
         self.navigate(Nav {
-            project: Some(ProjectId(id)),
+            project: Some(id),
             task: None,
             show_completed: false,
             search: self.nav().search,
         });
+    }
+
+    /// Forgets the project and task pages before they are deleted or archived, so the refresh
+    /// that follows does not look for them.
+    fn leave(&self, project: bool) {
+        let mut nav = self.nav.borrow_mut();
+        nav.task = None;
+        if project {
+            nav.project = None;
+        }
     }
 
     pub fn open_task(&self, id: i32) {
@@ -177,13 +194,14 @@ impl Manage {
         }
         let created = self.core.borrow_mut().create_project(&name, hex);
         match created {
-            Ok(id) => self.select_project(super::manage_view::slint_id(id.0)),
+            Ok(id) => self.go_to_project(id),
             Err(e) => tracing::warn!("failed to create the project: {e}"),
         }
     }
 
     fn archive_project(&self) {
         let Some(id) = self.nav().project else { return };
+        self.leave(true);
         self.mutate("archive the project", |c| c.archive_project(id));
         self.show_all();
     }
@@ -191,7 +209,10 @@ impl Manage {
     fn ask_delete_project(&self) {
         let Some(id) = self.nav().project else { return };
         let name = self.core.borrow().project(id).map(|p| p.name);
-        let name = name.unwrap_or_default();
+        let name = match name {
+            Ok(name) => name,
+            Err(e) => return tracing::warn!("cannot delete project {}: {e}", id.0),
+        };
         self.ask(
             Pending::DeleteProject(id),
             &format!("Apagar o projeto “{name}”?"),
@@ -220,10 +241,12 @@ impl Manage {
         self.close_confirm();
         match pending {
             Some(Pending::DeleteProject(id)) => {
+                self.leave(true);
                 self.mutate("delete the project", |c| c.delete_project(id));
                 self.show_all();
             }
             Some(Pending::DeleteTask(id)) => {
+                self.leave(false);
                 self.mutate("delete the task", |c| c.delete_task(id));
                 self.back_to_project();
             }
@@ -239,6 +262,11 @@ impl Manage {
         let Some(project) = self.nav().project else {
             return;
         };
+        // An active search would hide the new task right away: clear it first.
+        let had_search = !std::mem::take(&mut self.nav.borrow_mut().search).is_empty();
+        if had_search {
+            self.state().set_search(SharedString::new());
+        }
         if self.mutate("create the task", |c| {
             c.create_task(Some(project), &name).map(drop)
         }) {
@@ -254,6 +282,14 @@ impl Manage {
         self.mutate("complete or reopen the task", |c| c.set_task_done(id, done));
     }
 
+    fn toggle_current_task(&self) {
+        let Some(id) = self.nav().task else { return };
+        let done = self.state().get_task_done();
+        self.mutate("complete or reopen the task", |c| {
+            c.set_task_done(id, !done)
+        });
+    }
+
     fn rename_task(&self, name: SharedString) {
         let (Some(id), Some(name)) = (self.nav().task, clean(&name)) else {
             return;
@@ -264,8 +300,14 @@ impl Manage {
     }
 
     fn move_task(&self, project: i32) {
+        if let Some(project) = db_id(project) {
+            self.move_task_to(Some(ProjectId(project)));
+        }
+    }
+
+    /// Moves the task of the task page (`None` = "Sem projeto").
+    fn move_task_to(&self, project: Option<ProjectId>) {
         let Some(id) = self.nav().task else { return };
-        let project = db_id(project).map(ProjectId);
         if self.mutate("move the task", |c| c.move_task(id, project)) {
             self.navigate(Nav {
                 project,
@@ -276,6 +318,7 @@ impl Manage {
 
     fn archive_task(&self) {
         let Some(id) = self.nav().task else { return };
+        self.leave(false);
         self.mutate("archive the task", |c| c.archive_task(id));
         self.back_to_project();
     }
@@ -283,7 +326,10 @@ impl Manage {
     fn ask_delete_task(&self) {
         let Some(id) = self.nav().task else { return };
         let name = self.core.borrow().task(id).map(|t| t.name);
-        let name = name.unwrap_or_default();
+        let name = match name {
+            Ok(name) => name,
+            Err(e) => return tracing::warn!("cannot delete task {}: {e}", id.0),
+        };
         self.ask(
             Pending::DeleteTask(id),
             &format!("Apagar a tarefa “{name}”?"),

@@ -1,5 +1,5 @@
 // Rows the Rust side fills (see `src/manage_view.rs` and `src/picker.rs`). Identifiers are the
-// database ids; -1 means "none".
+// database ids; "none" choices have their own flag or row kind, never a sentinel id.
 
 // A project in the sidebar, the card grid and the chip lists.
 export struct ProjectItem {
@@ -13,10 +13,11 @@ export struct ProjectItem {
     // Completed share, 0..1 (card bar).
     progress: float,
     selected: bool,
+    // The "Sem projeto" chip (its id is meaningless).
+    none: bool,
 }
 
 // One row of wrapped project chips (Rust estimates the widths; Slint has no flex-wrap).
-// A chip with id -1 is "Sem projeto".
 export struct ChipRow {
     chips: [ProjectItem],
 }
@@ -30,6 +31,8 @@ export struct TaskRow {
     subtasks: string,
     // Project label for search results; empty inside a project.
     project: string,
+    // The task has a project (its dot uses `project-color`); "Sem projeto" otherwise.
+    has-project: bool,
     project-color: color,
     has-pomodoro: bool,
     has-timer: bool,

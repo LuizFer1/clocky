@@ -69,11 +69,7 @@ fn run() -> anyhow::Result<()> {
     let mut core = match startup::open_core() {
         Ok(core) => core,
         Err(failure) => {
-            tracing::error!(
-                "cannot open the database {}: {}",
-                failure.path,
-                failure.message
-            );
+            // The cause was logged by `open_core`; the window shows it in PT-BR.
             startup::show_failure(&failure, screenshot_dir)?;
             anyhow::bail!("the database could not be opened");
         }

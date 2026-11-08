@@ -105,10 +105,23 @@ impl AppCore {
         self.store.create_project(name, color, now)
     }
 
-    /// Renames the project and changes its color in one call (the edit form has both).
+    /// Renames the project and changes its color (the edit form has both), all or nothing: if
+    /// the color cannot be saved, the old name is put back.
     pub fn update_project(&mut self, id: ProjectId, name: &str, color: &str) -> CoreResult<()> {
+        let old = self.store.project(id)?;
         self.store.rename_project(id, name)?;
-        self.store.set_project_color(id, color)
+        if let Err(e) = self.store.set_project_color(id, color) {
+            if let Err(undo) = self.store.rename_project(id, &old.name) {
+                tracing::error!("failed to restore the name of project {}: {undo}", id.0);
+            }
+            return Err(e);
+        }
+        Ok(())
+    }
+
+    /// Whether the database has any project, archived ones included.
+    pub fn any_project(&self) -> CoreResult<bool> {
+        Ok(!self.store.projects(true)?.is_empty())
     }
 
     /// Hides the project from every list (its history stays in the reports).
@@ -256,6 +269,21 @@ mod tests {
         assert_eq!(core.projects().unwrap().len(), 0);
         core.delete_project(id).unwrap();
         assert!(core.project(id).is_err());
+    }
+
+    #[test]
+    fn archived_projects_still_count_as_existing() {
+        let mut core = core();
+        assert!(!core.any_project().unwrap());
+        let id = core.create_project("a", "#3d8fd6").unwrap();
+        core.archive_project(id).unwrap();
+        assert!(core.any_project().unwrap());
+    }
+
+    #[test]
+    fn updating_a_missing_project_changes_nothing() {
+        let mut core = core();
+        assert!(core.update_project(ProjectId(42), "x", "#3d8fd6").is_err());
     }
 
     #[test]

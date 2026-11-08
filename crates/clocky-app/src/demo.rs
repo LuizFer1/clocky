@@ -25,10 +25,10 @@ pub fn requested() -> bool {
 /// A session of the demo: days before today, local start (h, m), minutes and kind.
 struct DemoSession(u64, (u32, u32), u64, TimerKind);
 
-/// Seeds the demo when the database has no project yet. Times are local to `tz`, relative to
+/// Seeds the demo when the database has no project yet (archived ones included). Times are local to `tz`, relative to
 /// the core's clock, so "Hoje" and "Ontem" show up.
 pub fn seed_if_empty<Tz: TimeZone>(core: &mut AppCore, tz: &Tz) -> CoreResult<bool> {
-    if !core.projects()?.is_empty() {
+    if core.any_project()? {
         return Ok(false);
     }
     let mut seeder = Seeder { core, tz, run: 0 };

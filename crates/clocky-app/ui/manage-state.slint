@@ -22,7 +22,6 @@ export global ManageState {
     in-out property <string> search;
 
     // Task page.
-    in property <int> task-id: -1;
     in property <bool> task-done;
     in property <string> task-project: "";
     in property <string> task-total;
@@ -74,8 +73,11 @@ export global ManageState {
     // Tasks.
     callback create-task(string);
     callback set-task-done(int, bool);
+    // Completes or reopens the task of the task page ("⋯" menu).
+    callback toggle-current-task();
     callback rename-task(string);
     callback move-task(int);
+    callback move-to-no-project();
     callback archive-task();
     callback delete-task();
 

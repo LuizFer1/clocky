@@ -119,6 +119,24 @@ fn selection_chip_labels() {
 }
 
 #[test]
+fn creating_from_the_search_text_lands_in_the_chosen_project() {
+    let mut core = demo_core();
+    let faculdade = core.projects().unwrap()[1].project.id;
+    let id = create_task(&mut core, "  relatório mensal ", Some(faculdade))
+        .unwrap()
+        .unwrap();
+    let task = core.task(id).unwrap();
+    assert_eq!(
+        (task.name.as_str(), task.project),
+        ("relatório mensal", Some(faculdade))
+    );
+    let t = titles(&rows(&load(&core, "").unwrap(), Some(id)));
+    let group = t.iter().position(|x| x == "#FACULDADE").unwrap();
+    assert!(t[group..].contains(&"relatório mensal".to_owned()));
+    assert_eq!(create_task(&mut core, "   ", None).unwrap(), None);
+}
+
+#[test]
 fn folding_ignores_case_and_accents() {
     assert_eq!(fold("Autenticação ÉÑ"), "autenticacao en");
 }

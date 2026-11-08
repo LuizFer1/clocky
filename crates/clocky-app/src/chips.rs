@@ -20,13 +20,14 @@ pub fn chip_width(label: &str) -> f32 {
     CHROME + chars * CHAR
 }
 
-/// Splits the labels into rows no wider than `max_width` (a chip wider than that gets a row of
-/// its own). Returns the indices of each row.
+/// Splits the labels into rows no wider than `max_width`. A longer chip is elided by Slint at
+/// `max_width`, so it counts as exactly that wide (a row of its own). Returns the indices of
+/// each row.
 pub fn wrap(labels: &[&str], max_width: f32) -> Vec<Vec<usize>> {
     let mut rows: Vec<Vec<usize>> = Vec::new();
     let mut used = 0.0;
     for (index, label) in labels.iter().enumerate() {
-        let width = chip_width(label);
+        let width = chip_width(label).min(max_width);
         match rows.last_mut() {
             Some(row) if used + GAP + width <= max_width => {
                 row.push(index);
@@ -41,10 +42,10 @@ pub fn wrap(labels: &[&str], max_width: f32) -> Vec<Vec<usize>> {
     rows
 }
 
-/// A chip for the "Sem projeto" choice (id -1).
+/// The chip for the "Sem projeto" choice (`none`; its id is not used).
 pub fn no_project_chip(selected: bool) -> ui::ProjectItem {
     ui::ProjectItem {
-        id: -1,
+        none: true,
         name: crate::manage_view::NO_PROJECT.into(),
         color: Color::default(),
         selected,
@@ -97,6 +98,13 @@ mod tests {
             vec![vec![0], vec![1], vec![2]]
         );
         assert_eq!(wrap(&[], 120.0), Vec::<Vec<usize>>::new());
+    }
+
+    #[test]
+    fn a_chip_longer_than_the_row_is_capped_to_it() {
+        let long = "projeto ".repeat(30);
+        assert_eq!(wrap(&[&long, "a"], 308.0), vec![vec![0], vec![1]]);
+        assert_eq!(wrap(&["a", &long], 308.0), vec![vec![0], vec![1]]);
     }
 
     #[test]

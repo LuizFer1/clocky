@@ -80,9 +80,14 @@ pub struct TaskDetail {
     pub sessions: Vec<ui::SessionRow>,
 }
 
-/// A database id as a Slint `int` (-1 if it does not fit, which no real id reaches).
-pub fn slint_id(id: i64) -> i32 {
-    i32::try_from(id).unwrap_or(-1)
+/// A database id as a Slint `int`. `None` (logged) when it does not fit: the row is left out
+/// rather than given an id that could collide with another one.
+pub fn slint_id(id: i64) -> Option<i32> {
+    let fits = i32::try_from(id).ok();
+    if fits.is_none() {
+        tracing::warn!("id {id} does not fit the UI model; its row is left out");
+    }
+    fits
 }
 
 /// Builds the whole view for `nav`. `tz` is the local time zone of the session rows.
@@ -111,14 +116,17 @@ pub fn build<Tz: TimeZone>(core: &AppCore, nav: &Nav, tz: &Tz) -> CoreResult<Man
 fn project_items(overview: &[ProjectOverview], nav: &Nav) -> Vec<ui::ProjectItem> {
     overview
         .iter()
-        .map(|p| ui::ProjectItem {
-            id: slint_id(p.project.id.0),
-            name: p.project.name.as_str().into(),
-            color: palette::color(&p.project.color),
-            open: i32::try_from(p.open_tasks).unwrap_or(i32::MAX),
-            counts: format::task_counts(p.open_tasks, p.completed_tasks).into(),
-            progress: format::fraction(p.completed_tasks, p.open_tasks + p.completed_tasks),
-            selected: nav.project == Some(p.project.id),
+        .filter_map(|p| {
+            Some(ui::ProjectItem {
+                id: slint_id(p.project.id.0)?,
+                name: p.project.name.as_str().into(),
+                color: palette::color(&p.project.color),
+                open: i32::try_from(p.open_tasks).unwrap_or(i32::MAX),
+                counts: format::task_counts(p.open_tasks, p.completed_tasks).into(),
+                progress: format::fraction(p.completed_tasks, p.open_tasks + p.completed_tasks),
+                selected: nav.project == Some(p.project.id),
+                none: false,
+            })
         })
         .collect()
 }
@@ -146,7 +154,7 @@ fn fill_project(
     view.tasks = summaries
         .iter()
         .filter(|s| matches.as_ref().is_none_or(|ids| ids.contains(&s.task.id)))
-        .map(|s| task_row(s, None))
+        .filter_map(|s| task_row(s, None))
         .collect();
     Ok(())
 }
@@ -162,20 +170,22 @@ fn search_ids(core: &AppCore, text: &str) -> CoreResult<Option<HashSet<TaskId>>>
     ))
 }
 
-/// A task row. `project` is the (name, color) shown in the search results.
-fn task_row(summary: &TaskSummary, project: Option<(&str, Color)>) -> ui::TaskRow {
-    let (name, color) = project.unwrap_or(("", Color::default()));
-    ui::TaskRow {
-        id: slint_id(summary.task.id.0),
+/// A task row. `project` is the label shown in the search results: the project name and
+/// color, or "Sem projeto" without a color.
+fn task_row(summary: &TaskSummary, project: Option<(&str, Option<Color>)>) -> Option<ui::TaskRow> {
+    let (name, color) = project.unwrap_or(("", None));
+    Some(ui::TaskRow {
+        id: slint_id(summary.task.id.0)?,
         name: summary.task.name.as_str().into(),
         done: summary.task.completed_at.is_some(),
         subtasks: format::subtasks_label(summary.subtasks_done, summary.subtasks_total).into(),
         project: name.into(),
-        project_color: color,
+        has_project: color.is_some(),
+        project_color: color.unwrap_or_default(),
         has_pomodoro: !summary.links.pomodoro_presets.is_empty(),
         has_timer: !summary.links.timer_presets.is_empty(),
         time: format::tracked(summary.tracked).into(),
-    }
+    })
 }
 
 fn fill_search(
@@ -196,10 +206,13 @@ fn fill_search(
         .iter()
         .filter_map(|task| summaries.get(&task.id))
         .filter(|s| nav.show_completed || s.task.completed_at.is_none())
-        .map(|s| {
+        .filter_map(|s| {
             let owner = s.task.project.and_then(|id| find(overview, id));
-            let label = owner.map_or((NO_PROJECT, Color::default()), |p| {
-                (p.project.name.as_str(), palette::color(&p.project.color))
+            let label = owner.map_or((NO_PROJECT, None), |p| {
+                (
+                    p.project.name.as_str(),
+                    Some(palette::color(&p.project.color)),
+                )
             });
             task_row(s, Some(label))
         })
@@ -241,10 +254,12 @@ fn fill_task<Tz: TimeZone>(
         total: format::duration(tracked),
         subtasks: subtasks
             .iter()
-            .map(|s| ui::SubtaskRow {
-                id: slint_id(s.id.0),
-                name: s.name.as_str().into(),
-                done: s.completed_at.is_some(),
+            .filter_map(|s| {
+                Some(ui::SubtaskRow {
+                    id: slint_id(s.id.0)?,
+                    name: s.name.as_str().into(),
+                    done: s.completed_at.is_some(),
+                })
             })
             .collect(),
         checklist: format::checklist_label(done, total),

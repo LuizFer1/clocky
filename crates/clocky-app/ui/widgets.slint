@@ -189,10 +189,12 @@ export component ProjectChip inherits Rectangle {
     // "Sem projeto": the dot uses the line color.
     in property <bool> no-project;
     in property <bool> active;
+    // Long project names are elided past this width (the rows are wrapped to it in Rust).
+    in property <length> max-chip-width: 308px;
     callback clicked();
 
     height: 30px;
-    width: label.preferred-width + 8px + Theme.space-1-5 + 2 * Theme.space-2-5;
+    width: min(root.max-chip-width, label.preferred-width + 8px + Theme.space-1-5 + 2 * Theme.space-2-5 + 2px);
     border-radius: 15px;
     border-width: 1px;
     border-color: root.active ? Theme.accent : Theme.line-2;
@@ -209,7 +211,9 @@ export component ProjectChip inherits Rectangle {
         }
 
         label := Text {
+            horizontal-stretch: 1;
             vertical-alignment: center;
+            overflow: elide;
             text: root.text;
             color: Theme.text;
             font-size: Theme.fs-xs;
