@@ -193,3 +193,47 @@ fn reenabling_clears_a_leftover_snooze() {
         Some((id, nov(3, 10, 0)))
     );
 }
+
+#[test]
+fn editing_a_snoozed_once_alarm_does_not_ring_again() {
+    let mut store = Store::open_in_memory().unwrap();
+    let once = NewAlarm {
+        repeat: Weekdays::ONCE,
+        ..at_time("once", 10, 0)
+    };
+    let id = store.create_alarm(&once, nov(2, 6, 0)).unwrap();
+    store.mark_alarm_fired(id, nov(2, 10, 0)).unwrap();
+    store.snooze_alarm(id, nov(2, 10, 0)).unwrap();
+
+    let reworded = NewAlarm {
+        message: "Take the pills",
+        ..once
+    };
+    store.update_alarm(id, &reworded, nov(2, 10, 2)).unwrap();
+    let alarm = store.alarm(id).unwrap();
+    assert!(!alarm.enabled);
+    assert_eq!(alarm.snoozed_until, None);
+    assert_eq!(store.pending_alarms(nov(3, 10, 0), &brt()).unwrap(), vec![]);
+    assert_eq!(store.next_alarm(nov(2, 10, 2), &brt()).unwrap(), None);
+}
+
+#[test]
+fn editing_after_firing_today_does_not_fire_again() {
+    let mut store = Store::open_in_memory().unwrap();
+    let id = daily(&mut store, 10, 0);
+    store.mark_alarm_fired(id, nov(2, 10, 0)).unwrap();
+    let earlier = NewAlarm {
+        repeat: Weekdays::EVERY_DAY,
+        ..at_time("daily", 10, 10)
+    };
+    store.update_alarm(id, &earlier, nov(2, 10, 20)).unwrap();
+    assert!(store.alarm(id).unwrap().enabled);
+    assert_eq!(
+        store.pending_alarms(nov(2, 10, 30), &brt()).unwrap(),
+        vec![]
+    );
+    assert_eq!(
+        store.next_alarm(nov(2, 10, 30), &brt()).unwrap(),
+        Some((id, nov(3, 10, 10)))
+    );
+}
