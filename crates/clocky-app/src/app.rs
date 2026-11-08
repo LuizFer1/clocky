@@ -264,6 +264,8 @@ impl App {
 impl App {
     fn schedule_timer_shots(self: &Rc<Self>, dir: PathBuf) {
         let (weak_set, weak_open) = (Rc::downgrade(self), Rc::downgrade(self));
+        // M7b: the Relatórios / Configurações tour follows, then the app quits.
+        let (weak_done, manage_dir) = (Rc::downgrade(self), dir.clone());
         timers::shots::start(timers::shots::ShotContext {
             panels: self.timers.clone(),
             window: self.panel.ui.as_weak(),
@@ -278,7 +280,7 @@ impl App {
                     app.open_panel(kind, false);
                 }
             }),
-            done: Box::new(quit),
+            done: Box::new(move || crate::tour_manage::run(&weak_done, manage_dir.clone())),
         });
     }
 }

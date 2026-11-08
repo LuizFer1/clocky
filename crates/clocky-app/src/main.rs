@@ -37,6 +37,7 @@ mod settings_view;
 mod sound;
 mod startup;
 mod tour;
+mod tour_manage;
 mod tray;
 // M6b: the timer panels.
 mod timers;
