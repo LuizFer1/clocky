@@ -12,6 +12,7 @@ export component DockWindow inherits Window {
     in-out property <bool> open <=> menu.open;
     in property <int> active-count <=> menu.active-count;
     in property <bool> left-side <=> menu.left-side;
+    in-out property <string> hovered-id <=> menu.hovered-id;
     in property <bool> compact: false;
     out property <bool> pointer-inside: menu.pointer-inside;
     callback option-selected(string);

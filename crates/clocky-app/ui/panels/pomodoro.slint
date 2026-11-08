@@ -10,6 +10,7 @@ component PresetCard inherits Rectangle {
     height: 98px;
     border-radius: Theme.radius-panel;
     background: touch.has-hover ? Theme.panel-2 : Theme.field;
+    animate background { duration: Theme.dur-hover; }
     border-width: 1px;
     border-color: Theme.line;
 

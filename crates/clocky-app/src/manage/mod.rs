@@ -11,7 +11,7 @@ mod settings;
 use std::cell::{Cell, RefCell};
 use std::rc::{Rc, Weak};
 
-use clocky_core::domain::{ProjectId, SessionId, TaskId};
+use clocky_core::domain::{PomodoroPresetId, ProjectId, SessionId, TaskId};
 use slint::winit_030::WinitWindowAccessor;
 use slint::{ComponentHandle, ModelRc, SharedString, VecModel};
 
@@ -19,6 +19,7 @@ use crate::core::{AppCore, CoreResult};
 use crate::manage_view::{self, ManageView, Nav, Page};
 use crate::reports_view::ReportNav;
 use crate::settings_view::Applied;
+use crate::settings_view::presets::PresetDraft;
 use crate::{autostart, chips, palette, ui};
 
 /// Width used to wrap the "Mover para" chips (fits the 480px layout).
@@ -39,6 +40,7 @@ enum Pending {
     ArchiveProject(ProjectId),
     ArchiveTask(TaskId),
     DeleteSession(SessionId),
+    DeletePreset(PomodoroPresetId),
 }
 
 /// The pages of the sidebar footer, over the project pages of [`Nav`] (M7b).
@@ -64,6 +66,8 @@ pub struct Manage {
     reports: RefCell<Option<ReportNav>>,
     autostart: RefCell<Box<dyn autostart::Autostart>>,
     on_settings: RefCell<Option<SettingsHook>>,
+    /// The saved pomodoro open in the Configurações editor.
+    preset_draft: RefCell<Option<PresetDraft>>,
 }
 
 impl Manage {
@@ -82,6 +86,7 @@ impl Manage {
             reports: RefCell::new(None),
             autostart: RefCell::new(Box::new(autostart::Fake::default())),
             on_settings: RefCell::new(None),
+            preset_draft: RefCell::new(None),
         });
         let colors: Vec<slint::Color> = palette::COLORS
             .iter()
@@ -129,8 +134,8 @@ impl Manage {
         });
     }
 
-    pub fn set_dark(&self, dark: bool) {
-        self.ui.global::<ui::Theme>().set_dark(dark);
+    pub fn set_theme(&self, mode: crate::settings::ThemeMode) {
+        mode.apply(&self.ui.global::<ui::Theme>());
     }
 
     /// Moves to `nav` (screenshot hook and navigation callbacks) and rebuilds the view.

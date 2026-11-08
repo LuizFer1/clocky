@@ -134,8 +134,8 @@ impl Panel {
         Ok(panel)
     }
 
-    pub fn set_dark(&self, dark: bool) {
-        self.ui.global::<ui::Theme>().set_dark(dark);
+    pub fn set_theme(&self, mode: crate::settings::ThemeMode) {
+        mode.apply(&self.ui.global::<ui::Theme>());
     }
 
     /// Shows the panel of `kind` next to the dock. `focus` brings it to the front (user clicks

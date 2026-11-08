@@ -37,6 +37,7 @@ component NoticeBar inherits Rectangle {
             width: 28px;
             border-radius: Theme.radius-sm;
             background: close.has-hover ? Theme.accent-soft : transparent;
+            animate background { duration: Theme.dur-hover; }
 
             Text {
                 text: "×";
@@ -61,13 +62,150 @@ export component TimerBody inherits VerticalLayout {
         NoticeBar { }
     }
 
-    if TimerUi.view == "stopwatch": StopwatchView { }
-    if TimerUi.view == "countdown-config": CountdownConfigView { }
-    if TimerUi.view == "countdown-run": CountdownRunView { }
-    if TimerUi.view == "pomodoro-list": PomodoroListView { }
-    if TimerUi.view == "pomodoro-timer": PomodoroTimerView { }
-    if TimerUi.view == "wizard": WizardView { }
-    if TimerUi.view == "overview": OverviewView { }
+    if TimerUi.view == "stopwatch": StopwatchView {
+
+        // Fades in when it appears.
+
+        property <bool> shown: false;
+
+        // Evaluates the opacity once while hidden, so the flip below has a start to animate from.
+
+        property <float> start-opacity;
+
+        init => { self.start-opacity = self.opacity; }
+
+        // Flipped right after creation: set in `init`, the animation would be skipped.
+        Timer {
+            interval: 1ms;
+            triggered => {
+                parent.shown = true;
+                self.running = false;
+            }
+        }
+
+        opacity: self.shown ? 1 : 0;
+
+        animate opacity { duration: Theme.dur-page; easing: ease-out; }
+
+    }
+    if TimerUi.view == "countdown-config": CountdownConfigView {
+        // Fades in when it appears.
+        property <bool> shown: false;
+        // Evaluates the opacity once while hidden, so the flip below has a start to animate from.
+        property <float> start-opacity;
+        init => { self.start-opacity = self.opacity; }
+        // Flipped right after creation: set in `init`, the animation would be skipped.
+        Timer {
+            interval: 1ms;
+            triggered => {
+                parent.shown = true;
+                self.running = false;
+            }
+        }
+        opacity: self.shown ? 1 : 0;
+        animate opacity { duration: Theme.dur-page; easing: ease-out; }
+    }
+    if TimerUi.view == "countdown-run": CountdownRunView {
+        // Fades in when it appears.
+        property <bool> shown: false;
+        // Evaluates the opacity once while hidden, so the flip below has a start to animate from.
+        property <float> start-opacity;
+        init => { self.start-opacity = self.opacity; }
+        // Flipped right after creation: set in `init`, the animation would be skipped.
+        Timer {
+            interval: 1ms;
+            triggered => {
+                parent.shown = true;
+                self.running = false;
+            }
+        }
+        opacity: self.shown ? 1 : 0;
+        animate opacity { duration: Theme.dur-page; easing: ease-out; }
+    }
+    if TimerUi.view == "pomodoro-list": PomodoroListView {
+        // Fades in when it appears.
+        property <bool> shown: false;
+        // Evaluates the opacity once while hidden, so the flip below has a start to animate from.
+        property <float> start-opacity;
+        init => { self.start-opacity = self.opacity; }
+        // Flipped right after creation: set in `init`, the animation would be skipped.
+        Timer {
+            interval: 1ms;
+            triggered => {
+                parent.shown = true;
+                self.running = false;
+            }
+        }
+        opacity: self.shown ? 1 : 0;
+        animate opacity { duration: Theme.dur-page; easing: ease-out; }
+    }
+    if TimerUi.view == "pomodoro-timer": PomodoroTimerView {
+        // Fades in when it appears.
+        property <bool> shown: false;
+        // Evaluates the opacity once while hidden, so the flip below has a start to animate from.
+        property <float> start-opacity;
+        init => { self.start-opacity = self.opacity; }
+        // Flipped right after creation: set in `init`, the animation would be skipped.
+        Timer {
+            interval: 1ms;
+            triggered => {
+                parent.shown = true;
+                self.running = false;
+            }
+        }
+        opacity: self.shown ? 1 : 0;
+        animate opacity { duration: Theme.dur-page; easing: ease-out; }
+    }
+    if TimerUi.view == "wizard": WizardView {
+        // Fades in when it appears.
+        property <bool> shown: false;
+        // Evaluates the opacity once while hidden, so the flip below has a start to animate from.
+        property <float> start-opacity;
+        init => { self.start-opacity = self.opacity; }
+        // Flipped right after creation: set in `init`, the animation would be skipped.
+        Timer {
+            interval: 1ms;
+            triggered => {
+                parent.shown = true;
+                self.running = false;
+            }
+        }
+        opacity: self.shown ? 1 : 0;
+        animate opacity { duration: Theme.dur-page; easing: ease-out; }
+    }
+    if TimerUi.view == "overview": OverviewView {
+        // Fades in when it appears.
+        property <bool> shown: false;
+        // Evaluates the opacity once while hidden, so the flip below has a start to animate from.
+        property <float> start-opacity;
+        init => { self.start-opacity = self.opacity; }
+        // Flipped right after creation: set in `init`, the animation would be skipped.
+        Timer {
+            interval: 1ms;
+            triggered => {
+                parent.shown = true;
+                self.running = false;
+            }
+        }
+        opacity: self.shown ? 1 : 0;
+        animate opacity { duration: Theme.dur-page; easing: ease-out; }
+    }
     // M7a: the Alarme panel.
-    if TimerUi.view == "alarm-editor": AlarmEditorView { }
+    if TimerUi.view == "alarm-editor": AlarmEditorView {
+        // Fades in when it appears.
+        property <bool> shown: false;
+        // Evaluates the opacity once while hidden, so the flip below has a start to animate from.
+        property <float> start-opacity;
+        init => { self.start-opacity = self.opacity; }
+        // Flipped right after creation: set in `init`, the animation would be skipped.
+        Timer {
+            interval: 1ms;
+            triggered => {
+                parent.shown = true;
+                self.running = false;
+            }
+        }
+        opacity: self.shown ? 1 : 0;
+        animate opacity { duration: Theme.dur-page; easing: ease-out; }
+    }
 }

@@ -10,12 +10,12 @@ use std::path::Path;
 use std::time::Duration;
 
 use clocky_core::clock::{Clock, SystemClock};
-use clocky_core::domain::{ProjectId, SubtaskId, TaskId, TimerId};
+use clocky_core::domain::{PomodoroPresetId, ProjectId, SubtaskId, TaskId, TimerId};
 use clocky_core::engine::session::CompletedSession;
 use clocky_core::engine::timers::ActiveTimer;
 use clocky_core::store::{
-    NewPomodoroPreset, Project, ProjectOverview, Session, Store, StoreError, Subtask, Task,
-    TaskLinks, TaskSummary,
+    NewPomodoroPreset, PomodoroPreset, Project, ProjectOverview, Session, Store, StoreError,
+    Subtask, Task, TaskLinks, TaskSummary,
 };
 use clocky_core::time::Timestamp;
 use clocky_core::tracker::{Tracker, TrackerError, TrackerEvent, TrackerOpenError};
@@ -280,6 +280,25 @@ impl AppCore {
 
     pub fn delete_subtask(&mut self, id: SubtaskId) -> CoreResult<()> {
         Ok(self.store_mut().delete_subtask(id)?)
+    }
+}
+
+/// Saved pomodoros (Configurações > Pomodoros salvos).
+impl AppCore {
+    pub fn pomodoro_presets(&self) -> CoreResult<Vec<PomodoroPreset>> {
+        Ok(self.tracker.store().pomodoro_presets()?)
+    }
+
+    pub fn update_pomodoro_preset(
+        &mut self,
+        id: PomodoroPresetId,
+        preset: &NewPomodoroPreset<'_>,
+    ) -> CoreResult<()> {
+        Ok(self.store_mut().update_pomodoro_preset(id, preset)?)
+    }
+
+    pub fn delete_pomodoro_preset(&mut self, id: PomodoroPresetId) -> CoreResult<()> {
+        Ok(self.store_mut().delete_pomodoro_preset(id)?)
     }
 }
 

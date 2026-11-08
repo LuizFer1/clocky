@@ -66,17 +66,167 @@ component Content inherits Rectangle {
 
         Header { }
 
-        if ManageState.page == 2 && ManageState.moving-task: MoveCard { }
+        if ManageState.page == 2 && ManageState.moving-task: MoveCard {
 
-        if ManageState.page == 0: AllProjectsPage { }
+            // Fades in when it appears.
 
-        if ManageState.page == 1 || ManageState.page == 3: TaskListPage { }
+            property <bool> shown: false;
 
-        if ManageState.page == 2: TaskPage { }
+            // Evaluates the opacity once while hidden, so the flip below has a start to animate from.
 
-        if ManageState.page == 4: ReportsPage { }
+            property <float> start-opacity;
 
-        if ManageState.page == 5: SettingsPage { }
+            init => { self.start-opacity = self.opacity; }
+
+            // Flipped right after creation: set in `init`, the animation would be skipped.
+            Timer {
+                interval: 1ms;
+                triggered => {
+                    parent.shown = true;
+                    self.running = false;
+                }
+            }
+
+            opacity: self.shown ? 1 : 0;
+
+            animate opacity { duration: Theme.dur-page; easing: ease-out; }
+
+        }
+
+        if ManageState.page == 0: AllProjectsPage {
+
+            // Fades in when it appears.
+
+            property <bool> shown: false;
+
+            // Evaluates the opacity once while hidden, so the flip below has a start to animate from.
+
+            property <float> start-opacity;
+
+            init => { self.start-opacity = self.opacity; }
+
+            // Flipped right after creation: set in `init`, the animation would be skipped.
+            Timer {
+                interval: 1ms;
+                triggered => {
+                    parent.shown = true;
+                    self.running = false;
+                }
+            }
+
+            opacity: self.shown ? 1 : 0;
+
+            animate opacity { duration: Theme.dur-page; easing: ease-out; }
+
+        }
+
+        if ManageState.page == 1 || ManageState.page == 3: TaskListPage {
+
+            // Fades in when it appears.
+
+            property <bool> shown: false;
+
+            // Evaluates the opacity once while hidden, so the flip below has a start to animate from.
+
+            property <float> start-opacity;
+
+            init => { self.start-opacity = self.opacity; }
+
+            // Flipped right after creation: set in `init`, the animation would be skipped.
+            Timer {
+                interval: 1ms;
+                triggered => {
+                    parent.shown = true;
+                    self.running = false;
+                }
+            }
+
+            opacity: self.shown ? 1 : 0;
+
+            animate opacity { duration: Theme.dur-page; easing: ease-out; }
+
+        }
+
+        if ManageState.page == 2: TaskPage {
+
+            // Fades in when it appears.
+
+            property <bool> shown: false;
+
+            // Evaluates the opacity once while hidden, so the flip below has a start to animate from.
+
+            property <float> start-opacity;
+
+            init => { self.start-opacity = self.opacity; }
+
+            // Flipped right after creation: set in `init`, the animation would be skipped.
+            Timer {
+                interval: 1ms;
+                triggered => {
+                    parent.shown = true;
+                    self.running = false;
+                }
+            }
+
+            opacity: self.shown ? 1 : 0;
+
+            animate opacity { duration: Theme.dur-page; easing: ease-out; }
+
+        }
+
+        if ManageState.page == 4: ReportsPage {
+
+            // Fades in when it appears.
+
+            property <bool> shown: false;
+
+            // Evaluates the opacity once while hidden, so the flip below has a start to animate from.
+
+            property <float> start-opacity;
+
+            init => { self.start-opacity = self.opacity; }
+
+            // Flipped right after creation: set in `init`, the animation would be skipped.
+            Timer {
+                interval: 1ms;
+                triggered => {
+                    parent.shown = true;
+                    self.running = false;
+                }
+            }
+
+            opacity: self.shown ? 1 : 0;
+
+            animate opacity { duration: Theme.dur-page; easing: ease-out; }
+
+        }
+
+        if ManageState.page == 5: SettingsPage {
+
+            // Fades in when it appears.
+
+            property <bool> shown: false;
+
+            // Evaluates the opacity once while hidden, so the flip below has a start to animate from.
+
+            property <float> start-opacity;
+
+            init => { self.start-opacity = self.opacity; }
+
+            // Flipped right after creation: set in `init`, the animation would be skipped.
+            Timer {
+                interval: 1ms;
+                triggered => {
+                    parent.shown = true;
+                    self.running = false;
+                }
+            }
+
+            opacity: self.shown ? 1 : 0;
+
+            animate opacity { duration: Theme.dur-page; easing: ease-out; }
+
+        }
 
         Rectangle {
             vertical-stretch: 1;

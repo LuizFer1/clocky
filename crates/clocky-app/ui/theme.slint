@@ -1,9 +1,15 @@
 // Clocky design tokens for Slint, generated from the handoff's tokens/*.tokens.json.
-// Usage: import { Theme } from "theme.slint"; set `Theme.dark = false` for the light theme.
+// Usage: import { Theme } from "theme.slint"; Rust picks the mode with `follow-system` and
+// `chosen-dark`, and every color follows `Theme.dark`.
+import { Palette } from "std-widgets.slint";
 
 export global Theme {
-    // Dark by default (spec, decision 10). Globals are per window: Rust sets it on every window.
-    in-out property <bool> dark: true;
+    // "Sistema": follow the OS light/dark setting, live (Slint tracks it per window).
+    in-out property <bool> follow-system: false;
+    // "Escuro" (the default, spec decision 10) or "Claro", when not following the system.
+    // Globals are per window: Rust sets both on every window.
+    in-out property <bool> chosen-dark: true;
+    out property <bool> dark: root.follow-system ? Palette.color-scheme != ColorScheme.light : root.chosen-dark;
 
     // Desktop backdrop behind the panels
     out property <color> bg: root.dark ? #000000 : #f2f2f2;
@@ -115,4 +121,8 @@ export global Theme {
     out property <duration> dur-fade: 180ms; // ease
     out property <duration> dur-radial-stagger: 25ms; // linear
     out property <duration> dur-progress: 1000ms; // linear
+    // A page or a panel view that appears fades in.
+    out property <duration> dur-page: 200ms; // ease-out
+    // Hover and selection backgrounds.
+    out property <duration> dur-hover: 120ms; // ease
 }

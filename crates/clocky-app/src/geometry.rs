@@ -202,6 +202,26 @@ pub fn open_hub_center(window: Point, scale: f64, edge: Edge) -> Point {
     }
 }
 
+/// Whether the dock window is somewhere else than where its anchor puts it (more than 2 px off
+/// in position or size), for the dock watchdog.
+pub fn rect_drifted(expected: Rect, actual: Rect) -> bool {
+    let off = |a: i32, b: i32| (a - b).abs() > 2;
+    off(expected.x, actual.x)
+        || off(expected.y, actual.y)
+        || off(expected.w, actual.w)
+        || off(expected.h, actual.h)
+}
+
+/// Whether some part of `rect` is on one of the monitors.
+pub fn on_some_monitor(monitors: &[Monitor], rect: Rect) -> bool {
+    monitors.iter().any(|m| {
+        rect.x < m.rect.right()
+            && m.rect.x < rect.right()
+            && rect.y < m.rect.bottom()
+            && m.rect.y < rect.bottom()
+    })
+}
+
 /// The monitor that contains `p`, or the closest one. Ties go to the first in the list.
 pub fn nearest_monitor(monitors: &[Monitor], p: Point) -> Option<&Monitor> {
     monitors.iter().min_by_key(|m| m.rect.distance_sq(p))
@@ -356,6 +376,45 @@ mod tests {
         let (anchor, monitor) = snap(&monitors, Point { x: 2500, y: 100 }).unwrap();
         assert_eq!(monitor.name.as_deref(), Some("DISPLAY2"));
         assert_eq!(anchor.edge, Edge::Right);
+    }
+
+    #[test]
+    fn a_few_pixels_of_rounding_are_not_a_drift() {
+        let r = Rect {
+            x: 0,
+            y: 391,
+            w: 30,
+            h: 60,
+        };
+        assert!(!rect_drifted(r, Rect { x: 1, y: 393, ..r }));
+        assert!(rect_drifted(r, Rect { x: -320, ..r }));
+        assert!(rect_drifted(
+            r,
+            Rect {
+                w: 320,
+                h: 360,
+                ..r
+            }
+        ));
+    }
+
+    #[test]
+    fn a_window_outside_every_monitor_is_detected() {
+        let monitors = both();
+        let visible = Rect {
+            x: -30,
+            y: 500,
+            w: 30,
+            h: 60,
+        };
+        assert!(on_some_monitor(&monitors, visible));
+        let lost = Rect {
+            x: 5000,
+            y: 500,
+            ..visible
+        };
+        assert!(!on_some_monitor(&monitors, lost));
+        assert!(!on_some_monitor(&[], visible));
     }
 
     #[test]

@@ -94,8 +94,8 @@ impl Overlay {
         }))
     }
 
-    pub fn set_dark(&self, dark: bool) {
-        self.ui.global::<ui::Theme>().set_dark(dark);
+    pub fn set_theme(&self, mode: crate::settings::ThemeMode) {
+        mode.apply(&self.ui.global::<ui::Theme>());
     }
 
     /// Fills and shows the window (placed on the dock's monitor when known).

@@ -14,7 +14,7 @@ use crate::core::{AppCore, Reopened};
 use crate::dock::Dock;
 use crate::manage::Manage;
 use crate::panel::{Panel, PanelKind};
-use crate::settings::{self, DockPlacement, Settings};
+use crate::settings::{self, DockPlacement, Settings, ThemeMode};
 use crate::{notify, sound};
 use crate::{tray, ui};
 // M6b: timer panels.
@@ -44,6 +44,8 @@ pub struct App {
     timers: Rc<TimerPanels>,
     /// M7a: the alarms (Alarme panel, Ativos cards, ringing overlay).
     alarms: Rc<crate::alarms::Alarms>,
+    /// 0.2: automatic updates (Configurações > Atualizações).
+    updater: Rc<crate::update::Updater>,
 }
 
 impl App {
@@ -83,6 +85,7 @@ impl App {
             alarms: alarms.clone(),
         };
         let timers = TimerPanels::new(&panel.ui, core.clone(), reopened, hooks);
+        let updater = crate::update::Updater::new(core.clone(), !screenshot_mode);
         let app = Rc::new(Self {
             dock: Dock::new()?,
             panel,
@@ -95,9 +98,11 @@ impl App {
             tick_timer: slint::Timer::default(),
             timers,
             alarms,
+            updater,
         });
         app.connect();
         app.connect_settings();
+        app.connect_updates();
         APP.with(|cell| *cell.borrow_mut() = Some(app.clone()));
         Ok(app)
     }
@@ -170,7 +175,7 @@ impl App {
     /// created right after the loop starts (required on macOS).
     pub fn start(self: &Rc<Self>) -> anyhow::Result<()> {
         let settings = self.settings.borrow().clone();
-        self.set_dark(settings.dark_theme);
+        self.set_theme(settings.theme);
         self.dock.show_at(settings.dock)?;
         let weak = Rc::downgrade(self);
         self.tick_timer
@@ -209,7 +214,11 @@ impl App {
     }
 
     fn start_tray(&self) {
-        let tray = tray::create(|| run_command(Command::Show), || run_command(Command::Quit));
+        let tray = tray::create(tray::Actions {
+            open_manage: Box::new(|| run_command(Command::Show)),
+            show_dock: Box::new(|| run_command(Command::ShowDock)),
+            quit: Box::new(|| run_command(Command::Quit)),
+        });
         *self.tray.borrow_mut() = tray;
     }
 
@@ -217,6 +226,7 @@ impl App {
         tracing::info!("command: {}", command.as_str());
         match command {
             Command::Show => self.manage.bring_to_front(),
+            Command::ShowDock => self.dock.recover(),
             Command::Quit => quit(),
             Command::NotifyTest => notify::show("Clocky", "Notificação de teste do Clocky."),
             Command::SoundTest => sound::play_default(),
@@ -254,12 +264,17 @@ impl App {
         self.dock.reopen_menu();
     }
 
-    /// Switches every window between the dark and the light theme (Slint globals are per window).
+    /// Applies the theme mode to every window (Slint globals are per window).
+    pub fn set_theme(&self, mode: ThemeMode) {
+        self.dock.set_theme(mode);
+        self.panel.set_theme(mode);
+        self.manage.set_theme(mode);
+        self.alarms.set_theme(mode);
+    }
+
+    /// The dark or the light theme (screenshot passes).
     pub fn set_dark(&self, dark: bool) {
-        self.dock.set_dark(dark);
-        self.panel.set_dark(dark);
-        self.manage.set_dark(dark);
-        self.alarms.set_dark(dark);
+        self.set_theme(ThemeMode::from_dark(dark));
     }
 
     fn save_dock(&self, placement: DockPlacement) {
@@ -322,10 +337,16 @@ impl App {
         if !self.screenshot_mode
             && let Some(backend) = crate::autostart::system()
         {
-            // An entry left by an exe that moved points at this one again.
-            match std::env::current_exe()
-                .map(|exe| crate::autostart::repair(backend.as_ref(), &exe))
-            {
+            // An entry left by an exe that moved points at this one again; never for a
+            // development build (`0.0.0`), which would steal the installed app's entry.
+            let release_build = self.updater.current().is_release();
+            match std::env::current_exe().map(|exe| {
+                if release_build {
+                    crate::autostart::repair(backend.as_ref(), &exe)
+                } else {
+                    Ok(false)
+                }
+            }) {
                 Ok(Ok(true)) => tracing::info!("autostart entry pointed at the running exe"),
                 Ok(Ok(false)) => {}
                 Ok(Err(e)) | Err(e) => tracing::warn!("cannot check the autostart entry: {e}"),
@@ -336,11 +357,12 @@ impl App {
         self.manage.set_on_settings(move |applied| {
             let Some(app) = weak.upgrade() else { return };
             match applied {
-                Applied::Theme(dark) => {
-                    app.settings.borrow_mut().dark_theme = dark;
-                    app.set_dark(dark);
+                Applied::Theme(mode) => {
+                    app.settings.borrow_mut().theme = mode;
+                    app.set_theme(mode);
                 }
                 Applied::Wizard => app.timers.reload_wizard_defaults(),
+                Applied::Presets => app.timers.render(),
                 Applied::Stored => {}
             }
         });
@@ -408,5 +430,51 @@ pub fn shutdown(app: Rc<App>) {
 pub fn quit() {
     if let Err(e) = slint::quit_event_loop() {
         tracing::error!("failed to quit the event loop: {e}");
+    }
+}
+
+/// 0.2: Configurações > Atualizações.
+impl App {
+    fn connect_updates(self: &Rc<Self>) {
+        let s = self.manage.ui.global::<ui::SettingsState>();
+        s.set_version(self.updater.current().to_string().into());
+        s.set_auto_update(self.updater.auto());
+        let weak = Rc::downgrade(self);
+        s.on_update_act(move || {
+            if let Some(app) = weak.upgrade() {
+                app.updater.act();
+            }
+        });
+        let weak = Rc::downgrade(self);
+        s.on_set_auto_update(move |on| {
+            if let Some(app) = weak.upgrade() {
+                app.updater.set_auto(on);
+                app.manage
+                    .ui
+                    .global::<ui::SettingsState>()
+                    .set_auto_update(on);
+            }
+        });
+        let weak = Rc::downgrade(self);
+        self.updater.set_on_view(move |view| {
+            let Some(app) = weak.upgrade() else { return };
+            let s = app.manage.ui.global::<ui::SettingsState>();
+            s.set_update_status(view.status.as_str().into());
+            s.set_update_action(view.action.as_str().into());
+            s.set_update_busy(view.busy);
+        });
+        let weak = Rc::downgrade(self);
+        self.updater
+            .set_idle_check(move || weak.upgrade().is_some_and(|app| app.is_idle()));
+        self.updater.start();
+    }
+
+    /// A good moment to restart for an update: no window open and nothing running or ringing
+    /// (the dock badge counts both).
+    fn is_idle(&self) -> bool {
+        !self.panel.ui.window().is_visible()
+            && !self.manage.ui.window().is_visible()
+            && self.dock.ui.get_active_count() == 0
+            && !self.dock.ui.get_open()
     }
 }

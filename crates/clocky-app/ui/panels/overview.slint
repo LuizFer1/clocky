@@ -15,6 +15,7 @@ component Card inherits Rectangle {
 
     border-radius: Theme.radius-panel;
     background: root.card.ringing ? Theme.pause-soft : (touch.has-hover ? Theme.panel-2 : Theme.field);
+    animate background { duration: Theme.dur-hover; }
     border-width: 1px;
     border-color: root.card.ringing ? Theme.pause : Theme.line;
 

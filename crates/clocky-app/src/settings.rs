@@ -13,7 +13,7 @@ use crate::geometry::Edge;
 /// Keys of the `settings` table written by the app. The core owns `forgotten_limit_ms` and the
 /// timer panels read the `pomodoro_*` wizard defaults.
 pub mod keys {
-    /// `dark` (the default) or `light`.
+    /// `dark` (the default), `light` or `system`.
     pub const THEME: &str = "theme";
     /// The dock position as JSON ([`super::DockPlacement`]).
     pub const DOCK: &str = "dock_placement";
@@ -26,6 +26,65 @@ pub mod keys {
 
 const LIGHT: &str = "light";
 const DARK: &str = "dark";
+const SYSTEM: &str = "system";
+
+/// The theme picked in Configurações.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum ThemeMode {
+    /// The default (spec, decision 10).
+    #[default]
+    Dark,
+    Light,
+    /// Follows the OS light/dark setting, live.
+    System,
+}
+
+impl ThemeMode {
+    /// `Dark` or `Light` (screenshot passes, the old `settings.json`).
+    pub fn from_dark(dark: bool) -> Self {
+        if dark { Self::Dark } else { Self::Light }
+    }
+
+    /// The stored value; anything unknown is the default.
+    pub fn parse(value: &str) -> Self {
+        match value {
+            LIGHT => Self::Light,
+            SYSTEM => Self::System,
+            _ => Self::Dark,
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Dark => DARK,
+            Self::Light => LIGHT,
+            Self::System => SYSTEM,
+        }
+    }
+
+    /// Position in the "Tema" control: Escuro, Claro, Sistema.
+    pub fn index(self) -> i32 {
+        match self {
+            Self::Dark => 0,
+            Self::Light => 1,
+            Self::System => 2,
+        }
+    }
+
+    pub fn from_index(index: i32) -> Self {
+        match index {
+            1 => Self::Light,
+            2 => Self::System,
+            _ => Self::Dark,
+        }
+    }
+
+    /// Applies the mode to one window's `Theme` global.
+    pub fn apply(self, theme: &crate::ui::Theme<'_>) {
+        theme.set_follow_system(self == Self::System);
+        theme.set_chosen_dark(self != Self::Light);
+    }
+}
 
 /// Where the dock was left: monitor, edge and height (spec, decision 11).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -37,16 +96,23 @@ pub struct DockPlacement {
     pub y_fraction: f64,
 }
 
-/// What the app needs at startup. Also the shape of the old `settings.json`.
+/// What the app needs at startup.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Settings {
+    pub theme: ThemeMode,
+    pub dock: Option<DockPlacement>,
+}
+
+/// The shape of the old `settings.json`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
-pub struct Settings {
-    /// Dark theme (the default, spec decision 10). `false` = light.
+pub struct LegacySettings {
+    /// Dark theme (the default). `false` = light.
     pub dark_theme: bool,
     pub dock: Option<DockPlacement>,
 }
 
-impl Default for Settings {
+impl Default for LegacySettings {
     fn default() -> Self {
         Self {
             dark_theme: true,
@@ -65,13 +131,13 @@ impl Settings {
                 None
             }
         };
-        let dark_theme = get(keys::THEME).is_none_or(|v| v != LIGHT);
+        let theme = get(keys::THEME).map_or_else(ThemeMode::default, |v| ThemeMode::parse(&v));
         let dock = get(keys::DOCK).and_then(|json| {
             serde_json::from_str(&json)
                 .inspect_err(|e| tracing::warn!("invalid dock position {json:?}: {e}"))
                 .ok()
         });
-        Self { dark_theme, dock }
+        Self { theme, dock }
     }
 }
 
@@ -100,10 +166,11 @@ fn import_legacy(core: &mut AppCore, path: &Path) {
         Err(e) => return tracing::warn!("cannot check the settings table: {e}"),
     }
     let Some(old) = read_json(path) else { return };
-    let result = save_theme(core, old.dark_theme).and_then(|()| match &old.dock {
-        Some(placement) => save_dock(core, placement),
-        None => Ok(()),
-    });
+    let result =
+        save_theme(core, ThemeMode::from_dark(old.dark_theme)).and_then(|()| match &old.dock {
+            Some(placement) => save_dock(core, placement),
+            None => Ok(()),
+        });
     match result {
         Ok(()) => tracing::info!("imported {} into the settings table", path.display()),
         Err(e) => tracing::warn!("failed to import {}: {e:#}", path.display()),
@@ -111,7 +178,7 @@ fn import_legacy(core: &mut AppCore, path: &Path) {
 }
 
 /// The old file; `None` when it is missing or unreadable (logged).
-fn read_json(path: &Path) -> Option<Settings> {
+fn read_json(path: &Path) -> Option<LegacySettings> {
     let text = match fs::read_to_string(path) {
         Ok(text) => text,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return None,
@@ -126,8 +193,8 @@ fn read_json(path: &Path) -> Option<Settings> {
 }
 
 /// Saves the theme ("Configurações").
-pub fn save_theme(core: &mut AppCore, dark: bool) -> anyhow::Result<()> {
-    core.set_setting(keys::THEME, if dark { DARK } else { LIGHT })?;
+pub fn save_theme(core: &mut AppCore, mode: ThemeMode) -> anyhow::Result<()> {
+    core.set_setting(keys::THEME, mode.as_str())?;
     Ok(())
 }
 
@@ -165,20 +232,26 @@ mod tests {
     fn defaults_are_dark_without_dock_position() {
         let s = Settings::read(&core());
         assert_eq!(s, Settings::default());
-        assert!(s.dark_theme);
+        assert_eq!(s.theme, ThemeMode::Dark);
     }
 
     #[test]
     fn theme_and_dock_roundtrip_through_the_table() {
         let mut core = core();
-        save_theme(&mut core, false).unwrap();
+        save_theme(&mut core, ThemeMode::Light).unwrap();
         save_dock(&mut core, &placement()).unwrap();
         assert_eq!(core.setting(keys::THEME).unwrap().as_deref(), Some("light"));
         let s = Settings::read(&core);
-        assert!(!s.dark_theme);
+        assert_eq!(s.theme, ThemeMode::Light);
         assert_eq!(s.dock, Some(placement()));
-        save_theme(&mut core, true).unwrap();
-        assert!(Settings::read(&core).dark_theme);
+        save_theme(&mut core, ThemeMode::System).unwrap();
+        assert_eq!(
+            core.setting(keys::THEME).unwrap().as_deref(),
+            Some("system")
+        );
+        assert_eq!(Settings::read(&core).theme, ThemeMode::System);
+        save_theme(&mut core, ThemeMode::Dark).unwrap();
+        assert_eq!(Settings::read(&core).theme, ThemeMode::Dark);
     }
 
     #[test]
@@ -193,19 +266,25 @@ mod tests {
     fn the_old_file_is_imported_once_and_left_alone() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("settings.json");
-        let old = Settings {
+        let old = LegacySettings {
             dark_theme: false,
             dock: Some(placement()),
         };
         let json = serde_json::to_string_pretty(&old).unwrap();
         fs::write(&path, &json).unwrap();
         let mut core = core();
-        assert_eq!(load(&mut core, Some(&path)), old);
+        assert_eq!(
+            load(&mut core, Some(&path)),
+            Settings {
+                theme: ThemeMode::Light,
+                dock: Some(placement()),
+            }
+        );
         // The file is untouched.
         assert_eq!(fs::read_to_string(&path).unwrap(), json);
         // Later changes win over the file.
-        save_theme(&mut core, true).unwrap();
-        assert!(load(&mut core, Some(&path)).dark_theme);
+        save_theme(&mut core, ThemeMode::Dark).unwrap();
+        assert_eq!(load(&mut core, Some(&path)).theme, ThemeMode::Dark);
     }
 
     #[test]
@@ -214,8 +293,8 @@ mod tests {
         let path = dir.path().join("settings.json");
         fs::write(&path, r#"{"dark_theme": false}"#).unwrap();
         let mut core = core();
-        save_theme(&mut core, true).unwrap();
-        assert!(load(&mut core, Some(&path)).dark_theme);
+        save_theme(&mut core, ThemeMode::Dark).unwrap();
+        assert_eq!(load(&mut core, Some(&path)).theme, ThemeMode::Dark);
     }
 
     #[test]
@@ -249,14 +328,14 @@ mod tests {
             ..placement()
         };
         save_dock(&mut core, &newer).unwrap();
-        let old = Settings {
+        let old = LegacySettings {
             dark_theme: false,
             dock: Some(placement()),
         };
         fs::write(&path, serde_json::to_string(&old).unwrap()).unwrap();
         let loaded = load(&mut core, Some(&path));
         assert_eq!(loaded.dock, Some(newer));
-        assert!(loaded.dark_theme);
+        assert_eq!(loaded.theme, ThemeMode::Dark);
     }
 
     #[test]
@@ -274,6 +353,17 @@ mod tests {
         let mut core = core();
         assert_eq!(load(&mut core, None), Settings::default());
         assert_eq!(core.setting(keys::THEME).unwrap(), None);
+    }
+
+    #[test]
+    fn theme_modes_roundtrip_and_unknown_values_are_dark() {
+        for mode in [ThemeMode::Dark, ThemeMode::Light, ThemeMode::System] {
+            assert_eq!(ThemeMode::parse(mode.as_str()), mode);
+            assert_eq!(ThemeMode::from_index(mode.index()), mode);
+        }
+        assert_eq!(ThemeMode::parse("sepia"), ThemeMode::Dark);
+        assert_eq!(ThemeMode::from_index(9), ThemeMode::Dark);
+        assert_eq!(ThemeMode::from_dark(false), ThemeMode::Light);
     }
 
     #[test]

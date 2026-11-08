@@ -3,17 +3,19 @@
 //!
 //! | Control | Key |
 //! |---|---|
-//! | Tema | `theme` (`dark` / `light`) |
+//! | Tema | `theme` (`dark` / `light` / `system`) |
 //! | Cronômetro esquecido | `forgotten_limit_ms` (core) |
 //! | Novo pomodoro | `pomodoro_focus_min`, `pomodoro_short_min`, `pomodoro_long_min`, `pomodoro_rounds` |
 //! | Som padrão do alarme | `alarm.default_sound` (empty = the built-in sound) |
 //!
 //! "Iniciar com o sistema" is not stored: the OS entry is the truth ([`crate::autostart`]).
 
+pub mod presets;
+
 use std::time::Duration;
 
 use crate::core::{AppCore, CoreResult};
-use crate::settings::{self, keys};
+use crate::settings::{self, ThemeMode, keys};
 use crate::timers::{STEP_INFO, WIZARD_KEYS, WizardDefaults};
 
 /// Step and limits of the "Cronômetro esquecido" limit, in minutes.
@@ -27,7 +29,7 @@ pub const WIZARD_STEPS: [u32; 4] = [5, 1, 5, 1];
 /// The page's values.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SettingsForm {
-    pub dark: bool,
+    pub theme: ThemeMode,
     /// Minutes before a running stopwatch counts as forgotten.
     pub forgotten_minutes: u32,
     /// Foco, Pausa curta, Pausa longa (minutes) and Fluxos.
@@ -40,9 +42,11 @@ pub struct SettingsForm {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Applied {
     /// Every window switches theme.
-    Theme(bool),
+    Theme(ThemeMode),
     /// The timer panels read the wizard defaults again.
     Wizard,
+    /// A saved pomodoro changed or was deleted: the timer panels show the new list.
+    Presets,
     /// Nothing else (the forgotten limit and the alarm sound are read when used).
     Stored,
 }
@@ -64,7 +68,7 @@ impl SettingsForm {
             .inspect_err(|e| tracing::warn!("invalid forgotten limit: {e}"))
             .unwrap_or(clocky_core::store::DEFAULT_FORGOTTEN_LIMIT);
         Self {
-            dark: settings::Settings::read(core).dark_theme,
+            theme: settings::Settings::read(core).theme,
             forgotten_minutes: u32::try_from(forgotten.as_secs() / 60).unwrap_or(FORGOTTEN_MAX),
             wizard,
             alarm_sound: core
@@ -82,9 +86,9 @@ impl SettingsForm {
 }
 
 /// Saves the theme.
-pub fn set_theme(core: &mut AppCore, dark: bool) -> anyhow::Result<Applied> {
-    settings::save_theme(core, dark)?;
-    Ok(Applied::Theme(dark))
+pub fn set_theme(core: &mut AppCore, mode: ThemeMode) -> anyhow::Result<Applied> {
+    settings::save_theme(core, mode)?;
+    Ok(Applied::Theme(mode))
 }
 
 /// Moves the forgotten limit one step (`direction` < 0: shorter) and saves it.

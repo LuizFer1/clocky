@@ -13,7 +13,7 @@ fn fresh_database_shows_the_defaults() {
     assert_eq!(
         form,
         SettingsForm {
-            dark: true,
+            theme: ThemeMode::Dark,
             forgotten_minutes: 8 * 60,
             wizard: [25, 5, 15, 4],
             alarm_sound: String::new(),
@@ -25,9 +25,14 @@ fn fresh_database_shows_the_defaults() {
 #[test]
 fn theme_is_saved_and_reported() {
     let mut core = core();
-    assert_eq!(set_theme(&mut core, false).unwrap(), Applied::Theme(false));
-    assert!(!SettingsForm::load(&core).dark);
+    assert_eq!(
+        set_theme(&mut core, ThemeMode::Light).unwrap(),
+        Applied::Theme(ThemeMode::Light)
+    );
+    assert_eq!(SettingsForm::load(&core).theme, ThemeMode::Light);
     assert_eq!(core.setting("theme").unwrap().as_deref(), Some("light"));
+    set_theme(&mut core, ThemeMode::System).unwrap();
+    assert_eq!(SettingsForm::load(&core).theme, ThemeMode::System);
 }
 
 #[test]
