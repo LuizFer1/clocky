@@ -434,11 +434,10 @@ mod tests {
 
     #[test]
     fn panel_sits_30px_from_the_edge_and_28px_below_the_area_top() {
-        // High on the screen: 28 px below the top of the 360 px menu area.
-        let right = Anchor::new(&main_monitor(), Edge::Right, 300);
-        assert_eq!(right.panel_origin(), Point { x: 1510, y: 148 });
-        let left = Anchor::new(&main_monitor(), Edge::Left, 300);
-        assert_eq!(left.panel_origin(), Point { x: 30, y: 148 });
+        let right = Anchor::new(&main_monitor(), Edge::Right, 540);
+        assert_eq!(right.panel_origin(), Point { x: 1510, y: 388 });
+        let left = Anchor::new(&main_monitor(), Edge::Left, 540);
+        assert_eq!(left.panel_origin(), Point { x: 30, y: 388 });
     }
 
     #[test]
