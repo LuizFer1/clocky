@@ -9,7 +9,7 @@ use super::convert::{duration_from_ms, u32_from_sql};
 use super::projects::{PROJECT_COLUMNS, project_from_row};
 use super::rows::collect;
 use super::tasks::{TASK_COLUMNS, task_from_row};
-use super::{PomodoroPreset, Project, Store, StoreError, Task, TimerPreset};
+use super::{ActiveTimerLink, PomodoroPreset, Project, Store, StoreError, Task, TimerPreset};
 use crate::domain::{ProjectId, TaskId};
 
 /// A project with its task counts (sidebar and cards).
@@ -30,6 +30,8 @@ pub struct TaskLinks {
     pub timer_presets: Vec<TimerPreset>,
     /// Saved pomodoros of the task.
     pub pomodoro_presets: Vec<PomodoroPreset>,
+    /// Timers running (or paused) for the task right now.
+    pub active_timers: Vec<ActiveTimerLink>,
 }
 
 /// A task card: the task, its checklist progress, tracked time and links.
@@ -105,7 +107,7 @@ impl Store {
         })
     }
 
-    /// Presets linked to `task` ("Linked to").
+    /// Presets and active timers linked to `task` ("Linked to").
     ///
     /// # Errors
     /// [`StoreError::Corrupt`] or [`StoreError::OutOfRange`] if a stored value is invalid.
@@ -113,6 +115,7 @@ impl Store {
         Ok(TaskLinks {
             timer_presets: self.timer_presets_of(Some(task))?,
             pomodoro_presets: self.pomodoro_presets_of(Some(task))?,
+            active_timers: self.active_timers_of(task)?,
         })
     }
 
