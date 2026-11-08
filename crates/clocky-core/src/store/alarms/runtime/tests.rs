@@ -367,3 +367,28 @@ fn marking_an_expired_snooze_before_the_last_fire_stops_it() {
     assert_eq!(alarm.last_fired_at, Some(nov(2, 10, 0)));
     assert!(!alarm.enabled);
 }
+
+#[test]
+fn editing_a_snoozed_once_alarm_into_a_repeating_one_keeps_it_enabled() {
+    let mut store = Store::open_in_memory().unwrap();
+    let once = NewAlarm {
+        repeat: Weekdays::ONCE,
+        ..at_time("once", 10, 0)
+    };
+    let id = store.create_alarm(&once, nov(2, 6, 0)).unwrap();
+    fire(&mut store, id, nov(2, 10, 0));
+    store.snooze_alarm(id, nov(2, 10, 0)).unwrap();
+
+    let every_day = NewAlarm {
+        repeat: Weekdays::EVERY_DAY,
+        ..once
+    };
+    store.update_alarm(id, &every_day, nov(2, 10, 2)).unwrap();
+    let alarm = store.alarm(id).unwrap();
+    assert!(alarm.enabled);
+    assert_eq!(alarm.snoozed_until, None);
+    assert_eq!(
+        pending_at(&store, nov(3, 10, 0)),
+        vec![(id, nov(3, 10, 0), Firing::OnTime)]
+    );
+}

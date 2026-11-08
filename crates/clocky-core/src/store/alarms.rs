@@ -219,8 +219,9 @@ impl Store {
 
     /// Replaces the fields of an alarm and re-arms it: `created_at` becomes `now` and the
     /// snooze is cleared. Whether it is enabled and when it last fired are kept, except for a
-    /// snoozed once-alarm: it already fired (the snooze enabled it again), so with the snooze
-    /// gone it is disabled instead of ringing at its time the next day.
+    /// snoozed alarm that stays a once-alarm: it already fired (the snooze enabled it again), so
+    /// with the snooze gone it is disabled instead of ringing at its time the next day. Made
+    /// repeating, it stays enabled.
     ///
     /// # Errors
     /// [`StoreError::NotFound`] if it does not exist; otherwise as [`Store::create_alarm`].
@@ -235,7 +236,7 @@ impl Store {
             "UPDATE alarms SET name = ?2, time_local = ?3, repeat_days = ?4, sound_path = ?5,
                  message = ?6, snooze_minutes = ?7, task_id = ?8, created_at_ms = ?9,
                  snoozed_until_ms = NULL,
-                 enabled = CASE WHEN repeat_days = 0 AND snoozed_until_ms IS NOT NULL
+                 enabled = CASE WHEN ?4 = 0 AND snoozed_until_ms IS NOT NULL
                                 THEN 0 ELSE enabled END
              WHERE id = ?1",
             params![
