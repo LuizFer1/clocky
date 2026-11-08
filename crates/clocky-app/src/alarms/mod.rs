@@ -157,21 +157,11 @@ impl Alarms {
                 &mut self.handled.borrow_mut(),
             )
         };
-        match checked {
-            Ok(checked) => {
-                self.failing.set(false);
-                if !checked.rings.is_empty() {
-                    self.present(checked.rings);
-                }
-                checked.missed
-            }
-            Err(e) => {
-                if !self.failing.replace(true) {
-                    tracing::error!("alarm check failed (retrying every second): {e}");
-                }
-                Vec::new()
-            }
+        let (rings, notices) = runtime::outcome(checked, &self.failing);
+        if !rings.is_empty() {
+            self.present(rings);
         }
+        notices
     }
 
     /// Starts ringing: a notification per alarm, then the overlay and the sound of the first.

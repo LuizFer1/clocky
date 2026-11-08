@@ -5,6 +5,7 @@
 //! occurrence again. A mark that fails is retried by nobody: the occurrence is remembered for the
 //! session, so it does not ring again on every tick (the store keeps reporting it).
 
+use std::cell::Cell;
 use std::collections::HashSet;
 
 use chrono::TimeZone;
@@ -63,6 +64,29 @@ pub fn check<Tz: TimeZone>(
         }
     }
     Ok(checked)
+}
+
+/// Notice shown (once per failure streak) when the alarms cannot be read: none of them rings
+/// until that is fixed, and Ativos shows no alarm card.
+pub const READ_FAILED: &str =
+    "Não foi possível ler os alarmes: nenhum vai tocar até isso ser resolvido. Veja o log.";
+
+/// What a tick does with a check: the rings to present and the notices for the panel. A failed
+/// check is logged and noticed once per failure streak (`failing`), not every second.
+pub fn outcome(checked: CoreResult<Checked>, failing: &Cell<bool>) -> (Vec<Ringing>, Vec<String>) {
+    match checked {
+        Ok(checked) => {
+            failing.set(false);
+            (checked.rings, checked.missed)
+        }
+        Err(e) => {
+            if failing.replace(true) {
+                return (Vec::new(), Vec::new());
+            }
+            tracing::error!("alarm check failed (retrying every second): {e}");
+            (Vec::new(), vec![READ_FAILED.to_owned()])
+        }
+    }
 }
 
 #[cfg(test)]
@@ -204,5 +228,40 @@ mod tests {
         core.update_alarm(once, &fields("d", 9, Weekdays::ONCE))
             .unwrap();
         assert!(core.alarm(once).unwrap().enabled);
+    }
+
+    #[test]
+    fn a_corrupt_alarm_row_is_noticed_once_per_failure_streak() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("clocky.db");
+        let (mut core, _) = AppCore::open(&path).unwrap();
+        let id = add(&mut core, "x", 7, 30, Weekdays::EVERY_DAY);
+        rusqlite::Connection::open(&path)
+            .unwrap()
+            .execute_batch(&format!(
+                "PRAGMA ignore_check_constraints = ON; \n                 UPDATE alarms SET time_local = '99:99' WHERE id = {};",
+                id.0
+            ))
+            .unwrap();
+        let failing = Cell::new(false);
+        let tick = |core: &mut AppCore| {
+            outcome(
+                check(core, at(7, 30, 0), &Utc, &mut Handled::new()),
+                &failing,
+            )
+        };
+        assert_eq!(tick(&mut core).1, [READ_FAILED]);
+        assert_eq!(tick(&mut core), (Vec::new(), Vec::new()));
+        rusqlite::Connection::open(&path)
+            .unwrap()
+            .execute(
+                "UPDATE alarms SET time_local = '07:30' WHERE id = ?1",
+                [id.0],
+            )
+            .unwrap();
+        // Fixed: the streak ends (the occurrence is noticed as missed or rings).
+        let (rings, notices) = tick(&mut core);
+        assert_eq!(rings.len() + notices.len(), 1);
+        assert!(!failing.get());
     }
 }
