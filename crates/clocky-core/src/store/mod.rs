@@ -3,6 +3,7 @@
 //! Every instant and duration is stored as `INTEGER` milliseconds. Writes that touch more than
 //! one row run in a single transaction.
 
+mod active;
 mod convert;
 mod error;
 mod migrations;
@@ -15,6 +16,7 @@ mod settings;
 mod subtasks;
 mod tasks;
 
+pub use active::ActiveTimerLink;
 pub use error::StoreError;
 pub use presets::{NewPomodoroPreset, PomodoroPreset, TimerPreset};
 pub use projects::Project;
