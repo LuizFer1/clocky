@@ -136,7 +136,14 @@ impl Anchor {
     }
 
     /// Top-left corner of the floating panel, kept inside the monitor.
+    #[cfg(test)]
     pub fn panel_origin(&self) -> Point {
+        self.panel_origin_for(PANEL_H)
+    }
+
+    /// Top-left corner of a panel `height` logical px tall (the task picker is taller than the
+    /// timer panels): same rule as [`Anchor::panel_origin`], clamped with the real height.
+    pub fn panel_origin_for(&self, height: f64) -> Point {
         let x = if self.is_left() {
             self.monitor.x + self.px(PANEL_EDGE_GAP)
         } else {
@@ -146,7 +153,8 @@ impl Anchor {
         let y = clamp_or_center(
             area_top + self.px(PANEL_TOP_GAP),
             self.monitor.y,
-            self.monitor.bottom() - self.px(PANEL_H),
+            // A panel taller than the monitor keeps its top (and header) on screen.
+            (self.monitor.bottom() - self.px(height)).max(self.monitor.y),
         );
         Point { x, y }
     }
@@ -405,6 +413,16 @@ mod tests {
         assert_eq!(right.panel_origin(), Point { x: 1510, y: 148 });
         let left = Anchor::new(&main_monitor(), Edge::Left, 300);
         assert_eq!(left.panel_origin(), Point { x: 30, y: 148 });
+    }
+
+    #[test]
+    fn a_taller_panel_is_clamped_with_its_own_height() {
+        let low = Anchor::new(&main_monitor(), Edge::Right, 5000);
+        assert_eq!(low.panel_origin_for(680.0).y, 1080 - 680);
+        // Taller than the monitor: the top stays inside.
+        assert_eq!(low.panel_origin_for(2000.0).y, 0);
+        let mid = Anchor::new(&main_monitor(), Edge::Right, 540);
+        assert_eq!(mid.panel_origin_for(680.0), mid.panel_origin());
     }
 
     #[test]

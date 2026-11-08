@@ -12,18 +12,28 @@ mod ui {
 
 mod app;
 mod bridge;
+mod chips;
 mod command;
+mod core;
+mod demo;
 mod dock;
+mod format;
 mod geometry;
 mod instance;
 mod log;
 mod manage;
+mod manage_view;
 mod notify;
+mod palette;
 mod panel;
 mod paths;
+mod picker;
+mod picker_ui;
 mod screenshot;
 mod settings;
 mod sound;
+mod startup;
+mod tour;
 mod tray;
 // M6b: timer panels and the tracker handle (merge: M6a's `core` owns the tracker).
 mod timers;
@@ -59,12 +69,30 @@ fn run() -> anyhow::Result<()> {
         }
     }
     select_backend()?;
+    let mut core = match startup::open_core() {
+        Ok(core) => core,
+        Err(failure) => {
+            tracing::error!(
+                "cannot open the database {}: {}",
+                failure.path,
+                failure.message
+            );
+            startup::show_failure(&failure, screenshot_dir)?;
+            anyhow::bail!("the database could not be opened");
+        }
+    };
     // Listen before creating the windows: that can take seconds on a cold start, and a launch
     // during it must reach this instance instead of starting a second one.
     if screenshot_dir.is_none() {
         instance::listen(app::run_command)?;
     }
-    let app = app::App::new(screenshot_dir.is_some())?;
+    if demo::requested() {
+        match demo::seed_if_empty(&mut core, &chrono::Local) {
+            Ok(seeded) => tracing::info!("demo data requested (seeded: {seeded})"),
+            Err(e) => tracing::warn!("failed to seed the demo data: {e}"),
+        }
+    }
+    let app = app::App::new(core, screenshot_dir.is_some())?;
     app.start()?;
     if let Some(dir) = screenshot_dir {
         app.schedule_screenshots(dir);

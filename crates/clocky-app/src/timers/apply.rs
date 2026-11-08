@@ -10,7 +10,7 @@ use super::frame_pomodoro::{PomodoroTimerFrame, WizardFrame};
 use crate::ui;
 
 pub struct Models {
-    subtasks: Rc<VecModel<ui::SubtaskRow>>,
+    subtasks: Rc<VecModel<ui::TimerSubtaskRow>>,
     presets: Rc<VecModel<ui::PresetRow>>,
     pomodoros: Rc<VecModel<ui::PomodoroCard>>,
     dots: Rc<VecModel<i32>>,

@@ -10,18 +10,16 @@ use slint::ComponentHandle;
 
 use crate::bridge::{self, Bridge};
 use crate::command::Command;
+use crate::core::AppCore;
 use crate::dock::Dock;
 use crate::manage::Manage;
 use crate::panel::{Panel, PanelKind};
 use crate::settings::{self, DockPlacement, Settings};
-use crate::{notify, screenshot, sound};
+use crate::{notify, sound};
 use crate::{tray, ui};
 // M6b: timer panels.
 use crate::timers::{self, TimerPanels};
 use crate::tracker_handle::TrackerHandle;
-
-/// Time for the windows to be placed and rendered before a screenshot.
-const SCREENSHOT_DELAY: Duration = Duration::from_millis(1500);
 
 thread_local! {
     /// The running app, for commands that arrive from other threads (single instance).
@@ -31,7 +29,9 @@ thread_local! {
 pub struct App {
     pub dock: Rc<Dock>,
     pub panel: Rc<Panel>,
-    pub manage: Manage,
+    pub manage: Rc<Manage>,
+    /// The core, shared with the windows that read and change data.
+    pub core: Rc<RefCell<AppCore>>,
     settings: RefCell<Settings>,
     /// `None` when settings must not be written (no config dir, or screenshot mode).
     settings_path: Option<PathBuf>,
@@ -47,10 +47,11 @@ pub struct App {
 
 impl App {
     /// Creates the windows and registers the app for [`run_command`].
-    pub fn new(screenshot_mode: bool) -> anyhow::Result<Rc<Self>> {
+    pub fn new(core: AppCore, screenshot_mode: bool) -> anyhow::Result<Rc<Self>> {
         let path = settings::default_path();
         let settings = path.as_deref().map(Settings::load).unwrap_or_default();
-        let panel = Panel::new()?;
+        let core = Rc::new(RefCell::new(core));
+        let panel = Panel::new(core.clone())?;
         // M6b: the tracker. Merge: M6a's startup shows the database error window instead.
         let alerts: Box<dyn timers::Alerts> = if screenshot_mode {
             Box::new(timers::SilentAlerts)
@@ -66,7 +67,8 @@ impl App {
         let app = Rc::new(Self {
             dock: Dock::new()?,
             panel,
-            manage: Manage::new()?,
+            manage: Manage::new(core.clone())?,
+            core,
             settings: RefCell::new(settings),
             settings_path: path.filter(|_| !screenshot_mode),
             screenshot_mode,
@@ -93,12 +95,22 @@ impl App {
                 app.option_selected(&id);
             }
         });
-        let weak = Rc::downgrade(self);
-        self.manage.ui.on_open_menu(move || {
-            if let Some(app) = weak.upgrade() {
-                app.dock.reopen_menu();
-            }
+        // Timer panels arrive in M6b: until then the task page buttons are only logged.
+        self.manage.set_on_start_timer(|kind, task| {
+            tracing::info!(
+                "start {kind:?} for task {} requested (timer panels: M6b)",
+                task.0
+            );
         });
+        let weak = Rc::downgrade(self);
+        self.manage
+            .ui
+            .global::<ui::ManageState>()
+            .on_open_menu(move || {
+                if let Some(app) = weak.upgrade() {
+                    app.dock.reopen_menu();
+                }
+            });
         // The panel's back button and its "Abrir menu" action both return to the ring.
         let weak = Rc::downgrade(self);
         self.panel.ui.on_back(move || {
@@ -215,16 +227,7 @@ impl App {
         }
     }
 
-    fn windows(&self) -> Vec<(&'static str, &slint::Window)> {
-        vec![
-            ("dock", self.dock.ui.window()),
-            ("panel", self.panel.ui.window()),
-            ("manage", self.manage.ui.window()),
-        ]
-    }
-
-    /// Screenshot mode: opens the windows, captures them in the dark theme, then in the light
-    /// one, and quits.
+    /// Screenshot mode: the tour of `tour.rs` (dark, then light), then quit.
     /// Nothing here takes the focus, so no key press is simulated on the user's desktop.
     pub fn schedule_screenshots(self: &Rc<Self>, dir: PathBuf) {
         // M6b: timer panel captures with demo data (`CLOCKY_DEMO=1`).
@@ -232,31 +235,7 @@ impl App {
             self.schedule_timer_shots(dir);
             return;
         }
-        if !self.manage.show() {
-            tracing::warn!("the manage window could not be shown");
-        }
-        let weak = Rc::downgrade(self);
-        slint::Timer::single_shot(SCREENSHOT_DELAY / 2, move || {
-            if let Some(app) = weak.upgrade() {
-                app.timers.show(PanelKind::Overview); // M6b
-                app.panel
-                    .open(PanelKind::Overview, app.dock.anchor(), false);
-                app.dock.ui.set_open(true);
-            }
-        });
-        let weak = Rc::downgrade(self);
-        slint::Timer::single_shot(SCREENSHOT_DELAY * 2, move || {
-            let Some(app) = weak.upgrade() else { return };
-            screenshot::save_all(&dir, "dark", &app.windows());
-            app.set_dark(false);
-            let weak = Rc::downgrade(&app);
-            slint::Timer::single_shot(SCREENSHOT_DELAY, move || {
-                if let Some(app) = weak.upgrade() {
-                    screenshot::save_all(&dir, "light", &app.windows());
-                }
-                quit();
-            });
-        });
+        crate::tour::run(self, dir);
     }
 }
 

@@ -2,6 +2,8 @@
 
 The icons were created for Clocky with Claude Design and are distributed under the project's GPLv3 license.
 
+`more.svg` (three dots) and `x.svg` (a cross) were drawn for Clocky in the same style, for the action menus of the manage window.
+
 `tray.svg` is the `clock.svg` icon drawn on a filled disc so it stays visible on light and dark taskbars.
 
 ## Note on `settings.svg`

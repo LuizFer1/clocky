@@ -40,7 +40,7 @@ pub struct StopwatchFrame {
     pub state: i32,
     pub time: SharedString,
     pub task: ui::TaskLine,
-    pub subtasks: Vec<ui::SubtaskRow>,
+    pub subtasks: Vec<ui::TimerSubtaskRow>,
     pub progress_label: SharedString,
     pub progress: f32,
 }
@@ -167,7 +167,7 @@ fn stopwatch(src: &Source<'_>) -> StopwatchFrame {
     }
 }
 
-fn subtask_rows(store: &Store, task: Option<TaskId>) -> (Vec<ui::SubtaskRow>, usize) {
+fn subtask_rows(store: &Store, task: Option<TaskId>) -> (Vec<ui::TimerSubtaskRow>, usize) {
     let Some(task) = task else {
         return (Vec::new(), 0);
     };
@@ -178,7 +178,7 @@ fn subtask_rows(store: &Store, task: Option<TaskId>) -> (Vec<ui::SubtaskRow>, us
     let done = subtasks.iter().filter(|s| s.completed_at.is_some()).count();
     let rows = subtasks
         .into_iter()
-        .map(|s| ui::SubtaskRow {
+        .map(|s| ui::TimerSubtaskRow {
             id: row_to_ui(s.id.0),
             name: s.name.into(),
             done: s.completed_at.is_some(),

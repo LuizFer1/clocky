@@ -1,289 +1,355 @@
-// Manage window (handoff SPEC 3, screens 70-74). M5 ships the shell with static content:
-// the "Todos os projetos" view and its empty state. M6 fills projects, tasks and subtasks.
+// Manage window (handoff SPEC 3, screens 70-74): sidebar + content (breadcrumb, header with the
+// contextual button, page). Below ~800px the sidebar moves to the top and the whole window
+// scrolls (screen 74). The data comes from `ManageState` (filled by `src/manage.rs`).
 import { Theme } from "theme.slint";
-import { FabIcon, GhostIcon, Icon, PrimaryButton } from "components.slint";
+import { GhostIcon, PrimaryButton } from "components.slint";
+import { DangerButton, DotCell, MenuEntry, ProjectChip, SecondaryButton, TextAction, TextField } from "widgets.slint";
+import { ManageState } from "manage-state.slint";
+import { Sidebar } from "manage-sidebar.slint";
+import { AllProjectsPage, TaskListPage } from "manage-project.slint";
+import { TaskPage } from "manage-task.slint";
 
-// Search field. M5 only shows it; filtering arrives with the project list in M6.
-component SearchField inherits Rectangle {
+// Breadcrumb bar: "Clocky / <crumb>".
+component TopBar inherits Rectangle {
     height: Theme.size-control;
-    border-radius: Theme.radius-lg;
-    background: Theme.field;
-    border-width: 1px;
-    border-color: input.has-focus ? Theme.accent : Theme.line-2;
 
     HorizontalLayout {
-        padding-left: Theme.space-3-5;
-        padding-right: Theme.space-3-5;
-        spacing: Theme.space-2-5;
+        padding-left: Theme.space-5;
+        padding-right: Theme.space-5;
+        spacing: Theme.space-2;
 
-        Icon {
-            source: @image-url("../icons/search.svg");
-            tint: Theme.muted;
+        Text {
+            vertical-alignment: center;
+            text: "Clocky";
+            color: Theme.muted;
+            font-size: Theme.fs-sm;
         }
 
-        Rectangle {
+        Text {
+            vertical-alignment: center;
+            text: "/";
+            color: Theme.muted;
+            font-size: Theme.fs-sm;
+        }
+
+        Text {
             horizontal-stretch: 1;
+            vertical-alignment: center;
+            text: ManageState.crumb;
+            color: Theme.text;
+            font-size: Theme.fs-sm;
+            font-weight: Theme.fw-medium;
+            overflow: elide;
+        }
+    }
 
-            input := TextInput {
-                width: 100%;
-                height: 100%;
-                vertical-alignment: center;
-                color: Theme.text;
-                font-size: Theme.fs-base;
-                single-line: true;
-            }
+    Rectangle {
+        y: parent.height - 1px;
+        height: 1px;
+        background: Theme.line;
+    }
+}
 
-            if input.text == "": Text {
-                width: 100%;
-                height: 100%;
-                vertical-alignment: center;
-                text: "Buscar";
-                color: Theme.muted;
-                font-size: Theme.fs-base;
+// Actions menu ("⋯") of the project and task pages.
+component ActionsMenu inherits Rectangle {
+    width: 36px;
+    height: Theme.size-control;
+
+    more := GhostIcon {
+        width: 36px;
+        icon: @image-url("../icons/more.svg");
+        clicked => { menu.show(); }
+    }
+
+    menu := PopupWindow {
+        x: root.width - 200px;
+        y: root.height + 4px;
+        width: 200px;
+
+        Rectangle {
+            background: Theme.panel;
+            border-radius: Theme.radius-lg;
+            border-width: 1px;
+            border-color: Theme.line-2;
+            drop-shadow-blur: 24px;
+            drop-shadow-offset-y: 8px;
+            drop-shadow-color: Theme.dark ? #000000aa : #0000002a;
+
+            VerticalLayout {
+                padding: Theme.space-1-5;
+
+                if ManageState.page == 1: MenuEntry {
+                    text: "Editar projeto";
+                    clicked => { ManageState.edit-project(); }
+                }
+
+                if ManageState.page == 1: MenuEntry {
+                    text: "Arquivar projeto";
+                    clicked => { ManageState.archive-project(); }
+                }
+
+                if ManageState.page == 1: MenuEntry {
+                    text: "Apagar projeto";
+                    danger: true;
+                    clicked => { ManageState.delete-project(); }
+                }
+
+                if ManageState.page == 2: MenuEntry {
+                    text: ManageState.task-done ? "Reabrir tarefa" : "Concluir tarefa";
+                    clicked => { ManageState.set-task-done(ManageState.task-id, !ManageState.task-done); }
+                }
+
+                if ManageState.page == 2: MenuEntry {
+                    text: "Renomear";
+                    clicked => {
+                        ManageState.rename-draft = ManageState.heading;
+                        ManageState.renaming-task = true;
+                    }
+                }
+
+                if ManageState.page == 2: MenuEntry {
+                    text: "Mover para outro projeto";
+                    clicked => { ManageState.moving-task = true; }
+                }
+
+                if ManageState.page == 2: MenuEntry {
+                    text: "Arquivar tarefa";
+                    clicked => { ManageState.archive-task(); }
+                }
+
+                if ManageState.page == 2: MenuEntry {
+                    text: "Apagar tarefa";
+                    danger: true;
+                    clicked => { ManageState.delete-task(); }
+                }
             }
         }
     }
 }
 
-component Sidebar inherits Rectangle {
-    callback open-menu();
-
-    background: Theme.side;
+// Title block: (project › Tarefa), title with the project dot, subtitle; button top right.
+component Header inherits HorizontalLayout {
+    spacing: Theme.space-4;
 
     VerticalLayout {
-        padding: Theme.space-3;
-        spacing: Theme.space-2;
+        horizontal-stretch: 1;
+        spacing: Theme.space-1-5;
 
-        // Brand: hub-style clock, "Clocky" and the "Menu" link (opens the radial menu).
-        HorizontalLayout {
-            height: 56px;
-            padding-left: Theme.space-1;
-            padding-right: Theme.space-2;
-            spacing: Theme.space-3;
-
-            FabIcon {
-                source: @image-url("../icons/clock.svg");
-            }
+        if ManageState.page == 2: HorizontalLayout {
+            alignment: start;
+            spacing: Theme.space-1-5;
 
             Text {
-                horizontal-stretch: 1;
-                vertical-alignment: center;
-                text: "Clocky";
-                color: Theme.text;
-                font-size: Theme.fs-lg;
-                font-weight: Theme.fw-semibold;
-            }
-
-            Rectangle {
-                width: menu-label.preferred-width;
-
-                menu-label := Text {
-                    vertical-alignment: center;
-                    text: "Menu";
-                    color: Theme.accent-text;
-                    font-size: Theme.fs-md;
-                    font-weight: Theme.fw-medium;
-                }
-
-                Rectangle {
-                    y: (parent.height + menu-label.preferred-height) / 2;
-                    height: 1px;
-                    background: Theme.accent-text;
-                }
+                text: ManageState.task-project;
+                color: Theme.accent-text;
+                font-size: Theme.fs-sm;
+                font-weight: Theme.fw-medium;
 
                 TouchArea {
                     mouse-cursor: pointer;
-                    clicked => { root.open-menu(); }
+                    clicked => { ManageState.back-to-project(); }
                 }
             }
-        }
-
-        SearchField { }
-
-        // "Todos os projetos", selected (it is the only view in M5).
-        Rectangle {
-            height: Theme.size-control;
-            border-radius: Theme.radius-lg;
-            background: Theme.panel-2;
-
-            HorizontalLayout {
-                padding-left: Theme.space-3;
-                padding-right: Theme.space-3;
-                spacing: Theme.space-3;
-
-                Icon {
-                    source: @image-url("../icons/manage.svg");
-                }
-
-                Text {
-                    horizontal-stretch: 1;
-                    vertical-alignment: center;
-                    text: "Todos os projetos";
-                    color: Theme.text;
-                    font-size: Theme.fs-base;
-                    font-weight: Theme.fw-medium;
-                }
-            }
-        }
-
-        // PROJETOS section header with the "+" button (the form arrives in M6).
-        HorizontalLayout {
-            height: Theme.size-control;
-            padding-left: Theme.space-3;
 
             Text {
-                horizontal-stretch: 1;
-                vertical-alignment: center;
-                text: "PROJETOS";
+                text: "›";
                 color: Theme.muted;
-                font-size: Theme.fs-xs;
-                font-weight: Theme.fw-medium;
-                letter-spacing: 1px;
+                font-size: Theme.fs-sm;
             }
-
-            GhostIcon {
-                icon: @image-url("../icons/plus.svg");
-            }
-        }
-
-        HorizontalLayout {
-            padding-left: Theme.space-3;
 
             Text {
-                text: "Nenhum projeto ainda.";
+                text: "Tarefa";
                 color: Theme.muted;
                 font-size: Theme.fs-sm;
             }
         }
 
-        Rectangle {
-            vertical-stretch: 1;
-            min-height: Theme.space-4;
-        }
+        if !ManageState.renaming-task || ManageState.page != 2: HorizontalLayout {
+            spacing: Theme.space-2-5;
 
-        // Settings and reports (screens designed in M7).
-        HorizontalLayout {
-            alignment: start;
-            spacing: Theme.space-1;
-
-            GhostIcon {
-                icon: @image-url("../icons/settings.svg");
+            if ManageState.has-heading-color && ManageState.page != 0: DotCell {
+                size: 12px;
+                dot-color: ManageState.heading-color;
             }
 
-            GhostIcon {
-                icon: @image-url("../icons/chart.svg");
+            Text {
+                horizontal-stretch: 1;
+                text: ManageState.heading;
+                color: Theme.text;
+                font-size: Theme.fs-xl;
+                font-weight: Theme.fw-medium;
+                overflow: elide;
+            }
+        }
+
+        if ManageState.renaming-task && ManageState.page == 2: TextField {
+            font-size: Theme.fs-lg;
+            text <=> ManageState.rename-draft;
+            init => { self.focus-input(); }
+            accepted(text) => { ManageState.rename-task(text); }
+            cancelled => { ManageState.renaming-task = false; }
+        }
+
+        Text {
+            text: ManageState.subheading;
+            color: Theme.muted;
+            font-size: Theme.fs-md;
+            wrap: word-wrap;
+        }
+    }
+
+    if ManageState.page != 3: VerticalLayout {
+        alignment: start;
+
+        HorizontalLayout {
+            spacing: Theme.space-2;
+
+            if ManageState.page == 1 || ManageState.page == 2: ActionsMenu { }
+
+            PrimaryButton {
+                text: ManageState.page == 0 ? "Novo projeto" : (ManageState.page == 1 ? "Nova tarefa" : "Criar subtarefa");
+                icon: @image-url("../icons/plus.svg");
+                clicked => {
+                    if (ManageState.page == 0) {
+                        ManageState.new-project();
+                    } else if (ManageState.page == 1) {
+                        ManageState.task-draft = "";
+                        ManageState.adding-task = true;
+                    } else {
+                        ManageState.focus-add-subtask += 1;
+                    }
+                }
+            }
+        }
+    }
+}
+
+// "Mover para": project chips (wrapped rows) and "Cancelar".
+component MoveCard inherits Rectangle {
+    border-radius: Theme.radius-lg;
+    border-width: 1px;
+    border-color: Theme.line-2;
+
+    VerticalLayout {
+        padding: Theme.space-3;
+        spacing: Theme.space-2-5;
+
+        HorizontalLayout {
+            Text {
+                horizontal-stretch: 1;
+                vertical-alignment: center;
+                text: "Mover para";
+                color: Theme.muted;
+                font-size: Theme.fs-sm;
+            }
+
+            TextAction {
+                text: "Cancelar";
+                clicked => { ManageState.moving-task = false; }
+            }
+        }
+
+        for row in ManageState.move-chips: HorizontalLayout {
+            alignment: start;
+            spacing: Theme.space-1-5;
+
+            for chip in row.chips: ProjectChip {
+                text: chip.name;
+                chip-color: chip.color;
+                no-project: chip.id == -1;
+                active: chip.selected;
+                clicked => { ManageState.move-task(chip.id); }
             }
         }
     }
 }
 
 component Content inherits Rectangle {
-    callback new-project();
-
     background: Theme.app;
 
     VerticalLayout {
-        // Top bar with the breadcrumb.
+        padding-top: Theme.space-6;
+        padding-left: Theme.space-8;
+        padding-right: Theme.space-8;
+        padding-bottom: Theme.space-8;
+        spacing: Theme.space-6;
+
+        Header { }
+
+        if ManageState.page == 2 && ManageState.moving-task: MoveCard { }
+
+        if ManageState.page == 0: AllProjectsPage { }
+
+        if ManageState.page == 1 || ManageState.page == 3: TaskListPage { }
+
+        if ManageState.page == 2: TaskPage { }
+
         Rectangle {
-            height: Theme.size-control;
-
-            HorizontalLayout {
-                padding-left: Theme.space-8;
-                spacing: Theme.space-2;
-
-                Text {
-                    vertical-alignment: center;
-                    text: "Clocky";
-                    color: Theme.muted;
-                    font-size: Theme.fs-md;
-                }
-
-                Text {
-                    vertical-alignment: center;
-                    text: "/";
-                    color: Theme.muted;
-                    font-size: Theme.fs-md;
-                }
-
-                Text {
-                    horizontal-stretch: 1;
-                    vertical-alignment: center;
-                    text: "Projetos";
-                    color: Theme.text;
-                    font-size: Theme.fs-md;
-                    font-weight: Theme.fw-medium;
-                }
-            }
-
-            Rectangle {
-                y: parent.height - 1px;
-                height: 1px;
-                background: Theme.line;
-            }
+            vertical-stretch: 1;
         }
+    }
+}
 
-        VerticalLayout {
-            padding: Theme.space-8;
-            spacing: Theme.space-6;
+// Confirmation before deleting (dialogs were not designed in the handoff: same tokens).
+component ConfirmDialog inherits Rectangle {
+    background: #00000099;
 
-            // Header: title, subtitle and the contextual button (top right).
-            HorizontalLayout {
-                spacing: Theme.space-4;
+    TouchArea { }
 
-                VerticalLayout {
-                    horizontal-stretch: 1;
-                    spacing: Theme.space-1;
+    Rectangle {
+        width: min(400px, root.width - 2 * Theme.space-4);
+        height: card.preferred-height;
+        background: Theme.panel;
+        border-radius: Theme.radius-panel;
+        border-width: 1px;
+        border-color: Theme.line-2;
 
-                    Text {
-                        text: "Todos os projetos";
-                        color: Theme.text;
-                        font-size: Theme.fs-xl;
-                        font-weight: Theme.fw-medium;
-                    }
+        card := VerticalLayout {
+            padding: Theme.space-5;
+            spacing: Theme.space-3;
 
-                    Text {
-                        text: "0 projetos";
-                        color: Theme.muted;
-                        font-size: Theme.fs-md;
-                    }
-                }
-
-                VerticalLayout {
-                    alignment: start;
-
-                    PrimaryButton {
-                        text: "Novo projeto";
-                        icon: @image-url("../icons/plus.svg");
-                        clicked => { root.new-project(); }
-                    }
-                }
+            Text {
+                text: ManageState.confirm-title;
+                color: Theme.text;
+                font-size: Theme.fs-lg;
+                font-weight: Theme.fw-medium;
+                wrap: word-wrap;
             }
 
             Text {
-                text: "Nenhum projeto ainda. Crie o primeiro com “Novo projeto”.";
+                text: ManageState.confirm-text;
                 color: Theme.muted;
                 font-size: Theme.fs-md;
                 wrap: word-wrap;
             }
 
-            Rectangle {
-                vertical-stretch: 1;
+            HorizontalLayout {
+                alignment: end;
+                padding-top: Theme.space-2;
+                spacing: Theme.space-2;
+
+                SecondaryButton {
+                    text: "Cancelar";
+                    clicked => { ManageState.confirm-cancelled(); }
+                }
+
+                DangerButton {
+                    text: ManageState.confirm-action;
+                    clicked => { ManageState.confirm-accepted(); }
+                }
             }
         }
     }
 }
 
 export component ManageWindow inherits Window {
-    callback open-menu();
-    callback new-project();
-
     // Below ~800px the sidebar moves to the top (screen 74).
     out property <bool> narrow: self.width < 800px;
 
     title: "Clocky";
     icon: @image-url("../icons/tray.svg");
-    preferred-width: 960px;
-    preferred-height: 640px;
+    preferred-width: 1120px;
+    preferred-height: 720px;
     min-width: 480px;
     min-height: 560px;
     background: Theme.app;
@@ -292,7 +358,6 @@ export component ManageWindow inherits Window {
     if !root.narrow: HorizontalLayout {
         Sidebar {
             width: 240px;
-            open-menu => { root.open-menu(); }
         }
 
         Rectangle {
@@ -300,25 +365,41 @@ export component ManageWindow inherits Window {
             background: Theme.line;
         }
 
-        Content {
+        VerticalLayout {
             horizontal-stretch: 1;
-            new-project => { root.new-project(); }
+
+            TopBar { }
+
+            Flickable {
+                vertical-stretch: 1;
+                content-height: max(self.height, wide-content.preferred-height);
+
+                wide-content := Content {
+                    width: parent.width;
+                    height: max(parent.height, self.preferred-height);
+                }
+            }
         }
     }
 
-    if root.narrow: VerticalLayout {
-        Sidebar {
-            open-menu => { root.open-menu(); }
-        }
+    if root.narrow: Flickable {
+        content-height: max(self.height, narrow-column.preferred-height);
 
-        Rectangle {
-            height: 1px;
-            background: Theme.line;
-        }
+        narrow-column := VerticalLayout {
+            width: parent.width;
+            height: max(parent.height, self.preferred-height);
 
-        Content {
-            vertical-stretch: 1;
-            new-project => { root.new-project(); }
+            Sidebar {
+                compact: true;
+            }
+
+            TopBar { }
+
+            Content {
+                vertical-stretch: 1;
+            }
         }
     }
+
+    if ManageState.confirm-open: ConfirmDialog { }
 }

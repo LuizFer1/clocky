@@ -10,7 +10,7 @@ export struct TaskLine {
     color: color,
 }
 
-export struct SubtaskRow {
+export struct TimerSubtaskRow {
     id: int,
     name: string,
     done: bool,
@@ -75,7 +75,7 @@ export global TimerUi {
     in property <int> sw-state;
     in property <string> sw-time: "00:00:00";
     in property <TaskLine> sw-task;
-    in property <[SubtaskRow]> sw-subtasks;
+    in property <[TimerSubtaskRow]> sw-subtasks;
     in property <string> sw-progress-label;
     in property <float> sw-progress;
     callback sw-primary();

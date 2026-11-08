@@ -14,7 +14,8 @@ path = "src/main.rs"
 
 [dependencies]
 anyhow = "1.0.104"
-# Local wall-clock times ("termina às HH:MM"): only converts timestamps, never reads the clock.
+# Local wall-clock times (session rows, "termina às HH:MM"): `clock` gives `chrono::Local`;
+# it only converts timestamps, the app never reads the clock through it.
 chrono = { version = "0.4.45", default-features = false, features = ["clock", "std"] }
 clocky-core.workspace = true
 directories = "6.0.0"
