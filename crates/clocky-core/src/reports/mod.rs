@@ -12,6 +12,7 @@ mod error;
 mod overview;
 mod period;
 mod rows;
+mod session;
 mod weekly;
 
 pub use daily::{Daily, SessionBlock, daily};
@@ -19,6 +20,7 @@ pub use error::ReportError;
 pub use overview::{Overview, ProjectTotal, TaskTotal, overview};
 pub use period::Period;
 pub use rows::{ProjectInfo, SubtaskMarker, TaskInfo};
+pub use session::{Milestone, Pause, SessionReport, session_report};
 pub use weekly::{DayTotals, ProjectTime, Weekly, weekly};
 
 #[cfg(test)]
