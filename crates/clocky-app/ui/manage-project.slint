@@ -16,6 +16,7 @@ export component ProjectForm inherits Rectangle {
 
     VerticalLayout {
         padding: 18px;
+        alignment: start;
         spacing: Theme.space-3-5;
 
         VerticalLayout {
@@ -73,7 +74,6 @@ export component ProjectForm inherits Rectangle {
 
             AccentButton {
                 text: ManageState.project-form-editing ? "Salvar" : "Criar projeto";
-                enabled: ManageState.project-form-name != "";
                 clicked => { ManageState.save-project(ManageState.project-form-name, ManageState.project-form-color); }
             }
 
@@ -139,6 +139,7 @@ component ProjectCard inherits Rectangle {
 }
 
 export component AllProjectsPage inherits VerticalLayout {
+    alignment: start;
     property <length> gap: Theme.space-3;
     property <int> columns: max(1, floor((self.width + self.gap) / (220px + self.gap)));
     property <length> card-width: (self.width - (self.columns - 1) * self.gap) / self.columns;
@@ -338,7 +339,6 @@ component TypingRow inherits Rectangle {
 
         field := TextField {
             horizontal-stretch: 1;
-            height: 36px;
             boxed: false;
             placeholder: "Nome da tarefa e Enter";
             text <=> ManageState.task-draft;
@@ -353,6 +353,7 @@ component TypingRow inherits Rectangle {
 
 // Project page and search results: filter chips and the task list.
 export component TaskListPage inherits VerticalLayout {
+    alignment: start;
     spacing: Theme.space-3;
 
     if ManageState.project-form-open && ManageState.project-form-editing: HorizontalLayout {

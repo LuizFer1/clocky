@@ -235,7 +235,8 @@ export component TextField inherits Rectangle {
     callback accepted(string);
     callback cancelled();
 
-    height: Theme.size-control;
+    // Stretches to the row height in layouts (inline rows), 44 otherwise.
+    preferred-height: Theme.size-control;
     border-radius: Theme.radius-lg;
     background: root.boxed ? Theme.field : transparent;
     border-width: root.boxed ? 1px : 0px;

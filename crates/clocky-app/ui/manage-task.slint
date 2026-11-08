@@ -46,7 +46,6 @@ component SubtaskLine inherits Rectangle {
 
         if root.editing: TextField {
             horizontal-stretch: 1;
-            height: 36px;
             boxed: false;
             text: root.subtask.name;
             init => { self.focus-input(); }
@@ -117,7 +116,6 @@ component AddSubtaskLine inherits Rectangle {
 
         field := TextField {
             horizontal-stretch: 1;
-            height: 36px;
             boxed: false;
             placeholder: "Adicionar subtarefa";
             text <=> ManageState.subtask-draft;
@@ -129,6 +127,7 @@ component AddSubtaskLine inherits Rectangle {
 }
 
 export component SubtasksColumn inherits VerticalLayout {
+    alignment: start;
     spacing: Theme.space-3;
 
     HorizontalLayout {
@@ -353,6 +352,7 @@ export component TrackedCard inherits SideCard {
 
 // Two columns when there is room (subtasks 3 : side 2), stacked otherwise (screen 74).
 export component TaskPage inherits VerticalLayout {
+    alignment: start;
     property <bool> wide: self.width >= 620px;
 
     if root.wide: HorizontalLayout {

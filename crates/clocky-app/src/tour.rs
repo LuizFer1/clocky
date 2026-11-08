@@ -14,14 +14,14 @@ use slint::{ComponentHandle, LogicalSize};
 use crate::app::{App, quit};
 use crate::manage_view::Nav;
 use crate::panel::PanelKind;
-use crate::screenshot;
+use crate::{screenshot, ui};
 
 /// Time for a step to be laid out and rendered before its snapshot.
 const STEP_DELAY: Duration = Duration::from_millis(900);
 /// Size of the handoff's manage screens (1120×720 logical).
 const WIDE: (f32, f32) = (1120.0, 720.0);
 /// Screen 74: the narrow layout, tall enough for the whole task page.
-const NARROW: (f32, f32) = (480.0, 1260.0);
+const NARROW: (f32, f32) = (480.0, 1340.0);
 /// Search text of screen 61.
 const CREATE_QUERY: &str = "relatório mensal";
 
@@ -66,6 +66,16 @@ const STEPS: &[Step] = &[
         prepare: |app, _| {
             resize(app, WIDE);
             app.manage.navigate(Nav::default());
+        },
+    },
+    Step {
+        name: "manage-new-project",
+        shot: Shot::Manage,
+        prepare: |app, _| {
+            app.manage
+                .ui
+                .global::<ui::ManageState>()
+                .invoke_new_project();
         },
     },
     Step {
