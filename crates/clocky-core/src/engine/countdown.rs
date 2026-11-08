@@ -24,6 +24,24 @@ impl Countdown {
         }
     }
 
+    /// Restores a countdown from its run and target duration.
+    #[must_use]
+    pub fn from_parts(run: Run, target: Duration) -> Self {
+        Self { run, target }
+    }
+
+    /// The run: segments and, if running, the start of the open one.
+    #[must_use]
+    pub fn run(&self) -> &Run {
+        &self.run
+    }
+
+    /// Scheduled duration.
+    #[must_use]
+    pub fn target(&self) -> Duration {
+        self.target
+    }
+
     /// Whether it is running.
     #[must_use]
     pub fn is_running(&self) -> bool {
@@ -135,6 +153,16 @@ mod tests {
     fn finish_early_records_partial_time() {
         let cd = Countdown::start(at(0), secs(60));
         assert_eq!(cd.finish(at(15)).unwrap().effective(), secs(15));
+    }
+
+    #[test]
+    fn from_parts_restores_run_and_target() {
+        let mut cd = Countdown::start(at(0), secs(60));
+        cd.pause(at(20)).unwrap();
+        let restored = Countdown::from_parts(cd.run().clone(), cd.target());
+        assert_eq!(restored, cd);
+        assert_eq!(restored.target(), secs(60));
+        assert_eq!(restored.remaining(at(500)), secs(40));
     }
 
     #[test]

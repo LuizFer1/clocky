@@ -6,7 +6,10 @@ use super::StoreError;
 use super::convert::u32_from_sql;
 
 /// Migration scripts. Script `i` (from 0) takes the schema from version `i` to `i + 1`.
-pub(super) const MIGRATIONS: &[&str] = &[include_str!("sql/0001_init.sql")];
+pub(super) const MIGRATIONS: &[&str] = &[
+    include_str!("sql/0001_init.sql"),
+    include_str!("sql/0002_active_timers.sql"),
+];
 
 /// Latest schema version that `migrations` produces.
 pub(super) fn latest(migrations: &[&str]) -> Result<u32, StoreError> {

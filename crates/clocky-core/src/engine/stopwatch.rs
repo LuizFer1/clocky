@@ -22,6 +22,18 @@ impl Stopwatch {
         }
     }
 
+    /// Restores a stopwatch from its run.
+    #[must_use]
+    pub fn from_parts(run: Run) -> Self {
+        Self { run }
+    }
+
+    /// The run: segments and, if running, the start of the open one.
+    #[must_use]
+    pub fn run(&self) -> &Run {
+        &self.run
+    }
+
     /// Whether it is running.
     #[must_use]
     pub fn is_running(&self) -> bool {
@@ -116,6 +128,15 @@ mod tests {
         sw.pause(at(3600)).unwrap();
         let session = sw.stop(at(1800)).unwrap();
         assert_eq!(session.effective(), secs(3600));
+    }
+
+    #[test]
+    fn from_parts_restores_the_run() {
+        let mut sw = Stopwatch::start(at(0));
+        sw.pause(at(10)).unwrap();
+        let restored = Stopwatch::from_parts(sw.run().clone());
+        assert_eq!(restored, sw);
+        assert_eq!(restored.elapsed(at(99)), secs(10));
     }
 
     #[test]

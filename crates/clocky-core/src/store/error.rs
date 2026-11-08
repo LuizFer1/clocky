@@ -36,4 +36,12 @@ pub enum StoreError {
         /// The invalid value.
         value: String,
     },
+    /// A value to write is inconsistent (for example, a preset of the wrong kind).
+    #[error("invalid {what}: {value}")]
+    Invalid {
+        /// What was being written.
+        what: &'static str,
+        /// The invalid value.
+        value: String,
+    },
 }

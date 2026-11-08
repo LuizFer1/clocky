@@ -26,6 +26,15 @@ pub struct PomodoroPresetId(pub i64);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct SessionId(pub i64);
 
+/// Preset an active timer was started from (shown in the task's "Linked to").
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum PresetRef {
+    /// A saved countdown timer.
+    Timer(TimerPresetId),
+    /// A saved pomodoro.
+    Pomodoro(PomodoroPresetId),
+}
+
 /// Identifier of an active timer.
 ///
 /// Persistent and never reused: it also identifies the timer's run, which groups the sessions of
