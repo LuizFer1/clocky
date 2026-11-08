@@ -9,4 +9,7 @@ pub enum AlarmError {
     /// The text is not a valid `HH:MM` time (00:00 to 23:59).
     #[error("invalid alarm time {0:?}: expected HH:MM between 00:00 and 23:59")]
     InvalidTime(String),
+    /// A snooze must last at least one minute.
+    #[error("invalid snooze: it must last at least 1 minute")]
+    InvalidSnooze,
 }

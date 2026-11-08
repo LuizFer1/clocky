@@ -5,10 +5,12 @@
 
 pub mod alarm_time;
 pub mod error;
+pub mod firing;
 pub mod next_fire;
 pub mod weekdays;
 
 pub use alarm_time::AlarmTime;
 pub use error::AlarmError;
+pub use firing::{Firing, LATE_TOLERANCE, ON_TIME_GRACE, classify, snooze_until};
 pub use next_fire::next_fire;
 pub use weekdays::Weekdays;
