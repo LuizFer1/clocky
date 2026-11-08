@@ -18,7 +18,7 @@ pub enum TrackerError {
 /// show the history and offer to discard the active timers
 /// ([`TrackerOpenError::discard_active_timers`]) before opening again.
 #[derive(Debug, thiserror::Error)]
-#[error("{error}")]
+#[error("the active timers could not be restored")]
 pub struct TrackerOpenError {
     /// The store that was passed in, untouched by the failed open.
     pub store: Box<Store>,
