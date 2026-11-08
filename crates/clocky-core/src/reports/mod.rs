@@ -7,16 +7,18 @@
 //! for the part that ran inside it. This refines the spec, where the overview summed whole
 //! sessions: with clipping, the overview of a day and the weekly column of that day agree.
 
+mod daily;
 mod error;
 mod overview;
 mod period;
 mod rows;
 mod weekly;
 
+pub use daily::{Daily, SessionBlock, daily};
 pub use error::ReportError;
 pub use overview::{Overview, ProjectTotal, TaskTotal, overview};
 pub use period::Period;
-pub use rows::{ProjectInfo, TaskInfo};
+pub use rows::{ProjectInfo, SubtaskMarker, TaskInfo};
 pub use weekly::{DayTotals, ProjectTime, Weekly, weekly};
 
 #[cfg(test)]

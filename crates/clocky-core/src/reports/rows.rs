@@ -6,9 +6,10 @@ use std::time::Duration;
 use rusqlite::{Params, Row};
 
 use super::{Period, ReportError};
-use crate::domain::{ProjectId, TaskId};
+use crate::domain::{ProjectId, SessionId, SubtaskId, TaskId};
 use crate::engine::run::Segment;
-use crate::store::Store;
+use crate::engine::session::TimerKind;
+use crate::store::{Store, StoreError, SubtaskEventKind};
 use crate::time::Timestamp;
 
 /// A project as shown in the reports. Archived projects are included: they are history.
@@ -33,9 +34,35 @@ pub struct TaskInfo {
     pub name: String,
 }
 
+/// A subtask checked or unchecked, as a marker on the timeline.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SubtaskMarker {
+    /// The subtask.
+    pub subtask: SubtaskId,
+    /// Its name.
+    pub name: String,
+    /// Its task.
+    pub task: TaskInfo,
+    /// Project of that task; `None` = "No project".
+    pub project: Option<ProjectInfo>,
+    /// Checked or unchecked.
+    pub kind: SubtaskEventKind,
+    /// When.
+    pub at: Timestamp,
+    /// Session that contains it; `None` if it happened outside a recorded session (for
+    /// example during a pomodoro break, or with no timer).
+    pub session: Option<SessionId>,
+}
+
 /// A recorded segment with the session it belongs to (not clipped).
 #[derive(Debug, Clone)]
 pub(super) struct SegmentRow {
+    /// Session of the segment.
+    pub session: SessionId,
+    /// Kind of timer of the session.
+    pub kind: TimerKind,
+    /// Pomodoro round of the session.
+    pub round: Option<u32>,
     /// Task of the session; `None` = "No task".
     pub task: Option<TaskInfo>,
     /// Project of that task; `None` = "No project".
@@ -49,7 +76,7 @@ pub(super) fn segments_overlapping(
     store: &Store,
     period: Period,
 ) -> Result<Vec<SegmentRow>, ReportError> {
-    let sql = "SELECT t.id, t.name,
+    let sql = "SELECT g.session_id, s.kind, s.round, t.id, t.name,
                    p.id, p.name, p.color, p.archived_at_ms, g.start_ms, g.end_ms
                FROM session_segments g
                JOIN sessions s ON s.id = g.session_id
@@ -61,12 +88,47 @@ pub(super) fn segments_overlapping(
     let bounds = [period.start().as_millis(), period.end().as_millis()];
     collect(store, sql, bounds, |row| {
         Ok(SegmentRow {
-            task: task_at(row, 0)?,
-            project: project_at(row, 2)?,
+            session: SessionId(row.get(0)?),
+            kind: kind_from_sql(row.get(1)?)?,
+            round: round_from_sql(row.get(2)?)?,
+            task: task_at(row, 3)?,
+            project: project_at(row, 5)?,
             segment: Segment {
-                start: Timestamp::from_millis(row.get(6)?),
-                end: Timestamp::from_millis(row.get(7)?),
+                start: Timestamp::from_millis(row.get(9)?),
+                end: Timestamp::from_millis(row.get(10)?),
             },
+        })
+    })
+}
+
+/// Subtask events that match `filter` (an SQL condition on `e`, with `params`), oldest first.
+pub(super) fn subtask_markers<P: Params>(
+    store: &Store,
+    filter: &str,
+    params: P,
+) -> Result<Vec<SubtaskMarker>, ReportError> {
+    let sql = format!(
+        "SELECT e.subtask_id, st.name, e.kind, e.at_ms, e.session_id, t.id, t.name,
+             p.id, p.name, p.color, p.archived_at_ms
+         FROM subtask_events e
+         JOIN subtasks st ON st.id = e.subtask_id
+         JOIN tasks t ON t.id = st.task_id
+         LEFT JOIN projects p ON p.id = t.project_id
+         WHERE {filter}
+         ORDER BY e.at_ms, e.id"
+    );
+    collect(store, &sql, params, |row| {
+        Ok(SubtaskMarker {
+            subtask: SubtaskId(row.get(0)?),
+            name: row.get(1)?,
+            kind: event_kind_from_sql(row.get(2)?)?,
+            at: Timestamp::from_millis(row.get(3)?),
+            session: row.get::<_, Option<i64>>(4)?.map(SessionId),
+            task: TaskInfo {
+                id: TaskId(row.get(5)?),
+                name: row.get(6)?,
+            },
+            project: project_at(row, 7)?,
         })
     })
 }
@@ -112,6 +174,35 @@ pub(super) fn project_at(row: &Row<'_>, index: usize) -> Result<Option<ProjectIn
             color,
             archived: archived.is_some(),
         }))
+}
+
+fn kind_from_sql(text: String) -> Result<TimerKind, ReportError> {
+    match text.as_str() {
+        "pomodoro" => Ok(TimerKind::Pomodoro),
+        "stopwatch" => Ok(TimerKind::Stopwatch),
+        "countdown" => Ok(TimerKind::Countdown),
+        _ => Err(corrupt("session kind", text)),
+    }
+}
+
+fn event_kind_from_sql(text: String) -> Result<SubtaskEventKind, ReportError> {
+    match text.as_str() {
+        "completed" => Ok(SubtaskEventKind::Completed),
+        "reopened" => Ok(SubtaskEventKind::Reopened),
+        _ => Err(corrupt("subtask event kind", text)),
+    }
+}
+
+fn round_from_sql(round: Option<i64>) -> Result<Option<u32>, ReportError> {
+    round
+        .map(|round| u32::try_from(round).map_err(|_| StoreError::OutOfRange("session round")))
+        .transpose()
+        .map_err(ReportError::from)
+}
+
+/// A [`StoreError::Corrupt`] for an invalid stored value.
+fn corrupt(what: &'static str, value: String) -> ReportError {
+    ReportError::Store(StoreError::Corrupt { what, value })
 }
 
 /// `total + part`, saturating instead of overflowing.
