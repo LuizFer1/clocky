@@ -5,6 +5,8 @@ use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
+use crate::engine::run::Segment;
+use crate::engine::session::{CompletedSession, TimerKind};
 use crate::time::Timestamp;
 
 /// The instant `seconds` seconds after the Unix epoch.
@@ -59,4 +61,16 @@ impl Drop for TempDb {
     fn drop(&mut self) {
         self.remove_files();
     }
+}
+
+/// A completed session with one segment per `(start, end)` pair, in seconds.
+pub(crate) fn completed(kind: TimerKind, spans: &[(i64, i64)]) -> CompletedSession {
+    let segments = spans
+        .iter()
+        .map(|&(start, end)| Segment {
+            start: at(start),
+            end: at(end),
+        })
+        .collect();
+    CompletedSession::new(kind, segments).expect("the session has time")
 }
