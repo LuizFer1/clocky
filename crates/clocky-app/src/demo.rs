@@ -11,7 +11,7 @@ use clocky_core::engine::session::{CompletedSession, TimerKind};
 use clocky_core::store::NewPomodoroPreset;
 use clocky_core::time::Timestamp;
 
-use crate::core::{AppCore, CoreResult};
+use crate::core::{AppCore, CoreResult, Reopened};
 
 /// Environment variable that asks for the demo data.
 pub const ENV_VAR: &str = "CLOCKY_DEMO";
@@ -27,6 +27,26 @@ pub fn requested() -> bool {
 /// The guard of [`requested`]: the demo is only written to a database named on purpose.
 fn requested_from(demo: Option<&std::ffi::OsStr>, db: Option<&std::ffi::OsStr>) -> bool {
     demo.is_some_and(|v| v == "1") && db.is_some_and(|v| !v.is_empty())
+}
+
+/// Seeds the demo into `core` (opened on `path`) and, when it wrote anything, opens `path`
+/// again: the tracker counts the next timer id when it opens, and the demo sessions use run ids
+/// it has not seen, so the next timers would reuse them.
+///
+/// # Errors
+/// When seeding or reopening fails.
+pub fn seed_and_reopen<Tz: TimeZone>(
+    mut core: AppCore,
+    reopened: Reopened,
+    path: &std::path::Path,
+    tz: &Tz,
+) -> anyhow::Result<(AppCore, Reopened)> {
+    if !seed_if_empty(&mut core, tz)? {
+        return Ok((core, reopened));
+    }
+    drop(core);
+    AppCore::open(path)
+        .map_err(|e| anyhow::anyhow!("cannot reopen the database after the demo seeding: {e}"))
 }
 
 /// A session of the demo: days before today, local start (h, m), minutes and kind.
@@ -202,6 +222,24 @@ mod tests {
             .unwrap();
         assert_eq!(auth[0].tracked, minutes(220));
         assert_eq!((auth[0].subtasks_done, auth[0].subtasks_total), (1, 3));
+    }
+
+    #[test]
+    fn timers_started_after_the_demo_get_unused_run_ids() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("clocky.db");
+        let (core, reopened) = AppCore::open(&path).unwrap();
+        let (mut core, _) = seed_and_reopen(core, reopened, &path, &Utc).unwrap();
+        let last_run: i64 = rusqlite::Connection::open(&path)
+            .unwrap()
+            .query_row("SELECT MAX(run_id) FROM sessions", [], |row| row.get(0))
+            .unwrap();
+        let now = core.now();
+        let id = core.tracker_mut().start_stopwatch(None, now).unwrap();
+        assert!(
+            i64::try_from(id.0).unwrap() > last_run,
+            "{id:?} reuses a demo run id"
+        );
     }
 
     #[test]

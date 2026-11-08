@@ -72,7 +72,7 @@ fn run() -> anyhow::Result<()> {
         instance::listen(app::run_command)?;
     }
     let app = match startup::open_core(screenshot_dir.is_some()) {
-        Ok((core, reopened)) => start_app(core, &reopened, screenshot_dir)?,
+        Ok((core, reopened)) => start_app(core, reopened, screenshot_dir)?,
         Err(failure) => return recover(failure, screenshot_dir),
     };
     // The app lives in the tray: closing every window does not end it, only "Sair" does.
@@ -86,17 +86,19 @@ fn run() -> anyhow::Result<()> {
 /// Creates the app on an opened core: the single-instance channel, the demo data (if asked),
 /// the windows and the screenshot tour.
 fn start_app(
-    mut core: core::AppCore,
-    reopened: &core::Reopened,
+    core: core::AppCore,
+    reopened: core::Reopened,
     screenshot_dir: Option<std::path::PathBuf>,
 ) -> anyhow::Result<std::rc::Rc<app::App>> {
-    if demo::requested() {
-        match demo::seed_if_empty(&mut core, &chrono::Local) {
-            Ok(seeded) => tracing::info!("demo data requested (seeded: {seeded})"),
-            Err(e) => tracing::warn!("failed to seed the demo data: {e}"),
+    let (core, reopened) = match paths::db(screenshot_dir.is_some()) {
+        // The demo needs `CLOCKY_DB`, so its database is always a file.
+        paths::Db::File(path) if demo::requested() => {
+            tracing::info!("demo data requested");
+            demo::seed_and_reopen(core, reopened, &path, &chrono::Local)?
         }
-    }
-    let app = app::App::new(core, reopened, screenshot_dir.is_some())?;
+        _ => (core, reopened),
+    };
+    let app = app::App::new(core, &reopened, screenshot_dir.is_some())?;
     app.start()?;
     if let Some(dir) = screenshot_dir {
         app.schedule_screenshots(dir);
@@ -118,7 +120,7 @@ fn recover(
         startup::show_failure(
             failure,
             screenshot_dir,
-            move |core, reopened| match start_app(core, &reopened, dir) {
+            move |core, reopened| match start_app(core, reopened, dir) {
                 Ok(app) => *slot.borrow_mut() = Some(app),
                 Err(e) => {
                     tracing::error!("cannot start after discarding the active timers: {e:#}");
