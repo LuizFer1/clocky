@@ -1,0 +1,251 @@
+// Sessão: one session in detail. Effective time, pauses and wall time as tiles, the session
+// bar (running parts in the project color, pauses in amber, milestones on top) and the
+// list of what happened, with "aos 18min" for each milestone.
+import { Theme } from "theme.slint";
+import { DotCell, TextAction } from "widgets.slint";
+import { Card } from "manage-controls.slint";
+import { MarkerDot, TickLabels } from "manage-reports-day.slint";
+import { ReportsState, SessionEventKind } from "manage-reports-state.slint";
+
+component Stat inherits Rectangle {
+    in property <string> label;
+    in property <string> value;
+    in property <bool> mono: true;
+
+    horizontal-stretch: 1;
+    min-height: 76px;
+    border-radius: Theme.radius-lg;
+    background: Theme.panel;
+    border-width: 1px;
+    border-color: Theme.line;
+
+    VerticalLayout {
+        padding: Theme.space-3-5;
+        spacing: Theme.space-1-5;
+        alignment: center;
+
+        Text {
+            text: root.label;
+            color: Theme.muted;
+            font-size: Theme.fs-xs;
+            font-weight: Theme.fw-medium;
+        }
+
+        Text {
+            text: root.value;
+            color: Theme.text;
+            font-family: root.mono ? Theme.font-mono : Theme.font-sans;
+            font-size: root.mono ? Theme.fs-timer-sm : Theme.fs-md;
+            font-weight: Theme.fw-medium;
+            overflow: elide;
+        }
+    }
+}
+
+// The leading mark of an event line.
+component EventMark inherits Rectangle {
+    in property <SessionEventKind> kind;
+
+    width: 12px;
+    height: 12px;
+    border-radius: 6px;
+    background: root.kind == SessionEventKind.pause ? Theme.pause : (root.kind == SessionEventKind.done ? Theme.ok : transparent);
+    border-width: root.kind == SessionEventKind.edge || root.kind == SessionEventKind.reopened ? 1.5px : 0px;
+    border-color: root.kind == SessionEventKind.edge ? Theme.text : Theme.muted;
+
+    if root.kind == SessionEventKind.done: Image {
+        width: 9px;
+        height: 9px;
+        source: @image-url("../icons/check.svg");
+        colorize: Theme.dark ? #0a0a0a : #ffffff;
+    }
+}
+
+// Outlined destructive button ("Apagar sessão").
+component DangerOutline inherits Rectangle {
+    in property <string> text;
+    callback clicked();
+
+    height: 40px;
+    width: label.preferred-width + 2 * Theme.space-4;
+    border-radius: Theme.radius-md;
+    border-width: 1px;
+    border-color: Theme.danger.with-alpha(0.5);
+    background: touch.has-hover ? Theme.danger.with-alpha(0.1) : transparent;
+
+    label := Text {
+        text: root.text;
+        color: Theme.danger;
+        font-size: Theme.fs-md;
+        font-weight: Theme.fw-medium;
+    }
+
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+export component SessionReportView inherits VerticalLayout {
+    alignment: start;
+    spacing: Theme.space-5;
+
+    HorizontalLayout {
+        alignment: start;
+
+        TextAction {
+            text: "‹  " + ReportsState.session-back;
+            clicked => { ReportsState.close-session(); }
+        }
+    }
+
+    Card {
+        HorizontalLayout {
+            spacing: Theme.space-2-5;
+
+            DotCell {
+                size: 12px;
+                dot-color: ReportsState.session-none ? Theme.muted : ReportsState.session-color;
+                hollow: ReportsState.session-none;
+            }
+
+            Text {
+                horizontal-stretch: 1;
+                vertical-alignment: center;
+                text: ReportsState.session-task;
+                color: Theme.text;
+                font-size: Theme.fs-lg;
+                font-weight: Theme.fw-medium;
+                overflow: elide;
+            }
+        }
+
+        Text {
+            text: ReportsState.session-project + " · " + ReportsState.session-kind;
+            color: Theme.muted;
+            font-size: Theme.fs-sm;
+        }
+
+        HorizontalLayout {
+            spacing: Theme.space-3;
+
+            Stat {
+                label: "Tempo efetivo";
+                value: ReportsState.session-effective;
+            }
+
+            Stat {
+                label: "Pausas";
+                value: ReportsState.session-pauses;
+                mono: false;
+            }
+
+            Stat {
+                label: "No relógio";
+                value: ReportsState.session-wall;
+            }
+        }
+
+        VerticalLayout {
+            padding-top: Theme.space-2;
+            spacing: Theme.space-1-5;
+
+            Rectangle {
+                height: ReportsState.session-marks.length > 0 ? 16px : 0px;
+
+                for marker in ReportsState.session-marks: MarkerDot {
+                    x: clamp(parent.width * marker.at - 6px, 0, parent.width - 12px);
+                    y: 2px;
+                    marker: marker;
+                }
+            }
+
+            Rectangle {
+                height: 14px;
+                border-radius: 7px;
+                background: Theme.pause-soft;
+                border-width: 1px;
+                border-color: Theme.pause.with-alpha(0.35);
+                clip: true;
+
+                for part in ReportsState.session-parts: Rectangle {
+                    x: parent.width * part.start;
+                    width: max(2px, parent.width * part.size);
+                    background: ReportsState.session-none ? Theme.muted : ReportsState.session-color;
+                }
+            }
+
+            TickLabels {
+                ticks: ReportsState.session-ticks;
+            }
+        }
+    }
+
+    Card {
+        Text {
+            text: "O que aconteceu";
+            color: Theme.text;
+            font-size: Theme.fs-base;
+            font-weight: Theme.fw-medium;
+        }
+
+        VerticalLayout {
+            for event[index] in ReportsState.session-events: Rectangle {
+                min-height: 40px;
+
+                if index > 0: Rectangle {
+                    y: 0;
+                    height: 1px;
+                    background: Theme.line;
+                }
+
+                HorizontalLayout {
+                    spacing: Theme.space-3;
+
+                    Text {
+                        width: 112px;
+                        vertical-alignment: center;
+                        text: event.time;
+                        color: Theme.muted;
+                        font-family: Theme.font-mono;
+                        font-size: Theme.fs-sm;
+                    }
+
+                    VerticalLayout {
+                        alignment: center;
+
+                        EventMark {
+                            kind: event.kind;
+                        }
+                    }
+
+                    Text {
+                        horizontal-stretch: 1;
+                        vertical-alignment: center;
+                        text: event.kind == SessionEventKind.reopened ? event.text + " (desmarcada)" : event.text;
+                        color: event.kind == SessionEventKind.pause ? Theme.pause-text : Theme.text;
+                        font-size: Theme.fs-md;
+                        font-weight: event.kind == SessionEventKind.done ? Theme.fw-medium : Theme.fw-regular;
+                        overflow: elide;
+                    }
+
+                    Text {
+                        vertical-alignment: center;
+                        text: event.detail;
+                        color: Theme.muted;
+                        font-size: Theme.fs-sm;
+                    }
+                }
+            }
+        }
+    }
+
+    HorizontalLayout {
+        alignment: start;
+
+        DangerOutline {
+            text: "Apagar sessão";
+            clicked => { ReportsState.delete-session(); }
+        }
+    }
+}

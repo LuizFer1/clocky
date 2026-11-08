@@ -295,6 +295,8 @@ fn session_row<Tz: TimeZone>(
 ) -> ui::SessionRow {
     let (day, range) = format::session_when(session.started_at, session.ended_at, now, tz);
     ui::SessionRow {
+        // M7b: opens the Sessão detail (-1, ignored, for an id the UI cannot hold).
+        id: slint_id(session.id.0).unwrap_or(-1),
         day: day.into(),
         range: range.into(),
         kind: format::kind_label(session.kind).into(),

@@ -1,0 +1,317 @@
+// Diário: the day's timeline (session blocks by lane, subtask markers on top, hour labels)
+// and the list of sessions. A block or a row opens the Sessão detail.
+import { Theme } from "theme.slint";
+import { DotCell } from "widgets.slint";
+import { Card, CardTitle } from "manage-controls.slint";
+import { ReportsState, TimelineMarker, HourTick } from "manage-reports-state.slint";
+
+// Lane height of the timeline.
+global Lane {
+    out property <length> height: 36px;
+}
+
+// A subtask marker: a small dot (green when checked) above the track, with a stem.
+export component MarkerDot inherits Rectangle {
+    in property <TimelineMarker> marker;
+
+    width: 12px;
+    height: 12px;
+    border-radius: 6px;
+    background: root.marker.done ? Theme.ok : Theme.panel;
+    border-width: root.marker.done ? 0px : 1.5px;
+    border-color: Theme.muted;
+
+    if root.marker.done: Image {
+        width: 9px;
+        height: 9px;
+        source: @image-url("../icons/check.svg");
+        colorize: Theme.dark ? #0a0a0a : #ffffff;
+    }
+}
+
+// Hour (or time) labels under a track, clamped to its edges.
+export component TickLabels inherits Rectangle {
+    in property <[HourTick]> ticks;
+
+    height: 16px;
+
+    for tick in root.ticks: Text {
+        x: clamp(parent.width * tick.at - self.preferred-width / 2, 0, parent.width - self.preferred-width);
+        text: tick.label;
+        color: Theme.muted;
+        font-size: Theme.fs-caption;
+        font-family: Theme.font-mono;
+    }
+}
+
+component Timeline inherits VerticalLayout {
+    spacing: Theme.space-1-5;
+
+    // Markers row.
+    Rectangle {
+        height: ReportsState.markers.length > 0 ? 16px : 0px;
+
+        for marker in ReportsState.markers: MarkerDot {
+            x: clamp(parent.width * marker.at - 6px, 0, parent.width - 12px);
+            y: 2px;
+            marker: marker;
+        }
+    }
+
+    track := Rectangle {
+        height: ReportsState.lanes * Lane.height;
+        border-radius: Theme.radius-md;
+        background: Theme.panel;
+        border-width: 1px;
+        border-color: Theme.line;
+
+        for tick in ReportsState.ticks: Rectangle {
+            x: parent.width * tick.at;
+            width: 1px;
+            background: Theme.line;
+        }
+
+        for marker in ReportsState.markers: Rectangle {
+            x: clamp(parent.width * marker.at, 0, parent.width - 1px);
+            width: 1px;
+            background: marker.done ? Theme.ok.with-alpha(0.5) : Theme.line-2;
+        }
+
+        for block in ReportsState.blocks: Rectangle {
+            property <color> tint: block.none ? Theme.muted : block.color;
+
+            x: parent.width * block.start;
+            y: block.lane * Lane.height + 5px;
+            width: max(6px, parent.width * block.size);
+            height: Lane.height - 10px;
+            border-radius: 6px;
+            // The gaps between the running parts are the pauses.
+            background: tint.with-alpha(0.25);
+            border-width: touch.has-hover ? 1px : 0px;
+            border-color: Theme.text;
+            clip: true;
+
+            for part in block.parts: Rectangle {
+                x: parent.width * part.start;
+                width: max(2px, parent.width * part.size);
+                background: tint;
+            }
+
+            touch := TouchArea {
+                mouse-cursor: pointer;
+                clicked => { ReportsState.open-session(block.id); }
+            }
+        }
+    }
+
+    TickLabels {
+        ticks: ReportsState.ticks;
+    }
+}
+
+// A session in the list: dot, time range, task / project, kind, duration and chevron.
+component SessionLine inherits Rectangle {
+    in property <int> id;
+    in property <string> range;
+    in property <string> task;
+    in property <string> project;
+    in property <color> tint;
+    in property <string> kind;
+    in property <string> duration;
+    in property <string> markers;
+    in property <bool> first;
+
+    min-height: 56px;
+    background: touch.has-hover ? Theme.accent-soft : transparent;
+    border-radius: Theme.radius-md;
+
+    if !root.first: Rectangle {
+        y: 0;
+        height: 1px;
+        background: Theme.line;
+    }
+
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { ReportsState.open-session(root.id); }
+    }
+
+    HorizontalLayout {
+        padding-top: Theme.space-2-5;
+        padding-bottom: Theme.space-2-5;
+        padding-left: Theme.space-1;
+        padding-right: Theme.space-1;
+        spacing: Theme.space-3;
+
+        VerticalLayout {
+            alignment: center;
+            width: 108px;
+
+            Text {
+                text: root.range;
+                color: Theme.text;
+                font-family: Theme.font-mono;
+                font-size: Theme.fs-sm;
+            }
+        }
+
+        VerticalLayout {
+            horizontal-stretch: 1;
+            alignment: center;
+            spacing: 2px;
+
+            HorizontalLayout {
+                spacing: Theme.space-2;
+
+                DotCell {
+                    size: 8px;
+                    dot-color: root.tint;
+                }
+
+                Text {
+                    horizontal-stretch: 1;
+                    text: root.task;
+                    color: Theme.text;
+                    font-size: Theme.fs-md;
+                    font-weight: Theme.fw-medium;
+                    overflow: elide;
+                }
+            }
+
+            Text {
+                text: root.project + " · " + root.kind;
+                color: Theme.muted;
+                font-size: Theme.fs-xs;
+                overflow: elide;
+            }
+
+            if root.markers != "": Text {
+                text: root.markers;
+                color: Theme.ok;
+                font-size: Theme.fs-xs;
+                wrap: word-wrap;
+            }
+        }
+
+        VerticalLayout {
+            alignment: center;
+
+            Text {
+                horizontal-alignment: right;
+                text: root.duration;
+                color: Theme.text;
+                font-size: Theme.fs-sm;
+                font-weight: Theme.fw-medium;
+            }
+        }
+
+        VerticalLayout {
+            alignment: center;
+
+            Image {
+                width: 16px;
+                height: 16px;
+                source: @image-url("../icons/chevron-right.svg");
+                colorize: Theme.muted;
+            }
+        }
+    }
+}
+
+export component DailyReport inherits VerticalLayout {
+    spacing: Theme.space-5;
+
+    Card {
+        CardTitle {
+            text: "Linha do tempo";
+            trailing: ReportsState.total;
+        }
+
+        Timeline { }
+
+        HorizontalLayout {
+            alignment: start;
+            spacing: Theme.space-4;
+
+            HorizontalLayout {
+                spacing: Theme.space-1-5;
+
+                VerticalLayout {
+                    alignment: center;
+
+                    Rectangle {
+                        width: 18px;
+                        height: 10px;
+                        border-radius: 3px;
+                        background: Theme.muted;
+                    }
+                }
+
+                Text {
+                    text: "rodando";
+                    color: Theme.muted;
+                    font-size: Theme.fs-xs;
+                }
+            }
+
+            HorizontalLayout {
+                spacing: Theme.space-1-5;
+
+                VerticalLayout {
+                    alignment: center;
+
+                    Rectangle {
+                        width: 18px;
+                        height: 10px;
+                        border-radius: 3px;
+                        background: Theme.muted.with-alpha(0.25);
+                    }
+                }
+
+                Text {
+                    text: "pausa";
+                    color: Theme.muted;
+                    font-size: Theme.fs-xs;
+                }
+            }
+
+            HorizontalLayout {
+                spacing: Theme.space-1-5;
+
+                VerticalLayout {
+                    alignment: center;
+
+                    MarkerDot {
+                        marker: { done: true };
+                    }
+                }
+
+                Text {
+                    text: "subtarefa concluída";
+                    color: Theme.muted;
+                    font-size: Theme.fs-xs;
+                }
+            }
+        }
+    }
+
+    if ReportsState.sessions.length > 0: Card {
+        CardTitle {
+            text: "Sessões";
+        }
+
+        VerticalLayout {
+            for row[index] in ReportsState.sessions: SessionLine {
+                id: row.id;
+                range: row.range;
+                task: row.task;
+                project: row.project;
+                tint: row.none ? Theme.muted : row.color;
+                kind: row.kind;
+                duration: row.duration;
+                markers: row.markers;
+                first: index == 0;
+            }
+        }
+    }
+}

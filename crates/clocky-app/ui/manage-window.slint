@@ -2,13 +2,16 @@
 // contextual button, page). Below ~800px the sidebar moves to the top and the whole window
 // scrolls (screen 74). The data comes from `ManageState` (filled by `src/manage.rs`).
 import { Theme } from "theme.slint";
-import { DangerButton, SecondaryButton } from "widgets.slint";
 import { ManageState } from "manage-state.slint";
 import { Header, MoveCard } from "manage-header.slint";
 import { Sidebar } from "manage-sidebar.slint";
 import { TaskListPage } from "manage-project.slint";
 import { AllProjectsPage } from "manage-all.slint";
 import { TaskPage } from "manage-task.slint";
+// M7b: Relatórios, Configurações and the confirmation dialog.
+import { ReportsPage } from "manage-reports.slint";
+import { SettingsPage } from "manage-settings.slint";
+import { ConfirmDialog } from "dialog-confirm.slint";
 
 // Breadcrumb bar: "Clocky / <crumb>".
 component TopBar inherits Rectangle {
@@ -71,60 +74,12 @@ component Content inherits Rectangle {
 
         if ManageState.page == 2: TaskPage { }
 
+        if ManageState.page == 4: ReportsPage { }
+
+        if ManageState.page == 5: SettingsPage { }
+
         Rectangle {
             vertical-stretch: 1;
-        }
-    }
-}
-
-// Confirmation before deleting (dialogs were not designed in the handoff: same tokens).
-component ConfirmDialog inherits Rectangle {
-    background: #00000099;
-
-    TouchArea { }
-
-    Rectangle {
-        width: min(400px, root.width - 2 * Theme.space-4);
-        height: card.preferred-height;
-        background: Theme.panel;
-        border-radius: Theme.radius-panel;
-        border-width: 1px;
-        border-color: Theme.line-2;
-
-        card := VerticalLayout {
-            padding: Theme.space-5;
-            spacing: Theme.space-3;
-
-            Text {
-                text: ManageState.confirm-title;
-                color: Theme.text;
-                font-size: Theme.fs-lg;
-                font-weight: Theme.fw-medium;
-                wrap: word-wrap;
-            }
-
-            Text {
-                text: ManageState.confirm-text;
-                color: Theme.muted;
-                font-size: Theme.fs-md;
-                wrap: word-wrap;
-            }
-
-            HorizontalLayout {
-                alignment: end;
-                padding-top: Theme.space-2;
-                spacing: Theme.space-2;
-
-                SecondaryButton {
-                    text: "Cancelar";
-                    clicked => { ManageState.confirm-cancelled(); }
-                }
-
-                DangerButton {
-                    text: ManageState.confirm-action;
-                    clicked => { ManageState.confirm-accepted(); }
-                }
-            }
         }
     }
 }

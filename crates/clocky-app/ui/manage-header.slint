@@ -157,7 +157,8 @@ export component Header inherits HorizontalLayout {
         }
     }
 
-    if ManageState.page != 3: VerticalLayout {
+    // Search results, Relatórios and Configurações have no contextual button.
+    if ManageState.page <= 2: VerticalLayout {
         alignment: start;
 
         HorizontalLayout {

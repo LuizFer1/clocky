@@ -267,16 +267,34 @@ export component Sidebar inherits Rectangle {
             padding-left: Theme.space-1;
             spacing: Theme.space-1;
 
-            GhostIcon {
+            // Selected while its page is open.
+            Rectangle {
                 width: 36px;
                 height: 36px;
-                icon: @image-url("../icons/settings.svg");
+                border-radius: Theme.radius-lg;
+                background: ManageState.page == 5 ? Theme.accent-soft : transparent;
+
+                GhostIcon {
+                    width: 36px;
+                    height: 36px;
+                    icon: @image-url("../icons/settings.svg");
+                    clicked => { ManageState.open-settings(); }
+                }
             }
 
-            GhostIcon {
+            // Selected while its page is open.
+            Rectangle {
                 width: 36px;
                 height: 36px;
-                icon: @image-url("../icons/chart.svg");
+                border-radius: Theme.radius-lg;
+                background: ManageState.page == 4 ? Theme.accent-soft : transparent;
+
+                GhostIcon {
+                    width: 36px;
+                    height: 36px;
+                    icon: @image-url("../icons/chart.svg");
+                    clicked => { ManageState.open-reports(); }
+                }
             }
         }
     }
