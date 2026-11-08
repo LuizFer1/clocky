@@ -139,6 +139,7 @@ fn wizard(global: &ui::TimerUi<'_>, models: &Models, f: WizardFrame) {
     global.set_wz_unit(f.unit);
     global.set_wz_value(f.value);
     global.set_wz_summary(f.summary);
+    global.set_wz_name(f.name);
     global.set_wz_name_placeholder(f.placeholder);
     global.set_wz_auto_start(f.auto_start);
     global.set_wz_task(f.task);

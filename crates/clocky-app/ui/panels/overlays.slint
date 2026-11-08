@@ -1,0 +1,196 @@
+// Drawn over the panel body: the temporary task chooser and the "Cronômetro esquecido?" dialog
+// (not in the handoff screens; built from its tokens, spec decision 6).
+import { Theme } from "../theme.slint";
+import { TimerUi, ChooserRow } from "timer-ui.slint";
+import { Button, Dot } from "common.slint";
+
+component ChooserItem inherits Rectangle {
+    in property <string> text;
+    in property <string> project;
+    in property <color> tint;
+    in property <bool> linked;
+    in property <bool> selected;
+    callback picked();
+
+    height: 44px;
+    border-radius: Theme.radius-lg;
+    background: root.selected ? Theme.accent-soft : (touch.has-hover ? Theme.panel-2 : transparent);
+
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.picked(); }
+    }
+
+    HorizontalLayout {
+        padding-left: Theme.space-3;
+        padding-right: Theme.space-3;
+        spacing: Theme.space-2-5;
+
+        VerticalLayout {
+            alignment: center;
+
+            Dot {
+                size: 9px;
+                tint: root.linked ? root.tint : Theme.line-2;
+            }
+        }
+
+        if root.linked: Text {
+            vertical-alignment: center;
+            text: root.project + " ›";
+            color: Theme.muted;
+            font-size: Theme.fs-base;
+        }
+
+        Text {
+            horizontal-stretch: 1;
+            vertical-alignment: center;
+            text: root.text;
+            color: Theme.text;
+            font-size: Theme.fs-base;
+            overflow: elide;
+        }
+
+        if root.selected: VerticalLayout {
+            alignment: center;
+
+            Image {
+                width: 18px;
+                height: 18px;
+                source: @image-url("../../icons/check.svg");
+                colorize: Theme.text;
+            }
+        }
+    }
+}
+
+// Temporary chooser: "Sem tarefa" plus every open task. M6a's TaskPicker replaces it.
+component Chooser inherits Rectangle {
+    background: Theme.panel;
+
+    // Swallows clicks so nothing under the chooser reacts.
+    TouchArea { }
+
+    VerticalLayout {
+        padding: Theme.space-5;
+        padding-top: Theme.space-4;
+        spacing: Theme.space-3;
+
+        HorizontalLayout {
+            Text {
+                horizontal-stretch: 1;
+                vertical-alignment: center;
+                text: "Vincular tarefa";
+                color: Theme.text;
+                font-size: Theme.fs-lg;
+                font-weight: Theme.fw-medium;
+            }
+
+            Text {
+                vertical-alignment: center;
+                text: "Cancelar";
+                color: Theme.accent-text;
+                font-size: Theme.fs-md;
+                font-weight: Theme.fw-medium;
+
+                TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { TimerUi.chooser-cancel(); }
+                }
+            }
+        }
+
+        Flickable {
+            vertical-stretch: 1;
+            content-height: rows.preferred-height;
+
+            rows := VerticalLayout {
+                spacing: 2px;
+
+                ChooserItem {
+                    text: "Sem tarefa";
+                    linked: false;
+                    selected: TimerUi.chooser-none-selected;
+                    picked => { TimerUi.chooser-pick(-1); }
+                }
+
+                for row in TimerUi.chooser-rows: ChooserItem {
+                    text: row.task;
+                    project: row.project;
+                    tint: row.color;
+                    linked: true;
+                    selected: row.selected;
+                    picked => { TimerUi.chooser-pick(row.id); }
+                }
+            }
+        }
+    }
+}
+
+component ForgottenDialog inherits Rectangle {
+    background: Theme.dark ? #000000b3 : #00000059;
+
+    TouchArea { }
+
+    Rectangle {
+        x: Theme.space-5;
+        width: parent.width - 2 * Theme.space-5;
+        height: card.preferred-height;
+        y: max(Theme.space-5, (parent.height - self.height) / 2);
+        border-radius: Theme.radius-panel;
+        background: Theme.panel;
+        border-width: 1px;
+        border-color: Theme.line-2;
+
+        card := VerticalLayout {
+            padding: Theme.space-5;
+            spacing: Theme.space-3;
+
+            Text {
+                text: "Cronômetro esquecido?";
+                color: Theme.text;
+                font-size: 17px;
+                font-weight: Theme.fw-medium;
+            }
+
+            Text {
+                text: TimerUi.forgotten-text;
+                color: Theme.muted;
+                font-size: Theme.fs-md;
+                wrap: word-wrap;
+            }
+
+            HorizontalLayout {
+                padding-top: Theme.space-2;
+                spacing: Theme.space-2-5;
+
+                Button {
+                    horizontal-stretch: 1;
+                    height: Theme.size-control;
+                    primary: false;
+                    text: "Descartar";
+                    clicked => { TimerUi.forgotten-discard(); }
+                }
+
+                Button {
+                    horizontal-stretch: 1.4;
+                    height: Theme.size-control;
+                    text: "Registrar tudo";
+                    clicked => { TimerUi.forgotten-record(); }
+                }
+            }
+        }
+    }
+}
+
+export component TimerOverlays inherits Rectangle {
+    if TimerUi.forgotten-visible: ForgottenDialog {
+        width: root.width;
+        height: root.height;
+    }
+
+    if TimerUi.chooser-visible: Chooser {
+        width: root.width;
+        height: root.height;
+    }
+}

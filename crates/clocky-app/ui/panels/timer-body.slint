@@ -3,6 +3,13 @@
 import { Theme } from "../theme.slint";
 import { TimerUi } from "timer-ui.slint";
 import { StopwatchView } from "stopwatch.slint";
+import { CountdownConfigView, CountdownRunView } from "countdown.slint";
+import { PomodoroListView, PomodoroTimerView } from "pomodoro.slint";
+import { WizardView } from "wizard.slint";
+import { OverviewView } from "overview.slint";
+import { TimerOverlays } from "overlays.slint";
+
+export { TimerOverlays }
 
 // One-line notice with a close button ("Sessão de 00:12:04 registrada").
 component NoticeBar inherits Rectangle {
@@ -53,6 +60,10 @@ export component TimerBody inherits VerticalLayout {
     }
 
     if TimerUi.view == "stopwatch": StopwatchView { }
+    if TimerUi.view == "countdown-config": CountdownConfigView { }
+    if TimerUi.view == "countdown-run": CountdownRunView { }
+    if TimerUi.view == "pomodoro-list": PomodoroListView { }
+    if TimerUi.view == "pomodoro-timer": PomodoroTimerView { }
+    if TimerUi.view == "wizard": WizardView { }
+    if TimerUi.view == "overview": OverviewView { }
 }
-
-export component TimerOverlays inherits Rectangle { }

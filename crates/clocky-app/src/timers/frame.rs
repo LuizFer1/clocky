@@ -130,7 +130,7 @@ fn forgotten_text(src: &Source<'_>) -> Option<SharedString> {
     let Timer::Stopwatch(sw) = &active.timer else {
         return None;
     };
-    let elapsed = format::duration_short(sw.elapsed(src.now));
+    let elapsed = format::duration_minutes(sw.elapsed(src.now));
     Some(
         format!(
             "O cronômetro está rodando há {elapsed}. Registrar todo esse tempo ou descartar a \

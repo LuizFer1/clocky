@@ -66,6 +66,15 @@ pub fn duration_short(d: Duration) -> String {
     parts.join(" ")
 }
 
+/// Like [`duration_short`], without the seconds once it reaches a minute ("1 h 12 min").
+pub fn duration_minutes(d: Duration) -> String {
+    let secs = d.as_secs();
+    if secs < 60 {
+        return duration_short(d);
+    }
+    duration_short(Duration::from_secs(secs / 60 * 60))
+}
+
 /// Whole minutes of a pomodoro phase (presets are made of whole minutes).
 pub fn minutes(d: Duration) -> u64 {
     secs_up(d).div_ceil(60)
@@ -148,6 +157,12 @@ mod tests {
         assert_eq!(duration_short(Duration::from_secs(45)), "45 s");
         assert_eq!(duration_short(Duration::from_secs(90)), "1 min 30 s");
         assert_eq!(duration_short(Duration::ZERO), "0 s");
+    }
+
+    #[test]
+    fn minutes_drop_the_seconds() {
+        assert_eq!(duration_minutes(Duration::from_secs(4_354)), "1 h 12 min");
+        assert_eq!(duration_minutes(Duration::from_secs(42)), "42 s");
     }
 
     #[test]
