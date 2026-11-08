@@ -1,12 +1,28 @@
-//! App-side settings in `settings.json` in the user config dir. A stopgap until the settings
-//! table of M2 exists: it only keeps the theme and the dock position.
+//! App settings in the core `settings` table (spec, section 3): the theme and the dock
+//! position. Before M7 they lived in `settings.json` in the user config dir; [`load`] imports
+//! that file once and never writes, renames or deletes it.
 
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
+use crate::core::AppCore;
 use crate::geometry::Edge;
+
+/// Keys of the `settings` table written by the app. The core owns `forgotten_limit_ms` and the
+/// timer panels read the `pomodoro_*` wizard defaults.
+pub mod keys {
+    /// `dark` (the default) or `light`.
+    pub const THEME: &str = "theme";
+    /// The dock position as JSON ([`super::DockPlacement`]).
+    pub const DOCK: &str = "dock_placement";
+    /// Default alarm sound: a file path, or empty for the built-in sound (read by the alarms).
+    pub const ALARM_SOUND: &str = "alarm.default_sound";
+}
+
+const LIGHT: &str = "light";
+const DARK: &str = "dark";
 
 /// Where the dock was left: monitor, edge and height (spec, decision 11).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -18,6 +34,7 @@ pub struct DockPlacement {
     pub y_fraction: f64,
 }
 
+/// What the app needs at startup. Also the shape of the old `settings.json`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Settings {
@@ -36,45 +53,94 @@ impl Default for Settings {
 }
 
 impl Settings {
-    /// Reads the settings. A missing or unreadable file gives the defaults (logged as a warning).
-    pub fn load(path: &Path) -> Self {
-        let text = match fs::read_to_string(path) {
-            Ok(text) => text,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Self::default(),
+    /// Reads the settings from the table; a missing or invalid value gives its default.
+    pub fn read(core: &AppCore) -> Self {
+        let get = |key: &str| match core.setting(key) {
+            Ok(value) => value,
             Err(e) => {
-                tracing::warn!("cannot read {}: {e}; using defaults", path.display());
-                return Self::default();
+                tracing::warn!("cannot read the setting {key}: {e}; using the default");
+                None
             }
         };
-        serde_json::from_str(&text).unwrap_or_else(|e| {
-            tracing::warn!(
-                "invalid settings in {}: {e}; using defaults",
-                path.display()
-            );
-            Self::default()
-        })
-    }
-
-    /// Writes the settings through a temporary file, so a crash never leaves a half-written file.
-    pub fn save(&self, path: &Path) -> anyhow::Result<()> {
-        if let Some(dir) = path.parent() {
-            fs::create_dir_all(dir)?;
-        }
-        let tmp = path.with_extension("json.tmp");
-        fs::write(&tmp, serde_json::to_string_pretty(self)?)?;
-        fs::rename(&tmp, path)?;
-        Ok(())
+        let dark_theme = get(keys::THEME).is_none_or(|v| v != LIGHT);
+        let dock = get(keys::DOCK).and_then(|json| {
+            serde_json::from_str(&json)
+                .inspect_err(|e| tracing::warn!("invalid dock position {json:?}: {e}"))
+                .ok()
+        });
+        Self { dark_theme, dock }
     }
 }
 
-/// Default location: `<config dir>/settings.json`.
+/// Imports the old `settings.json` at `legacy` (when given) into the table, then reads the
+/// table. The import runs only while the table has no theme: it always writes one, so it
+/// happens once. Screenshot runs pass `None` and never read the user's file.
+pub fn load(core: &mut AppCore, legacy: Option<&Path>) -> Settings {
+    if let Some(path) = legacy {
+        import_legacy(core, path);
+    }
+    Settings::read(core)
+}
+
+fn import_legacy(core: &mut AppCore, path: &Path) {
+    match core.setting(keys::THEME) {
+        Ok(None) => {}
+        Ok(Some(_)) => return,
+        Err(e) => return tracing::warn!("cannot check the settings table: {e}"),
+    }
+    let Some(old) = read_json(path) else { return };
+    let result = save_theme(core, old.dark_theme).and_then(|()| match &old.dock {
+        Some(placement) => save_dock(core, placement),
+        None => Ok(()),
+    });
+    match result {
+        Ok(()) => tracing::info!("imported {} into the settings table", path.display()),
+        Err(e) => tracing::warn!("failed to import {}: {e:#}", path.display()),
+    }
+}
+
+/// The old file; `None` when it is missing or unreadable (logged).
+fn read_json(path: &Path) -> Option<Settings> {
+    let text = match fs::read_to_string(path) {
+        Ok(text) => text,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return None,
+        Err(e) => {
+            tracing::warn!("cannot read {}: {e}", path.display());
+            return None;
+        }
+    };
+    serde_json::from_str(&text)
+        .inspect_err(|e| tracing::warn!("invalid settings in {}: {e}", path.display()))
+        .ok()
+}
+
+/// Saves the theme ("Configurações").
+pub fn save_theme(core: &mut AppCore, dark: bool) -> anyhow::Result<()> {
+    core.set_setting(keys::THEME, if dark { DARK } else { LIGHT })?;
+    Ok(())
+}
+
+/// Saves where the dock was left.
+pub fn save_dock(core: &mut AppCore, placement: &DockPlacement) -> anyhow::Result<()> {
+    core.set_setting(keys::DOCK, &serde_json::to_string(placement)?)?;
+    Ok(())
+}
+
+/// The old file: `<config dir>/settings.json`.
 pub fn default_path() -> Option<PathBuf> {
     crate::paths::config_dir().map(|dir| dir.join("settings.json"))
 }
 
 #[cfg(test)]
 mod tests {
+    use clocky_core::clock::FakeClock;
+    use clocky_core::time::Timestamp;
+
     use super::*;
+
+    fn core() -> AppCore {
+        AppCore::in_memory(Box::new(FakeClock::new(Timestamp::from_millis(0))))
+    }
 
     fn placement() -> DockPlacement {
         DockPlacement {
@@ -86,60 +152,91 @@ mod tests {
 
     #[test]
     fn defaults_are_dark_without_dock_position() {
-        let s = Settings::default();
+        let s = Settings::read(&core());
+        assert_eq!(s, Settings::default());
         assert!(s.dark_theme);
-        assert_eq!(s.dock, None);
     }
 
     #[test]
-    fn save_then_load_roundtrips() {
+    fn theme_and_dock_roundtrip_through_the_table() {
+        let mut core = core();
+        save_theme(&mut core, false).unwrap();
+        save_dock(&mut core, &placement()).unwrap();
+        assert_eq!(core.setting(keys::THEME).unwrap().as_deref(), Some("light"));
+        let s = Settings::read(&core);
+        assert!(!s.dark_theme);
+        assert_eq!(s.dock, Some(placement()));
+        save_theme(&mut core, true).unwrap();
+        assert!(Settings::read(&core).dark_theme);
+    }
+
+    #[test]
+    fn invalid_values_fall_back_to_the_defaults() {
+        let mut core = core();
+        core.set_setting(keys::THEME, "sepia").unwrap();
+        core.set_setting(keys::DOCK, "{ not json").unwrap();
+        assert_eq!(Settings::read(&core), Settings::default());
+    }
+
+    #[test]
+    fn the_old_file_is_imported_once_and_left_alone() {
         let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("nested").join("settings.json");
-        let s = Settings {
+        let path = dir.path().join("settings.json");
+        let old = Settings {
             dark_theme: false,
             dock: Some(placement()),
         };
-        s.save(&path).unwrap();
-        assert_eq!(Settings::load(&path), s);
-        assert!(!path.with_extension("json.tmp").exists());
+        let json = serde_json::to_string_pretty(&old).unwrap();
+        fs::write(&path, &json).unwrap();
+        let mut core = core();
+        assert_eq!(load(&mut core, Some(&path)), old);
+        // The file is untouched.
+        assert_eq!(fs::read_to_string(&path).unwrap(), json);
+        // Later changes win over the file.
+        save_theme(&mut core, true).unwrap();
+        assert!(load(&mut core, Some(&path)).dark_theme);
     }
 
     #[test]
-    fn save_overwrites_an_existing_file() {
+    fn a_table_with_a_theme_ignores_the_old_file() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("settings.json");
-        Settings::default().save(&path).unwrap();
-        let moved = Settings {
-            dark_theme: true,
-            dock: Some(placement()),
-        };
-        moved.save(&path).unwrap();
-        assert_eq!(Settings::load(&path), moved);
+        fs::write(&path, r#"{"dark_theme": false}"#).unwrap();
+        let mut core = core();
+        save_theme(&mut core, true).unwrap();
+        assert!(load(&mut core, Some(&path)).dark_theme);
     }
 
     #[test]
-    fn missing_file_gives_defaults() {
+    fn missing_or_corrupt_old_file_gives_the_defaults() {
         let dir = tempfile::tempdir().unwrap();
+        let mut core = core();
         assert_eq!(
-            Settings::load(&dir.path().join("settings.json")),
+            load(&mut core, Some(&dir.path().join("settings.json"))),
             Settings::default()
         );
-    }
-
-    #[test]
-    fn corrupt_file_gives_defaults() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("settings.json");
+        let path = dir.path().join("broken.json");
         fs::write(&path, "{ not json").unwrap();
-        assert_eq!(Settings::load(&path), Settings::default());
+        assert_eq!(load(&mut core, Some(&path)), Settings::default());
+        // Nothing was imported, so a later valid file still can be.
+        assert_eq!(core.setting(keys::THEME).unwrap(), None);
     }
 
     #[test]
-    fn missing_fields_take_defaults() {
+    fn missing_fields_of_the_old_file_take_defaults() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("settings.json");
         fs::write(&path, "{}").unwrap();
-        assert_eq!(Settings::load(&path), Settings::default());
+        let mut core = core();
+        assert_eq!(load(&mut core, Some(&path)), Settings::default());
+        assert_eq!(core.setting(keys::THEME).unwrap().as_deref(), Some("dark"));
+    }
+
+    #[test]
+    fn no_legacy_path_reads_only_the_table() {
+        let mut core = core();
+        assert_eq!(load(&mut core, None), Settings::default());
+        assert_eq!(core.setting(keys::THEME).unwrap(), None);
     }
 
     #[test]

@@ -32,9 +32,7 @@ pub struct App {
     /// The core, shared with the windows that read and change data.
     pub core: Rc<RefCell<AppCore>>,
     settings: RefCell<Settings>,
-    /// `None` when settings must not be written (no config dir, or screenshot mode).
-    settings_path: Option<PathBuf>,
-    /// Screenshot mode: no tray and no settings writes.
+    /// Screenshot mode: no tray, and the settings never come from the user's files.
     screenshot_mode: bool,
     /// Keeps the tray icon alive (dropping it removes the icon).
     tray: RefCell<Option<ui::ClockyTray>>,
@@ -51,8 +49,10 @@ impl App {
         reopened: &Reopened,
         screenshot_mode: bool,
     ) -> anyhow::Result<Rc<Self>> {
-        let path = settings::default_path();
-        let settings = path.as_deref().map(Settings::load).unwrap_or_default();
+        // The old `settings.json` is imported once; screenshot runs never read it.
+        let legacy = settings::default_path().filter(|_| !screenshot_mode);
+        let mut core = core;
+        let settings = settings::load(&mut core, legacy.as_deref());
         let core = Rc::new(RefCell::new(core));
         let panel = Panel::new(core.clone())?;
         let alerts: Box<dyn timers::Alerts> = if screenshot_mode {
@@ -72,7 +72,6 @@ impl App {
             manage: Manage::new(core.clone())?,
             core,
             settings: RefCell::new(settings),
-            settings_path: path.filter(|_| !screenshot_mode),
             screenshot_mode,
             tray: RefCell::new(None),
             bridge: Bridge::new(SystemClock),
@@ -237,14 +236,10 @@ impl App {
     }
 
     fn save_dock(&self, placement: DockPlacement) {
-        let mut settings = self.settings.borrow_mut();
-        settings.dock = Some(placement);
-        let Some(path) = &self.settings_path else {
-            return;
-        };
-        if let Err(e) = settings.save(path) {
-            tracing::warn!("failed to save {}: {e:#}", path.display());
+        if let Err(e) = settings::save_dock(&mut self.core.borrow_mut(), &placement) {
+            tracing::warn!("failed to save the dock position: {e:#}");
         }
+        self.settings.borrow_mut().dock = Some(placement);
     }
 
     /// Screenshot mode: the tour of `tour.rs` (dark, then light), then quit.
