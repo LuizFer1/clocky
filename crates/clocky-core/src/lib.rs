@@ -7,6 +7,7 @@ pub mod alarms;
 pub mod clock;
 pub mod domain;
 pub mod engine;
+pub mod reports;
 pub mod store;
 pub mod time;
 
