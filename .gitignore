@@ -1,0 +1,16 @@
+# Build
+/target
+
+# Documentation stays local only (just the README goes to the remote)
+/docs/
+
+# Local data
+*.db
+*.db-journal
+*.db.bak
+
+# Editors / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

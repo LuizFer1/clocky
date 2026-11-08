@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Quick check before each commit. The full gate is `just check`.
+set -euo pipefail
+cargo fmt --all --check || { echo "✗ run 'just fmt'"; exit 1; }
+cargo clippy --workspace --all-targets --all-features -q -- -D warnings

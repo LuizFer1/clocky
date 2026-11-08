@@ -1,0 +1,39 @@
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+
+[workspace.package]
+# The real version is set by the release pipeline from the commits (see README).
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.99"
+license = "GPL-3.0-only"
+repository = "https://github.com/LuizFer1/clocky"
+publish = false
+
+[workspace.dependencies]
+clocky-core = { path = "crates/clocky-core" }
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+# Names like `timer::TimerState` are intentional and readable.
+module_name_repetitions = "allow"
+cognitive_complexity = "warn"
+# Forbidden outside tests (spec, section 10.2)
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+todo = "deny"
+unimplemented = "deny"
+dbg_macro = "deny"
+print_stdout = "deny"
+print_stderr = "deny"
+let_underscore_must_use = "deny"
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true

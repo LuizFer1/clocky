@@ -1,0 +1,18 @@
+# Size/complexity limits (spec, section 10.2)
+too-many-lines-threshold = 60
+cognitive-complexity-threshold = 15
+too-many-arguments-threshold = 5
+
+# unwrap/expect/panic/print are allowed in tests
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true
+allow-panic-in-tests = true
+allow-print-in-tests = true
+allow-dbg-in-tests = true
+
+# The clock is only read by the real `Clock` implementation (spec, section 10.3).
+# When `chrono` becomes a dependency, add `chrono::Utc::now` and `chrono::Local::now`.
+disallowed-methods = [
+    { path = "std::time::SystemTime::now", reason = "use the Clock trait" },
+    { path = "std::time::Instant::now", reason = "use the Clock trait" },
+]
