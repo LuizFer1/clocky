@@ -167,3 +167,32 @@ fn a_missing_project_falls_back_to_all_projects() {
     };
     assert_eq!(build(&core, &nav, &tz()).unwrap().page, Page::AllProjects);
 }
+
+#[test]
+fn a_deleted_task_page_is_an_error() {
+    let mut core = demo_core();
+    let task = task_id(&core, "testes");
+    core.delete_task(task).unwrap();
+    let nav = Nav {
+        project: Some(project_id(&core, "connect")),
+        task: Some(task),
+        ..Nav::default()
+    };
+    assert!(build(&core, &nav, &tz()).is_err());
+}
+
+#[test]
+fn search_results_mark_tasks_without_a_project() {
+    let core = demo_core();
+    let nav = Nav {
+        search: "e-mails".into(),
+        ..Nav::default()
+    };
+    let view = build(&core, &nav, &tz()).unwrap();
+    assert!(!view.tasks[0].has_project);
+    let nav = Nav {
+        search: "testes".into(),
+        ..Nav::default()
+    };
+    assert!(build(&core, &nav, &tz()).unwrap().tasks[0].has_project);
+}

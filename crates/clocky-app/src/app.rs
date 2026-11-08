@@ -76,6 +76,13 @@ impl App {
                 app.option_selected(&id);
             }
         });
+        // A task created in the picker shows up in Gerenciar right away.
+        let weak = Rc::downgrade(self);
+        self.panel.picker.set_on_created(move |_| {
+            if let Some(app) = weak.upgrade() {
+                app.manage.refresh();
+            }
+        });
         // Timer panels arrive in M6b: until then the task page buttons are only logged.
         self.manage.set_on_start_timer(|kind, task| {
             tracing::info!(

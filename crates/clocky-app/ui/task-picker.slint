@@ -15,10 +15,13 @@ export global PickerState {
     in property <string> create-label;
     in property <[ChipRow]> create-chips;
     callback query-edited(string);
-    // A task id, or -1 for "Sem tarefa".
     callback pick(int);
-    // Project of the new task, or -1 for "Sem projeto".
+    // "Sem tarefa".
+    callback pick-none();
+    // Project of the new task.
     callback pick-project(int);
+    // "Sem projeto" for the new task.
+    callback pick-no-project();
     callback create();
     callback confirm();
     callback cancel();
@@ -54,6 +57,7 @@ component PickerLine inherits Rectangle {
             horizontal-stretch: 1;
             vertical-alignment: center;
             text: root.item.name;
+            overflow: elide;
             color: Theme.muted;
             font-size: Theme.fs-xs;
             font-weight: Theme.fw-medium;
@@ -98,7 +102,13 @@ component PickerLine inherits Rectangle {
     touch := TouchArea {
         enabled: root.item.kind != PickerRowKind.header;
         mouse-cursor: pointer;
-        clicked => { PickerState.pick(root.item.id); }
+        clicked => {
+            if (root.item.kind == PickerRowKind.none) {
+                PickerState.pick-none();
+            } else {
+                PickerState.pick(root.item.id);
+            }
+        }
     }
 }
 
@@ -128,9 +138,15 @@ component CreateCard inherits Rectangle {
                 for chip in row.chips: ProjectChip {
                     text: chip.name;
                     chip-color: chip.color;
-                    no-project: chip.id == -1;
+                    no-project: chip.none;
                     active: chip.selected;
-                    clicked => { PickerState.pick-project(chip.id); }
+                    clicked => {
+                        if (chip.none) {
+                            PickerState.pick-no-project();
+                        } else {
+                            PickerState.pick-project(chip.id);
+                        }
+                    }
                 }
             }
         }

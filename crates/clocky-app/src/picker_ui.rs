@@ -16,6 +16,7 @@ use crate::{chips, manage_view, palette, ui};
 const CHIPS_WIDTH: f32 = 308.0;
 
 type DoneHook = Box<dyn FnOnce(Option<TaskId>)>;
+type CreatedHook = Box<dyn Fn(TaskId)>;
 
 #[derive(Default)]
 struct Session {
@@ -32,6 +33,8 @@ pub struct TaskPicker {
     session: RefCell<Session>,
     /// Runs when the picker closes, confirmed or not (the panel restores its size).
     on_close: RefCell<Option<Box<dyn Fn()>>>,
+    /// Runs after "Criar tarefa" created a task (the manage window refreshes).
+    on_created: RefCell<Option<CreatedHook>>,
     weak: Weak<TaskPicker>,
 }
 
@@ -43,6 +46,7 @@ impl TaskPicker {
             window: window.as_weak(),
             session: RefCell::new(Session::default()),
             on_close: RefCell::new(None),
+            on_created: RefCell::new(None),
             weak: weak.clone(),
         });
         picker.connect(window);
@@ -60,22 +64,30 @@ impl TaskPicker {
         let weak = self.weak.clone();
         state.on_pick(move |id| {
             if let Some(p) = weak.upgrade() {
-                p.pick(id);
+                p.pick(db_id(id).map(TaskId));
             }
         });
         let weak = self.weak.clone();
+        state.on_pick_none(move || weak.upgrade().iter().for_each(|p| p.pick(None)));
+        let weak = self.weak.clone();
         state.on_pick_project(move |id| {
             if let Some(p) = weak.upgrade() {
-                p.session.borrow_mut().new_project = db_id(id).map(ProjectId);
-                p.refresh();
+                p.pick_project(db_id(id).map(ProjectId));
             }
         });
+        let weak = self.weak.clone();
+        state.on_pick_no_project(move || weak.upgrade().iter().for_each(|p| p.pick_project(None)));
         let weak = self.weak.clone();
         state.on_create(move || weak.upgrade().iter().for_each(|p| p.create()));
         let weak = self.weak.clone();
         state.on_confirm(move || weak.upgrade().iter().for_each(|p| p.finish(true)));
         let weak = self.weak.clone();
         state.on_cancel(move || weak.upgrade().iter().for_each(|p| p.finish(false)));
+    }
+
+    /// What to do after the picker created a task.
+    pub fn set_on_created(&self, hook: impl Fn(TaskId) + 'static) {
+        *self.on_created.borrow_mut() = Some(Box::new(hook));
     }
 
     /// What to do when the picker closes (confirmed or cancelled).
@@ -115,26 +127,32 @@ impl TaskPicker {
         self.refresh();
     }
 
-    fn pick(&self, id: i32) {
-        self.session.borrow_mut().selected = db_id(id).map(TaskId);
+    fn pick(&self, task: Option<TaskId>) {
+        self.session.borrow_mut().selected = task;
+        self.refresh();
+    }
+
+    fn pick_project(&self, project: Option<ProjectId>) {
+        self.session.borrow_mut().new_project = project;
         self.refresh();
     }
 
     /// "Criar tarefa “texto”": creates the task, selects it and clears the search.
     fn create(&self) {
-        let (name, project) = {
+        let (query, project) = {
             let session = self.session.borrow();
-            (session.query.trim().to_owned(), session.new_project)
+            (session.query.clone(), session.new_project)
         };
-        if name.is_empty() {
-            return;
-        }
-        let created = self.core.borrow_mut().create_task(project, &name);
+        let created = picker::create_task(&mut self.core.borrow_mut(), &query, project);
         match created {
-            Ok(id) => {
+            Ok(Some(id)) => {
                 self.session.borrow_mut().selected = Some(id);
                 self.set_query("");
+                if let Some(hook) = self.on_created.borrow().as_ref() {
+                    hook(id);
+                }
             }
+            Ok(None) => {}
             Err(e) => tracing::warn!("failed to create the task from the picker: {e}"),
         }
     }
@@ -174,7 +192,10 @@ impl TaskPicker {
             return;
         };
         let state = window.global::<ui::PickerState>();
-        let rows: Vec<ui::PickerRow> = picker::rows(&data, selected).iter().map(row).collect();
+        let rows: Vec<ui::PickerRow> = picker::rows(&data, selected)
+            .iter()
+            .filter_map(row)
+            .collect();
         state.set_rows(ModelRc::new(VecModel::from(rows)));
         state.set_selected_label(label.into());
         state.set_selected_has_project(color.is_some());
@@ -189,31 +210,31 @@ fn create_chips(data: &picker::PickerData, chosen: Option<ProjectId>) -> ModelRc
     let mut items: Vec<ui::ProjectItem> = data
         .projects
         .iter()
-        .map(|p| ui::ProjectItem {
-            id: manage_view::slint_id(p.id.0),
-            name: p.name.as_str().into(),
-            color: palette::color(&p.color),
-            selected: chosen == Some(p.id),
-            ..ui::ProjectItem::default()
+        .filter_map(|p| {
+            Some(ui::ProjectItem {
+                id: manage_view::slint_id(p.id.0)?,
+                name: p.name.as_str().into(),
+                color: palette::color(&p.color),
+                selected: chosen == Some(p.id),
+                ..ui::ProjectItem::default()
+            })
         })
         .collect();
     items.push(chips::no_project_chip(chosen.is_none()));
     chips::rows(&items, CHIPS_WIDTH)
 }
 
-/// A picker row for Slint.
-fn row(row: &Row) -> ui::PickerRow {
-    match row {
+/// A picker row for Slint (`None` for a task whose id does not fit the model).
+fn row(row: &Row) -> Option<ui::PickerRow> {
+    Some(match row {
         Row::NoTask { selected } => ui::PickerRow {
             kind: ui::PickerRowKind::None,
-            id: -1,
             name: "Sem tarefa".into(),
             selected: *selected,
             ..ui::PickerRow::default()
         },
         Row::Header { title, dot } => ui::PickerRow {
             kind: ui::PickerRowKind::Header,
-            id: -1,
             name: title.as_str().into(),
             color: match dot {
                 Dot::Project(hex) => palette::color(hex),
@@ -233,13 +254,13 @@ fn row(row: &Row) -> ui::PickerRow {
             selected,
         } => ui::PickerRow {
             kind: ui::PickerRowKind::Task,
-            id: manage_view::slint_id(id.0),
+            id: manage_view::slint_id(id.0)?,
             name: name.as_str().into(),
             subtasks: subtasks.as_str().into(),
             selected: *selected,
             ..ui::PickerRow::default()
         },
-    }
+    })
 }
 
 fn db_id(id: i32) -> Option<i64> {
@@ -252,28 +273,31 @@ mod tests {
 
     #[test]
     fn rows_map_to_slint_kinds() {
-        let none = row(&Row::NoTask { selected: true });
+        let none = row(&Row::NoTask { selected: true }).unwrap();
         assert_eq!(
             (none.kind, none.id, none.selected),
-            (ui::PickerRowKind::None, -1, true)
+            (ui::PickerRowKind::None, 0, true)
         );
         let header = row(&Row::Header {
             title: "CONNECT".into(),
             dot: Dot::Project("#3d8fd6".into()),
-        });
+        })
+        .unwrap();
         assert_eq!(header.dot, ui::DotStyle::Project);
         assert_eq!(header.color, palette::color("#3d8fd6"));
         let recent = row(&Row::Header {
             title: "RECENTES".into(),
             dot: Dot::Accent,
-        });
+        })
+        .unwrap();
         assert_eq!(recent.dot, ui::DotStyle::Accent);
         let task = row(&Row::Task {
             id: TaskId(7),
             name: "x".into(),
             subtasks: "1/3".into(),
             selected: false,
-        });
+        })
+        .unwrap();
         assert_eq!(
             (task.kind, task.id, task.subtasks.as_str()),
             (ui::PickerRowKind::Task, 7, "1/3")

@@ -78,8 +78,10 @@ impl Manage {
         *self.on_start_timer.borrow_mut() = Some(Box::new(hook));
     }
 
-    /// Shows the window without taking the focus. Returns `false` when it cannot be shown.
+    /// Shows the window without taking the focus, with fresh data (other windows, such as the
+    /// task picker, may have changed it). Returns `false` when it cannot be shown.
     pub fn show(&self) -> bool {
+        self.refresh();
         if let Err(e) = self.ui.show() {
             tracing::warn!("failed to show the manage window: {e}");
             return false;
@@ -112,7 +114,8 @@ impl Manage {
         state.set_renaming_task(false);
         state.set_moving_task(false);
         state.set_project_form_open(false);
-        state.set_search(self.nav.borrow().search.as_str().into());
+        let search = SharedString::from(self.nav.borrow().search.as_str());
+        state.set_search(search);
         self.refresh();
     }
 
@@ -158,7 +161,8 @@ impl Manage {
         state.set_has_heading_color(view.heading_color.is_some());
         state.set_heading_color(view.heading_color.unwrap_or_default());
         state.set_tasks(model(view.tasks.clone()));
-        state.set_show_completed(self.nav.borrow().show_completed);
+        let show_completed = self.nav.borrow().show_completed;
+        state.set_show_completed(show_completed);
         if let Some(task) = &view.task {
             self.apply_task(task, view);
         }
@@ -166,12 +170,6 @@ impl Manage {
 
     fn apply_task(&self, task: &manage_view::TaskDetail, view: &ManageView) {
         let state = self.state();
-        let id = self
-            .nav
-            .borrow()
-            .task
-            .map_or(-1, |t| manage_view::slint_id(t.0));
-        state.set_task_id(id);
         state.set_task_done(task.done);
         state.set_task_project(SharedString::from(task.project.as_str()));
         state.set_task_total(task.total.as_str().into());
@@ -180,15 +178,9 @@ impl Manage {
         state.set_checklist_progress(task.progress);
         state.set_links(model(task.links.clone()));
         state.set_sessions(model(task.sessions.clone()));
+        // The project items already mark the task's project as selected.
         let current = self.nav.borrow().project;
-        let mut items: Vec<ui::ProjectItem> = view
-            .projects
-            .iter()
-            .map(|p| ui::ProjectItem {
-                selected: current.map(|c| manage_view::slint_id(c.0)) == Some(p.id),
-                ..p.clone()
-            })
-            .collect();
+        let mut items = view.projects.clone();
         items.push(chips::no_project_chip(current.is_none()));
         state.set_move_chips(chips::rows(&items, MOVE_CHIPS_WIDTH));
     }
@@ -240,7 +232,7 @@ fn model<T: Clone + 'static>(rows: Vec<T>) -> ModelRc<T> {
     ModelRc::new(VecModel::from(rows))
 }
 
-/// A Slint id back to a database id (`None` for -1 and other negatives).
+/// A Slint id back to a database id (`None` for a negative value, which no row carries).
 fn db_id(id: i32) -> Option<i64> {
     (id >= 0).then_some(i64::from(id))
 }

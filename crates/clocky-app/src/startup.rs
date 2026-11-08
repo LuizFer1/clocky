@@ -21,6 +21,7 @@ pub struct OpenFailure {
 /// Opens the database (see [`paths::db_path`]), creating its directory when needed.
 pub fn open_core() -> Result<AppCore, OpenFailure> {
     let Some(path) = paths::db_path() else {
+        tracing::error!("no user data directory for the database");
         return Err(OpenFailure {
             path: String::new(),
             message: "O sistema não informou uma pasta de dados para o usuário.".into(),
@@ -35,10 +36,19 @@ fn open_at(path: &Path) -> Result<AppCore, OpenFailure> {
         message,
     };
     if let Some(dir) = path.parent().filter(|dir| !dir.as_os_str().is_empty()) {
-        std::fs::create_dir_all(dir)
-            .map_err(|e| failure(format!("Não foi possível criar a pasta: {e}")))?;
+        std::fs::create_dir_all(dir).map_err(|e| {
+            tracing::error!(
+                "cannot create the database directory {}: {e}",
+                dir.display()
+            );
+            failure(format!("Não foi possível criar a pasta: {e}"))
+        })?;
     }
-    AppCore::open(path).map_err(|e| failure(user_message(&e)))
+    AppCore::open(path).map_err(|e| {
+        // Logged as is (English); the window gets the PT-BR text.
+        tracing::error!("cannot open the database {}: {e}", path.display());
+        failure(user_message(&e))
+    })
 }
 
 /// The error in PT-BR. SQLite's own text stays in English (it is a technical detail).

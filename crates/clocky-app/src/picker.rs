@@ -190,16 +190,42 @@ pub fn create_label(query: &str) -> String {
 /// The selection chip: "connect › autenticação", the bare name without a project, or
 /// "Sem tarefa"; with the project color (hex) when there is one.
 pub fn selection(core: &AppCore, selected: Option<TaskId>) -> (String, Option<String>) {
-    let Some(task) = selected.and_then(|id| core.task(id).ok()) else {
-        return ("Sem tarefa".into(), None);
+    let no_task = || ("Sem tarefa".to_owned(), None);
+    let Some(id) = selected else { return no_task() };
+    let task = match core.task(id) {
+        Ok(task) => task,
+        Err(e) => {
+            tracing::warn!("selected task {} is unavailable: {e}", id.0);
+            return no_task();
+        }
     };
-    match task.project.and_then(|p| core.project(p).ok()) {
-        Some(project) => (
+    let Some(project) = task.project else {
+        return (task.name, None);
+    };
+    match core.project(project) {
+        Ok(project) => (
             format!("{} › {}", project.name, task.name),
             Some(project.color),
         ),
-        None => (task.name, None),
+        Err(e) => {
+            tracing::warn!("project {} of task {} is unavailable: {e}", project.0, id.0);
+            (task.name, None)
+        }
     }
+}
+
+/// "Criar tarefa “texto”": creates a task named after the trimmed search text in `project`
+/// (`None` = "Sem projeto"). `Ok(None)` when the text is blank.
+pub fn create_task(
+    core: &mut AppCore,
+    query: &str,
+    project: Option<ProjectId>,
+) -> CoreResult<Option<TaskId>> {
+    let name = query.trim();
+    if name.is_empty() {
+        return Ok(None);
+    }
+    core.create_task(project, name).map(Some)
 }
 
 /// Lower case without the common Latin accents (the same folding as the core's search).
