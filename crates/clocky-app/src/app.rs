@@ -16,6 +16,9 @@ use crate::panel::{Panel, PanelKind};
 use crate::settings::{self, DockPlacement, Settings};
 use crate::{notify, screenshot, sound};
 use crate::{tray, ui};
+// M6b: timer panels.
+use crate::timers::{self, TimerPanels};
+use crate::tracker_handle::TrackerHandle;
 
 /// Time for the windows to be placed and rendered before a screenshot.
 const SCREENSHOT_DELAY: Duration = Duration::from_millis(1500);
@@ -38,6 +41,8 @@ pub struct App {
     tray: RefCell<Option<ui::ClockyTray>>,
     bridge: Bridge<SystemClock>,
     tick_timer: slint::Timer,
+    /// M6b: the timer panels and the tracker.
+    timers: Rc<TimerPanels>,
 }
 
 impl App {
@@ -45,9 +50,22 @@ impl App {
     pub fn new(screenshot_mode: bool) -> anyhow::Result<Rc<Self>> {
         let path = settings::default_path();
         let settings = path.as_deref().map(Settings::load).unwrap_or_default();
+        let panel = Panel::new()?;
+        // M6b: the tracker. Merge: M6a's startup shows the database error window instead.
+        let alerts: Box<dyn timers::Alerts> = if screenshot_mode {
+            Box::new(timers::SilentAlerts)
+        } else {
+            Box::new(timers::SystemAlerts)
+        };
+        let timers = TimerPanels::new(
+            &panel.ui,
+            TrackerHandle::open_default()?,
+            alerts,
+            !screenshot_mode,
+        );
         let app = Rc::new(Self {
             dock: Dock::new()?,
-            panel: Panel::new()?,
+            panel,
             manage: Manage::new()?,
             settings: RefCell::new(settings),
             settings_path: path.filter(|_| !screenshot_mode),
@@ -55,6 +73,7 @@ impl App {
             tray: RefCell::new(None),
             bridge: Bridge::new(SystemClock),
             tick_timer: slint::Timer::default(),
+            timers,
         });
         app.connect();
         APP.with(|cell| *cell.borrow_mut() = Some(app.clone()));
@@ -93,6 +112,13 @@ impl App {
                 app.back_to_menu();
             }
         });
+        // M6b: "Abrir menu" of the empty Ativos list.
+        let weak = Rc::downgrade(self);
+        self.timers.set_on_open_menu(move || {
+            if let Some(app) = weak.upgrade() {
+                app.back_to_menu();
+            }
+        });
     }
 
     /// Applies the theme and shows the dock. Runs before the event loop starts; the tray is
@@ -122,8 +148,13 @@ impl App {
     /// 1 Hz: asks the bridge for the current state and pushes it to the UI.
     fn on_tick(&self) {
         let snapshot = self.bridge.tick();
-        self.dock.ui.set_active_count(snapshot.active_count);
         tracing::trace!("tick at {} ms", snapshot.now.as_millis());
+        // M6b: the tracker drives the badge and may ask for a panel (forgotten stopwatch).
+        let outcome = self.timers.tick();
+        self.dock.ui.set_active_count(outcome.active_count);
+        if let Some(kind) = outcome.open {
+            self.panel.open(kind, self.dock.anchor(), false);
+        }
     }
 
     fn start_tray(&self) {
@@ -150,6 +181,7 @@ impl App {
             return;
         }
         if let Some(kind) = PanelKind::from_id(id) {
+            self.timers.show(kind); // M6b
             self.panel.open(kind, self.dock.anchor(), true);
         } else {
             tracing::warn!("unknown radial option: {id}");
@@ -157,6 +189,10 @@ impl App {
     }
 
     fn back_to_menu(&self) {
+        // M6b: nested timer views go back inside the panel first.
+        if self.timers.back() {
+            return;
+        }
         self.panel.hide();
         self.dock.reopen_menu();
     }
@@ -191,12 +227,18 @@ impl App {
     /// one, and quits.
     /// Nothing here takes the focus, so no key press is simulated on the user's desktop.
     pub fn schedule_screenshots(self: &Rc<Self>, dir: PathBuf) {
+        // M6b: timer panel captures with demo data (`CLOCKY_DEMO=1`).
+        if timers::demo::enabled() {
+            self.schedule_timer_shots(dir);
+            return;
+        }
         if !self.manage.show() {
             tracing::warn!("the manage window could not be shown");
         }
         let weak = Rc::downgrade(self);
         slint::Timer::single_shot(SCREENSHOT_DELAY / 2, move || {
             if let Some(app) = weak.upgrade() {
+                app.timers.show(PanelKind::Overview); // M6b
                 app.panel
                     .open(PanelKind::Overview, app.dock.anchor(), false);
                 app.dock.ui.set_open(true);
@@ -214,6 +256,29 @@ impl App {
                 }
                 quit();
             });
+        });
+    }
+}
+
+/// M6b: screenshots of the timer panels.
+impl App {
+    fn schedule_timer_shots(self: &Rc<Self>, dir: PathBuf) {
+        let (weak_set, weak_open) = (Rc::downgrade(self), Rc::downgrade(self));
+        timers::shots::start(timers::shots::ShotContext {
+            panels: self.timers.clone(),
+            window: self.panel.ui.as_weak(),
+            dir,
+            set_dark: Box::new(move |dark| {
+                if let Some(app) = weak_set.upgrade() {
+                    app.set_dark(dark);
+                }
+            }),
+            open_panel: Box::new(move |kind| {
+                if let Some(app) = weak_open.upgrade() {
+                    app.panel.open(kind, app.dock.anchor(), false);
+                }
+            }),
+            done: Box::new(quit),
         });
     }
 }

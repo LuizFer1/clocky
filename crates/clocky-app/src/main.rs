@@ -25,6 +25,9 @@ mod screenshot;
 mod settings;
 mod sound;
 mod tray;
+// M6b: timer panels and the tracker handle (merge: M6a's `core` owns the tracker).
+mod timers;
+mod tracker_handle;
 
 fn main() {
     let log_file = log::init(&paths::log_dir()).ok();

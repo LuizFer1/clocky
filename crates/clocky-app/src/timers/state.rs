@@ -1,0 +1,220 @@
+//! What the timer panels remember between ticks: the open view, which timer each panel shows,
+//! the unsaved configuration (h/m/s, wizard, draft tasks) and the ringing countdowns.
+
+use std::collections::BTreeSet;
+
+use clocky_core::domain::{PomodoroPresetId, TaskId, TimerId};
+use clocky_core::engine::timers::{Timer, Timers};
+
+use super::cards::{Kind, Ringing};
+use super::hms::Hms;
+use super::wizard::{Defaults, Wizard};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum View {
+    /// Not a timer panel (Alarme): the panel window shows its placeholder body.
+    Hidden,
+    Stopwatch,
+    CountdownConfig,
+    CountdownRun,
+    PomodoroList,
+    PomodoroTimer,
+    Wizard,
+    Overview,
+}
+
+impl View {
+    /// Where the header's back button goes inside the panel; `None` = back to the menu.
+    pub fn parent(self) -> Option<Self> {
+        match self {
+            Self::CountdownRun => Some(Self::CountdownConfig),
+            Self::PomodoroTimer | Self::Wizard => Some(Self::PomodoroList),
+            _ => None,
+        }
+    }
+}
+
+/// What the pomodoro timer view shows.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PomodoroPick {
+    /// The selected active pomodoro, else the most recent one.
+    Active(Option<TimerId>),
+    /// A saved pomodoro that has not started (screen 41).
+    Draft(PomodoroPresetId),
+}
+
+pub struct State {
+    pub view: View,
+    pub stopwatch: Option<TimerId>,
+    pub countdown: Option<TimerId>,
+    pub pomodoro: PomodoroPick,
+    /// Task of the next stopwatch, countdown and draft pomodoro.
+    pub stopwatch_task: Option<TaskId>,
+    pub countdown_task: Option<TaskId>,
+    pub pomodoro_task: Option<TaskId>,
+    pub hms: Hms,
+    pub wizard: Wizard,
+    /// The values a new wizard starts from.
+    pub wizard_defaults: Defaults,
+    pub ringing: Vec<Ringing>,
+    pub notice: String,
+    /// The forgotten dialog on screen, and the stopwatches already asked about.
+    pub forgotten: Option<TimerId>,
+    pub forgotten_asked: BTreeSet<TimerId>,
+    /// A tick failed and the failure was logged; cleared by the next good tick.
+    pub tick_failing: bool,
+}
+
+impl State {
+    pub fn new() -> Self {
+        Self {
+            view: View::Hidden,
+            stopwatch: None,
+            countdown: None,
+            pomodoro: PomodoroPick::Active(None),
+            stopwatch_task: None,
+            countdown_task: None,
+            pomodoro_task: None,
+            hms: Hms::from_secs(12 * 60),
+            wizard: Wizard::new(Defaults::default()),
+            wizard_defaults: Defaults::default(),
+            ringing: Vec::new(),
+            notice: String::new(),
+            forgotten: None,
+            forgotten_asked: BTreeSet::new(),
+            tick_failing: false,
+        }
+    }
+
+    pub fn ringing(&self, id: TimerId) -> Option<&Ringing> {
+        self.ringing.iter().find(|r| r.timer == id)
+    }
+}
+
+/// The timer of `kind` a panel shows: the selected one while it is active, else the most
+/// recent active one.
+pub fn pick(timers: &Timers, kind: Kind, selected: Option<TimerId>) -> Option<TimerId> {
+    let of_kind = |id: &TimerId| {
+        timers
+            .get(*id)
+            .is_some_and(|active| Kind::of(&active.timer) == kind)
+    };
+    selected.filter(of_kind).or_else(|| {
+        timers
+            .iter()
+            .filter(|active| Kind::of(&active.timer) == kind)
+            .map(clocky_core::engine::timers::ActiveTimer::id)
+            .max()
+    })
+}
+
+/// The countdown the Temporizador shows: a selected ringing one, the selected active one, any
+/// ringing one, then the most recent active one.
+pub fn pick_countdown(
+    timers: &Timers,
+    ringing: &[Ringing],
+    selected: Option<TimerId>,
+) -> Option<TimerId> {
+    if let Some(id) = selected.filter(|id| ringing.iter().any(|r| r.timer == *id)) {
+        return Some(id);
+    }
+    let active = selected
+        .filter(|id| matches!(timers.get(*id), Some(a) if matches!(a.timer, Timer::Countdown(_))));
+    active
+        .or_else(|| ringing.last().map(|r| r.timer))
+        .or_else(|| pick(timers, Kind::Countdown, None))
+}
+
+/// Falls back to the panel root when the timer a view shows is gone (stopped, finished).
+pub fn normalize(state: &mut State, timers: &Timers) {
+    match state.view {
+        View::CountdownRun if pick_countdown(timers, &state.ringing, state.countdown).is_none() => {
+            state.view = View::CountdownConfig;
+        }
+        View::PomodoroTimer => {
+            if let PomodoroPick::Active(selected) = state.pomodoro
+                && pick(timers, Kind::Pomodoro, selected).is_none()
+            {
+                state.view = View::PomodoroList;
+            }
+        }
+        _ => {}
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use clocky_core::engine::countdown::Countdown;
+    use clocky_core::engine::stopwatch::Stopwatch;
+    use clocky_core::time::Timestamp;
+
+    use super::*;
+
+    fn timers() -> (Timers, [TimerId; 3]) {
+        let t0 = Timestamp::from_millis(0);
+        let mut timers = Timers::new();
+        let a = timers.add(None, Timer::Stopwatch(Stopwatch::start(t0)));
+        let b = timers.add(None, Timer::Stopwatch(Stopwatch::start(t0)));
+        let c = timers.add(
+            None,
+            Timer::Countdown(Countdown::start(t0, Duration::from_mins(5))),
+        );
+        (timers, [a, b, c])
+    }
+
+    #[test]
+    fn selection_wins_while_active_else_the_most_recent() {
+        let (timers, [a, b, c]) = timers();
+        assert_eq!(pick(&timers, Kind::Stopwatch, Some(a)), Some(a));
+        assert_eq!(pick(&timers, Kind::Stopwatch, None), Some(b));
+        // A selection of another kind is ignored.
+        assert_eq!(pick(&timers, Kind::Stopwatch, Some(c)), Some(b));
+        assert_eq!(pick(&timers, Kind::Pomodoro, None), None);
+    }
+
+    #[test]
+    fn ringing_countdowns_come_before_running_ones() {
+        let (timers, [_, _, c]) = timers();
+        let ringing = Ringing {
+            timer: TimerId(99),
+            name: "chá".into(),
+            task: None,
+            at: Timestamp::from_millis(0),
+            while_closed: false,
+        };
+        assert_eq!(pick_countdown(&timers, &[], None), Some(c));
+        assert_eq!(
+            pick_countdown(&timers, std::slice::from_ref(&ringing), None),
+            Some(TimerId(99))
+        );
+        assert_eq!(
+            pick_countdown(&timers, std::slice::from_ref(&ringing), Some(c)),
+            Some(c)
+        );
+    }
+
+    #[test]
+    fn views_fall_back_when_their_timer_is_gone() {
+        let mut state = State::new();
+        state.view = View::CountdownRun;
+        normalize(&mut state, &Timers::new());
+        assert_eq!(state.view, View::CountdownConfig);
+        state.view = View::PomodoroTimer;
+        normalize(&mut state, &Timers::new());
+        assert_eq!(state.view, View::PomodoroList);
+        let (timers, _) = timers();
+        state.view = View::CountdownRun;
+        normalize(&mut state, &timers);
+        assert_eq!(state.view, View::CountdownRun);
+    }
+
+    #[test]
+    fn back_goes_to_the_panel_root() {
+        assert_eq!(View::CountdownRun.parent(), Some(View::CountdownConfig));
+        assert_eq!(View::Wizard.parent(), Some(View::PomodoroList));
+        assert_eq!(View::PomodoroTimer.parent(), Some(View::PomodoroList));
+        assert_eq!(View::Overview.parent(), None);
+    }
+}

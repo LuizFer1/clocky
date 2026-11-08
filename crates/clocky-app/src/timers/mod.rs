@@ -1,0 +1,388 @@
+//! The timer panels (M6b): Cronômetro, Temporizador, Pomodoro and Ativos, driven by the core
+//! `Tracker`.
+//!
+//! [`TimerPanels`] owns the tracker handle and the panel state, fills the `TimerUi` global and
+//! answers its callbacks. Everything runs on the UI thread. Borrows of the handle and the state
+//! are short and never held while Slint is called: a frame is built first, then applied.
+
+mod actions;
+mod alerts;
+mod apply;
+mod cards;
+mod chooser;
+mod connect;
+mod convert;
+pub mod demo;
+mod format;
+mod frame;
+mod frame_pomodoro;
+mod hms;
+mod names;
+mod pomodoro_view;
+mod segments;
+pub mod shots;
+mod state;
+mod wizard;
+
+use std::cell::RefCell;
+use std::collections::HashMap;
+use std::rc::{Rc, Weak};
+
+use clocky_core::domain::TimerId;
+use clocky_core::engine::timers::{ActiveTimer, Timer, TimersEvent};
+use clocky_core::time::Timestamp;
+use clocky_core::tracker::{TrackerError, TrackerEvent};
+use slint::ComponentHandle;
+
+pub use alerts::{Alerts, SilentAlerts, SystemAlerts};
+use alerts::{TimerInfo, alert_for};
+use apply::Models;
+use cards::{Kind, Ringing};
+use chooser::{ListChooser, TaskChooser};
+use names::Names;
+use state::{PomodoroPick, State, View};
+
+use crate::panel::PanelKind;
+use crate::tracker_handle::{Opened, TrackerHandle};
+use crate::ui;
+
+/// What the app does after a tick.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TickOutcome {
+    /// The dock badge: the number of active timers.
+    pub active_count: i32,
+    /// A panel to open on its own (the forgotten-stopwatch dialog).
+    pub open: Option<PanelKind>,
+}
+
+pub struct TimerPanels {
+    ui: slint::Weak<ui::PanelWindow>,
+    handle: Rc<RefCell<TrackerHandle>>,
+    state: RefCell<State>,
+    models: Models,
+    alerts: Box<dyn Alerts>,
+    chooser: Box<dyn TaskChooser>,
+    /// `false` in screenshot runs: the tick never opens a panel by itself.
+    interactive: bool,
+    /// "Abrir menu" of the empty Ativos list (set by the app).
+    on_open_menu: RefCell<Option<Rc<dyn Fn()>>>,
+    weak: Weak<Self>,
+}
+
+impl TimerPanels {
+    pub fn new(
+        window: &ui::PanelWindow,
+        opened: Opened,
+        alerts: Box<dyn Alerts>,
+        interactive: bool,
+    ) -> Rc<Self> {
+        let Opened {
+            handle,
+            events,
+            before,
+        } = opened;
+        let handle = Rc::new(RefCell::new(handle));
+        let chooser = Box::new(ListChooser::new(window, handle.clone()));
+        let models = Models::install(&window.global::<ui::TimerUi>());
+        let panels = Rc::new_cyclic(|weak| Self {
+            ui: window.as_weak(),
+            handle,
+            state: RefCell::new(State::new()),
+            models,
+            alerts,
+            chooser,
+            interactive,
+            on_open_menu: RefCell::new(None),
+            weak: weak.clone(),
+        });
+        panels.load_wizard_defaults();
+        panels.reopened(&events, &before);
+        connect::connect(&panels);
+        panels
+    }
+
+    pub fn set_on_open_menu(&self, f: impl Fn() + 'static) {
+        *self.on_open_menu.borrow_mut() = Some(Rc::new(f));
+    }
+
+    fn open_menu(&self) {
+        let f = self.on_open_menu.borrow().clone();
+        if let Some(f) = f {
+            f();
+        }
+    }
+
+    /// The tracker, for the demo seeding of the screenshot hook.
+    pub fn handle(&self) -> &Rc<RefCell<TrackerHandle>> {
+        &self.handle
+    }
+
+    /// A radial option was chosen: shows the right view of its panel.
+    pub fn show(&self, kind: PanelKind) {
+        {
+            let handle = self.handle.borrow();
+            let timers = handle.tracker().timers();
+            let mut state = self.state.borrow_mut();
+            state.view = match kind {
+                PanelKind::Alarm => View::Hidden,
+                PanelKind::Stopwatch => View::Stopwatch,
+                PanelKind::Countdown => View::CountdownRun,
+                PanelKind::Pomodoro => {
+                    state.pomodoro = PomodoroPick::Active(match state.pomodoro {
+                        PomodoroPick::Active(selected) => selected,
+                        PomodoroPick::Draft(_) => None,
+                    });
+                    View::PomodoroTimer
+                }
+                PanelKind::Overview => View::Overview,
+            };
+            state::normalize(&mut state, timers);
+        }
+        self.render();
+    }
+
+    /// The header's back button. `true` = handled inside the panel; `false` = back to the menu.
+    pub fn back(&self) -> bool {
+        let parent = self.state.borrow().view.parent();
+        let Some(parent) = parent else {
+            return false;
+        };
+        self.set_view(parent);
+        true
+    }
+
+    fn set_view(&self, view: View) {
+        self.state.borrow_mut().view = view;
+        self.render();
+    }
+
+    /// 1 Hz: advances the tracker, rings what finished, checks for a forgotten stopwatch and
+    /// refreshes the visible panel.
+    pub fn tick(&self) -> TickOutcome {
+        let result = {
+            let mut handle = self.handle.borrow_mut();
+            let now = handle.now();
+            let infos = infos_of_due(&handle, now);
+            handle.tracker_mut().tick(now).map(|events| (events, infos))
+        };
+        match result {
+            Ok((events, infos)) => {
+                self.state.borrow_mut().tick_failing = false;
+                self.ring(&events, &infos);
+            }
+            Err(e) => self.tick_failed(&e),
+        }
+        let open = self.check_forgotten();
+        if self.is_visible() {
+            self.render();
+        }
+        TickOutcome {
+            active_count: self.active_count(),
+            open,
+        }
+    }
+
+    fn tick_failed(&self, error: &TrackerError) {
+        // Memory is unchanged, so the next tick retries; log once per failure streak.
+        if !std::mem::replace(&mut self.state.borrow_mut().tick_failing, true) {
+            tracing::error!("tick failed (retrying every second): {error}");
+        }
+    }
+
+    pub fn active_count(&self) -> i32 {
+        let count = self.handle.borrow().tracker().timers().iter().count();
+        i32::try_from(count).unwrap_or(i32::MAX)
+    }
+
+    fn is_visible(&self) -> bool {
+        self.ui.upgrade().is_some_and(|ui| ui.window().is_visible())
+    }
+
+    /// Plays the sound and notifies for countdowns and pomodoro phases that ended live.
+    fn ring(&self, events: &[TrackerEvent], infos: &HashMap<TimerId, TimerInfo>) {
+        for event in events {
+            let TrackerEvent::Timer(event) = event else {
+                continue;
+            };
+            let timer = match event {
+                TimersEvent::CountdownFinished { timer, at } => {
+                    self.add_ringing(*timer, *at, infos, false);
+                    *timer
+                }
+                TimersEvent::PomodoroPhaseEnded { timer, .. } => *timer,
+                TimersEvent::SessionCompleted { .. } => continue,
+            };
+            let info = self.info(timer, infos);
+            if let Some(alert) = alert_for(event, &info) {
+                self.alerts.alert(&alert);
+            }
+        }
+    }
+
+    fn add_ringing(
+        &self,
+        timer: TimerId,
+        at: Timestamp,
+        infos: &HashMap<TimerId, TimerInfo>,
+        while_closed: bool,
+    ) {
+        let (name, task) = infos.get(&timer).map_or_else(
+            || ("Temporizador".to_owned(), None),
+            |info| (info.name.clone(), info.task_id),
+        );
+        self.state.borrow_mut().ringing.push(Ringing {
+            timer,
+            name,
+            task,
+            at,
+            while_closed,
+        });
+    }
+
+    /// The name and task of `timer`: from the snapshot taken before the tick, else from the
+    /// timer itself (a pomodoro stays in the set).
+    fn info(&self, timer: TimerId, infos: &HashMap<TimerId, TimerInfo>) -> TimerInfo {
+        if let Some(info) = infos.get(&timer) {
+            return info.clone();
+        }
+        let handle = self.handle.borrow();
+        let tracker = handle.tracker();
+        tracker.timers().get(timer).map_or_else(
+            || TimerInfo {
+                name: "Timer".to_owned(),
+                task: None,
+                task_id: None,
+            },
+            |active| Names::load(tracker.store(), active.task).info(active),
+        )
+    }
+
+    /// The events of the reopen tick: finished countdowns ring as "terminou às HH:MM" and the
+    /// notice says what else ended while the app was closed. No sound for those.
+    fn reopened(&self, events: &[TrackerEvent], before: &[ActiveTimer]) {
+        if events.is_empty() {
+            return;
+        }
+        let infos = {
+            let handle = self.handle.borrow();
+            infos_of(&handle, &before.iter().collect::<Vec<_>>())
+        };
+        for event in events {
+            if let TrackerEvent::Timer(TimersEvent::CountdownFinished { timer, at }) = event {
+                self.add_ringing(*timer, *at, &infos, true);
+            }
+        }
+        let notices = alerts::reopen_notices(events, &infos, format::local_hh_mm);
+        tracing::info!("while closed: {notices:?}");
+        self.state.borrow_mut().notice = notices.join("\n");
+    }
+
+    /// Shows the forgotten dialog for a running stopwatch past the limit, once per stopwatch.
+    fn check_forgotten(&self) -> Option<PanelKind> {
+        let found = {
+            let handle = self.handle.borrow();
+            handle.tracker().forgotten(handle.now())
+        };
+        let ids = found
+            .inspect_err(|e| tracing::warn!("cannot check forgotten stopwatches: {e}"))
+            .ok()?;
+        let mut state = self.state.borrow_mut();
+        if state.forgotten.is_some_and(|id| !ids.contains(&id)) {
+            state.forgotten = None;
+        }
+        if state.forgotten.is_some() {
+            return None;
+        }
+        let id = ids
+            .into_iter()
+            .find(|id| !state.forgotten_asked.contains(id))?;
+        state.forgotten_asked.insert(id);
+        state.forgotten = Some(id);
+        state.stopwatch = Some(id);
+        state.view = View::Stopwatch;
+        self.interactive.then_some(PanelKind::Stopwatch)
+    }
+
+    /// Rebuilds the visible view from the tracker and pushes it to the window.
+    pub fn render(&self) {
+        let Some(window) = self.ui.upgrade() else {
+            return;
+        };
+        let frame = {
+            let handle = self.handle.borrow();
+            let tracker = handle.tracker();
+            let mut state = self.state.borrow_mut();
+            state::normalize(&mut state, tracker.timers());
+            let names = Names::load(tracker.store(), linked_tasks(tracker, &state));
+            frame::build(&frame::Source {
+                tracker,
+                state: &state,
+                names: &names,
+                now: handle.now(),
+            })
+        };
+        apply::apply(&window, &self.models, frame);
+    }
+}
+
+/// The tasks a frame may show: timers, ringing countdowns, drafts and the wizard.
+fn linked_tasks(
+    tracker: &clocky_core::tracker::Tracker,
+    state: &State,
+) -> Vec<clocky_core::domain::TaskId> {
+    tracker
+        .timers()
+        .iter()
+        .filter_map(|a| a.task)
+        .chain(state.ringing.iter().filter_map(|r| r.task))
+        .chain(
+            [
+                state.stopwatch_task,
+                state.countdown_task,
+                state.pomodoro_task,
+                state.wizard.task,
+            ]
+            .into_iter()
+            .flatten(),
+        )
+        .collect()
+}
+
+/// Names of the timers that come due at `now` (a finished countdown leaves the set).
+fn infos_of_due(handle: &TrackerHandle, now: Timestamp) -> HashMap<TimerId, TimerInfo> {
+    let due: Vec<&ActiveTimer> = handle
+        .tracker()
+        .timers()
+        .iter()
+        .filter(|active| is_due(active, now))
+        .collect();
+    infos_of(handle, &due)
+}
+
+fn infos_of(handle: &TrackerHandle, timers: &[&ActiveTimer]) -> HashMap<TimerId, TimerInfo> {
+    if timers.is_empty() {
+        return HashMap::new();
+    }
+    let names = Names::load(
+        handle.tracker().store(),
+        timers.iter().filter_map(|a| a.task),
+    );
+    timers.iter().map(|a| (a.id(), names.info(a))).collect()
+}
+
+fn is_due(active: &ActiveTimer, now: Timestamp) -> bool {
+    match &active.timer {
+        Timer::Countdown(cd) => cd.finished_at(now).is_some(),
+        Timer::Pomodoro(p) => p.is_running() && p.remaining(now).is_zero(),
+        Timer::Stopwatch(_) => false,
+    }
+}
+
+/// The kind of an active timer, for opening its panel.
+fn kind_of(handle: &TrackerHandle, id: TimerId) -> Option<Kind> {
+    handle
+        .tracker()
+        .timers()
+        .get(id)
+        .map(|active| Kind::of(&active.timer))
+}

@@ -1,0 +1,179 @@
+// State and callbacks of the timer panels (Temporizador, Cronômetro, Pomodoro, Ativos), shared
+// by the panel window and the Rust side (`src/timers/`). Rust fills it from the tracker once a
+// second and after every action.
+
+// The task line: `● projeto › tarefa` when linked.
+export struct TaskLine {
+    linked: bool,
+    project: string,
+    task: string,
+    color: color,
+}
+
+export struct SubtaskRow {
+    id: int,
+    name: string,
+    done: bool,
+}
+
+export struct PresetRow {
+    id: int,
+    name: string,
+    duration: string,
+    task: TaskLine,
+}
+
+export struct BarPart {
+    fraction: float,
+    focus: bool,
+}
+
+export struct PomodoroCard {
+    id: int,
+    name: string,
+    summary: string,
+    parts: [BarPart],
+    task: TaskLine,
+}
+
+export struct ActiveCard {
+    id: int,
+    // "stopwatch" | "countdown" | "pomodoro"
+    kind: string,
+    name: string,
+    status: string,
+    time: string,
+    has-progress: bool,
+    progress: float,
+    running: bool,
+    waiting: bool,
+    ringing: bool,
+    task: TaskLine,
+}
+
+export struct ChooserRow {
+    id: int,
+    project: string,
+    task: string,
+    color: color,
+    selected: bool,
+}
+
+export global TimerUi {
+    // "" = the placeholder body (Alarme until M7); otherwise "stopwatch", "countdown-config",
+    // "countdown-run", "pomodoro-list", "pomodoro-timer", "wizard" or "overview".
+    in property <string> view;
+    in property <string> title;
+    in property <string> subtitle;
+    // Header icon: "stopwatch" | "countdown" | "pomodoro" | "overview".
+    in property <string> icon-kind;
+    // One-line notice at the top of the body ("Sessão de 00:12:04 registrada").
+    in property <string> notice;
+    callback dismiss-notice();
+
+    // Cronômetro (screens 30–33). sw-state: 0 = ready, 1 = recording, 2 = paused.
+    in property <int> sw-state;
+    in property <string> sw-time: "00:00:00";
+    in property <TaskLine> sw-task;
+    in property <[SubtaskRow]> sw-subtasks;
+    in property <string> sw-progress-label;
+    in property <float> sw-progress;
+    callback sw-primary();
+    callback sw-stop();
+    callback sw-change-task();
+    callback sw-toggle-subtask(int, bool);
+    callback sw-add-subtask(string);
+
+    // Temporizador configuration (screen 20).
+    in property <string> cd-h: "00";
+    in property <string> cd-m: "00";
+    in property <string> cd-s: "00";
+    in property <bool> cd-can-start;
+    in property <TaskLine> cd-task;
+    in property <[PresetRow]> cd-presets;
+    in-out property <bool> cd-naming;
+    callback cd-step(int, bool);
+    callback cd-add-minutes(int);
+    callback cd-start();
+    callback cd-change-task();
+    callback cd-start-preset(int);
+    callback cd-load-preset(int);
+    callback cd-save-preset(string);
+
+    // Temporizador running (21–22) and ringing. cd-run-state: 1 = running, 2 = paused, 3 = ringing.
+    in property <int> cd-run-state;
+    in property <string> cd-run-status;
+    in property <string> cd-run-time;
+    in property <string> cd-run-caption;
+    in property <float> cd-run-progress;
+    in property <TaskLine> cd-run-task;
+    callback cd-run-primary();
+    callback cd-run-cancel();
+    callback cd-run-dismiss();
+    callback cd-run-change-task();
+
+    // Pomodoro list (40).
+    in property <[PomodoroCard]> pomo-presets;
+    callback pomo-open-preset(int);
+    callback pomo-new();
+
+    // Pomodoro timer (41–43).
+    in property <string> pomo-phase;
+    in property <bool> pomo-break;
+    in property <string> pomo-time;
+    in property <string> pomo-focus-label;
+    in property <string> pomo-note;
+    in property <string> pomo-arc;
+    in property <float> pomo-head-x;
+    in property <float> pomo-head-y;
+    in property <float> pomo-progress;
+    // 0 = to do, 1 = current, 2 = done.
+    in property <[int]> pomo-dots;
+    in property <string> pomo-primary-label;
+    in property <bool> pomo-started;
+    in property <TaskLine> pomo-task;
+    callback pomo-primary();
+    callback pomo-stop();
+    callback pomo-skip();
+    callback pomo-change-task();
+
+    // Novo pomodoro wizard (44–47). wz-step is 0-based.
+    in property <int> wz-step;
+    in property <string> wz-title;
+    in property <string> wz-help;
+    in property <string> wz-unit;
+    in property <int> wz-value;
+    in property <[int]> wz-shortcuts;
+    in property <string> wz-summary;
+    in property <string> wz-name-placeholder;
+    in property <bool> wz-auto-start;
+    in property <TaskLine> wz-task;
+    callback wz-bump(bool);
+    callback wz-set(int);
+    callback wz-next();
+    callback wz-back();
+    callback wz-toggle-auto();
+    callback wz-name-edited(string);
+    callback wz-change-task();
+
+    // Ativos (50).
+    in property <[ActiveCard]> cards;
+    callback card-open(int);
+    callback card-primary(int);
+    callback card-stop(int);
+    callback card-dismiss(int);
+    callback open-menu();
+
+    // "Cronômetro esquecido?" dialog.
+    in property <bool> forgotten-visible;
+    in property <string> forgotten-text;
+    callback forgotten-record();
+    callback forgotten-discard();
+
+    // Temporary task chooser (M6a's picker replaces it). -1 = "Sem tarefa".
+    in property <bool> chooser-visible;
+    in property <[ChooserRow]> chooser-rows;
+    in property <bool> chooser-none-selected;
+    callback chooser-pick(int);
+    callback chooser-cancel();
+}
