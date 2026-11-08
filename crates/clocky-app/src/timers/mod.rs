@@ -23,6 +23,7 @@ mod names;
 mod pomodoro_view;
 mod segments;
 pub mod shots;
+mod start;
 mod state;
 mod wizard;
 

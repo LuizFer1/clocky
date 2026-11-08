@@ -104,12 +104,18 @@ impl App {
                 app.manage.refresh();
             }
         });
-        // Timer panels arrive in M6b: until then the task page buttons are only logged.
-        self.manage.set_on_start_timer(|kind, task| {
-            tracing::info!(
-                "start {kind:?} for task {} requested (timer panels: M6b)",
-                task.0
-            );
+        // "Iniciar pomodoro / cronômetro" of a task page: start it and show its panel. Deferred
+        // so the manage window's callback has returned before the panel takes the focus.
+        let weak = Rc::downgrade(self);
+        self.manage.set_on_start_timer(move |kind, task| {
+            let weak = weak.clone();
+            slint::Timer::single_shot(Duration::ZERO, move || {
+                let Some(app) = weak.upgrade() else { return };
+                if let Some(panel) = app.timers.start_for_task(kind, task) {
+                    app.open_panel(panel, true);
+                }
+                app.manage.refresh();
+            });
         });
         let weak = Rc::downgrade(self);
         self.manage
