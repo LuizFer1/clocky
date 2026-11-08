@@ -121,3 +121,32 @@ mod registry {
         );
     }
 }
+
+#[test]
+fn an_entry_of_a_moved_exe_is_pointed_at_the_new_one() {
+    let (old, new) = (
+        Path::new("C:/old/clocky.exe"),
+        Path::new("D:/new/clocky.exe"),
+    );
+    let fake = Fake::with_entry(old);
+    assert_eq!(fake.starts(new).unwrap(), Some(false));
+    assert!(repair(&fake, new).unwrap());
+    assert_eq!(fake.starts(new).unwrap(), Some(true));
+    // Already right, or no entry at all: nothing is written.
+    assert!(!repair(&fake, new).unwrap());
+    let none = Fake::default();
+    assert!(!repair(&none, new).unwrap());
+    assert!(!none.is_enabled().unwrap());
+}
+
+#[test]
+fn a_file_entry_of_a_moved_exe_is_rewritten() {
+    let dir = tempfile::tempdir().unwrap();
+    let entry = FileEntry::desktop(dir.path());
+    let (old, new) = (Path::new("/old/clocky"), Path::new("/new/clocky"));
+    assert_eq!(entry.starts(new).unwrap(), None);
+    entry.enable(old).unwrap();
+    assert!(repair(&entry, new).unwrap());
+    assert_eq!(entry.starts(new).unwrap(), Some(true));
+    assert!(!repair(&entry, new).unwrap());
+}

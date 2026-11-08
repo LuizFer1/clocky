@@ -322,6 +322,14 @@ impl App {
         if !self.screenshot_mode
             && let Some(backend) = crate::autostart::system()
         {
+            // An entry left by an exe that moved points at this one again.
+            match std::env::current_exe()
+                .map(|exe| crate::autostart::repair(backend.as_ref(), &exe))
+            {
+                Ok(Ok(true)) => tracing::info!("autostart entry pointed at the running exe"),
+                Ok(Ok(false)) => {}
+                Ok(Err(e)) | Err(e) => tracing::warn!("cannot check the autostart entry: {e}"),
+            }
             self.manage.set_autostart_backend(backend);
         }
         let weak = Rc::downgrade(self);

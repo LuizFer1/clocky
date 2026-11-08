@@ -9,7 +9,7 @@
 //! entry. The file content generators and [`FileEntry`] build on every OS, so their tests run
 //! everywhere.
 
-use std::cell::Cell;
+use std::cell::RefCell;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -30,6 +30,8 @@ pub trait Autostart {
     fn disable(&self) -> io::Result<()>;
     /// Whether the entry exists.
     fn is_enabled(&self) -> io::Result<bool>;
+    /// Whether the entry starts `exe`; `None` when there is no entry.
+    fn starts(&self, exe: &Path) -> io::Result<Option<bool>>;
 }
 
 /// Turns autostart on or off for the running executable and returns the new real state.
@@ -40,6 +42,16 @@ pub fn set(backend: &dyn Autostart, on: bool) -> io::Result<bool> {
         backend.disable()?;
     }
     backend.is_enabled()
+}
+
+/// Points an existing entry at `exe` when it starts another file (the exe moved or was
+/// updated in another folder). Returns whether it rewrote the entry; no entry stays no entry.
+pub fn repair(backend: &dyn Autostart, exe: &Path) -> io::Result<bool> {
+    if backend.starts(exe)? == Some(false) {
+        backend.enable(exe)?;
+        return Ok(true);
+    }
+    Ok(false)
 }
 
 /// The real entry of this OS; `None` where there is none (or no home directory).
@@ -72,22 +84,37 @@ pub fn system() -> Option<Box<dyn Autostart>> {
 /// In memory only (screenshot runs and tests).
 #[derive(Debug, Default)]
 pub struct Fake {
-    enabled: Cell<bool>,
+    /// The exe of the entry; `None` = no entry.
+    exe: RefCell<Option<PathBuf>>,
+}
+
+impl Fake {
+    /// A fake whose entry starts `exe` (tests).
+    #[cfg(test)]
+    pub fn with_entry(exe: &Path) -> Self {
+        Self {
+            exe: RefCell::new(Some(exe.to_owned())),
+        }
+    }
 }
 
 impl Autostart for Fake {
-    fn enable(&self, _exe: &Path) -> io::Result<()> {
-        self.enabled.set(true);
+    fn enable(&self, exe: &Path) -> io::Result<()> {
+        *self.exe.borrow_mut() = Some(exe.to_owned());
         Ok(())
     }
 
     fn disable(&self) -> io::Result<()> {
-        self.enabled.set(false);
+        *self.exe.borrow_mut() = None;
         Ok(())
     }
 
     fn is_enabled(&self) -> io::Result<bool> {
-        Ok(self.enabled.get())
+        Ok(self.exe.borrow().is_some())
+    }
+
+    fn starts(&self, exe: &Path) -> io::Result<Option<bool>> {
+        Ok(self.exe.borrow().as_deref().map(|e| e == exe))
     }
 }
 
@@ -135,6 +162,14 @@ impl Autostart for FileEntry {
 
     fn is_enabled(&self) -> io::Result<bool> {
         self.path.try_exists()
+    }
+
+    fn starts(&self, exe: &Path) -> io::Result<Option<bool>> {
+        match fs::read_to_string(&self.path) {
+            Ok(text) => Ok(Some(text == (self.content)(exe))),
+            Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(None),
+            Err(e) => Err(e),
+        }
     }
 }
 
@@ -261,6 +296,19 @@ mod registry {
             match key.get_value::<String, _>(NAME) {
                 Ok(_) => Ok(true),
                 Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(false),
+                Err(e) => Err(e),
+            }
+        }
+
+        fn starts(&self, exe: &Path) -> io::Result<Option<bool>> {
+            let key = match self.open(KEY_READ) {
+                Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(None),
+                other => other?,
+            };
+            match key.get_value::<String, _>(NAME) {
+                // Windows paths ignore case.
+                Ok(value) => Ok(Some(value.eq_ignore_ascii_case(&run_value(exe)))),
+                Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(None),
                 Err(e) => Err(e),
             }
         }
