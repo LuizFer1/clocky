@@ -5,8 +5,10 @@
 
 pub mod alarm_time;
 pub mod error;
+pub mod next_fire;
 pub mod weekdays;
 
 pub use alarm_time::AlarmTime;
 pub use error::AlarmError;
+pub use next_fire::next_fire;
 pub use weekdays::Weekdays;
