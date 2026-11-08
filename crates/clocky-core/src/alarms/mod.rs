@@ -9,6 +9,9 @@ pub mod firing;
 pub mod next_fire;
 pub mod weekdays;
 
+#[cfg(test)]
+mod test_support;
+
 pub use alarm_time::AlarmTime;
 pub use error::AlarmError;
 pub use firing::{Firing, LATE_TOLERANCE, ON_TIME_GRACE, classify, snooze_until};

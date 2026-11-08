@@ -54,34 +54,12 @@ fn resolve_local<Tz: TimeZone>(local: NaiveDateTime, tz: &Tz) -> Option<Timestam
 
 #[cfg(test)]
 mod tests {
-    use chrono::{FixedOffset, NaiveDate, Utc, Weekday};
+    use chrono::{NaiveDate, Utc, Weekday};
     use chrono_tz::America::{New_York, Sao_Paulo};
     use chrono_tz::Pacific::Apia;
 
     use super::*;
-
-    /// Brasília time (UTC-3), with no daylight saving time.
-    fn brt() -> FixedOffset {
-        FixedOffset::west_opt(3 * 3600).unwrap()
-    }
-
-    fn time(hour: u8, minute: u8) -> AlarmTime {
-        AlarmTime::new(hour, minute).unwrap()
-    }
-
-    /// The instant at local `day` (of November 2026; the 2nd is a Monday) `hour:minute` in `tz`.
-    fn nov<Tz: TimeZone>(tz: &Tz, day: u32, hour: u32, minute: u32) -> Timestamp {
-        let dt = tz.with_ymd_and_hms(2026, 11, day, hour, minute, 0).unwrap();
-        Timestamp::from_millis(dt.timestamp_millis())
-    }
-
-    /// The instant at `hour:minute` UTC on the given date.
-    fn utc(year: i32, month: u32, day: u32, hour: u32, minute: u32) -> Timestamp {
-        let dt = Utc
-            .with_ymd_and_hms(year, month, day, hour, minute, 0)
-            .unwrap();
-        Timestamp::from_millis(dt.timestamp_millis())
-    }
+    use crate::alarms::test_support::{brt, nov, time, utc};
 
     fn millis_before(ts: Timestamp, millis: i64) -> Timestamp {
         Timestamp::from_millis(ts.as_millis() - millis)
