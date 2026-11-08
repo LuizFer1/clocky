@@ -31,7 +31,8 @@ pub struct DayTotals {
     pub date: NaiveDate,
     /// The day (23 or 25 hours long on daylight saving changes).
     pub period: Period,
-    /// Time per project in the day, by time descending.
+    /// Time per project in the day, in the order of [`Weekly::projects`] (the week's totals,
+    /// descending), so every day lists its projects in the same order.
     pub projects: Vec<ProjectTime>,
     /// Time in the day.
     pub total: Duration,
@@ -46,50 +47,65 @@ pub struct ProjectTime {
     pub total: Duration,
 }
 
-/// Time per day and project in the local week (Monday to Sunday) that contains `week_start`.
+/// Time per day and project in the local week (Monday to Sunday) that contains `date`.
 ///
-/// `week_start` may be any day of the week: it is moved back to its Monday. Each day runs from
-/// local midnight to local midnight, and segments are clipped to each day, so a session that
-/// crosses midnight is split between the days (spec, decision 5).
+/// `date` may be any day of the week: it is moved back to its Monday. Each day runs from local
+/// midnight to local midnight, and segments are clipped to each day, so a session that crosses
+/// midnight is split between the days (spec, decision 5). Every day lists its projects in the
+/// order of [`Weekly::projects`], so a stacked chart keeps its series in the same order.
 ///
 /// # Errors
 /// [`ReportError::DateOutOfRange`] if a day of the week cannot be represented;
 /// [`ReportError::Store`] if reading the database fails or a stored value is invalid.
 pub fn weekly<Tz: TimeZone>(
     store: &Store,
-    week_start: NaiveDate,
+    date: NaiveDate,
     tz: &Tz,
 ) -> Result<Weekly, ReportError> {
-    let period = Period::week_of(week_start, tz)?;
-    let days = week_days(week_start, tz)?;
+    let period = Period::week_of(date, tz)?;
     let rows = segments_overlapping(store, period)?;
     let mut week = ProjectTimes::default();
+    let mut days = Vec::new();
+    for (day_date, day) in week_days(date, tz)? {
+        let mut times = ProjectTimes::default();
+        for row in &rows {
+            if let Some(part) = day.clip(row.segment) {
+                times.add(row.project.as_ref(), part.duration());
+                week.add(row.project.as_ref(), part.duration());
+            }
+        }
+        days.push((day_date, day, times));
+    }
+    let (projects, total) = week.finish();
+    let rank: BTreeMap<Option<ProjectId>, usize> = projects
+        .iter()
+        .enumerate()
+        .map(|(rank, time)| (project_id(time), rank))
+        .collect();
     let days = days
         .into_iter()
-        .map(|(date, day)| {
-            let mut times = ProjectTimes::default();
-            for row in &rows {
-                if let Some(part) = day.clip(row.segment) {
-                    times.add(row.project.as_ref(), part.duration());
-                    week.add(row.project.as_ref(), part.duration());
-                }
-            }
-            let (projects, total) = times.finish();
+        .map(|(date, period, times)| {
+            let mut projects: Vec<ProjectTime> = times.projects.into_values().collect();
+            projects.sort_by_key(|time| rank.get(&project_id(time)).copied());
             DayTotals {
                 date,
-                period: day,
+                period,
                 projects,
-                total,
+                total: times.total,
             }
         })
         .collect();
-    let (projects, total) = week.finish();
     Ok(Weekly {
         period,
         days,
         projects,
         total,
     })
+}
+
+/// Identifier of the project of `time` (`None` = "No project").
+fn project_id(time: &ProjectTime) -> Option<ProjectId> {
+    time.project.as_ref().map(|project| project.id)
 }
 
 /// The 7 local days of the week that contains `date`, Monday first.
@@ -132,10 +148,7 @@ impl ProjectTimes {
     fn finish(self) -> (Vec<ProjectTime>, Duration) {
         let mut projects: Vec<ProjectTime> = self.projects.into_values().collect();
         sort_by_total(&mut projects, |time| {
-            (
-                time.total,
-                time.project.as_ref().map(|project| project.id.0),
-            )
+            (time.total, project_id(time).map(|id| id.0))
         });
         (projects, self.total)
     }
