@@ -77,14 +77,15 @@ impl AlarmSchedule {
 
     /// The state after the user snoozed the ringing alarm at `now` for `minutes`.
     ///
-    /// Re-enables the alarm, so that a once-alarm already disabled by
-    /// [`Self::after_fired`] still rings at the end of the snooze.
+    /// Re-enables a once-alarm, so that it still rings at the end of the snooze after
+    /// [`Self::after_fired`] disabled it. A repeating alarm keeps its `enabled` state: one
+    /// the user disabled stays disabled.
     ///
     /// # Errors
     /// [`AlarmError::InvalidSnooze`] if `minutes` is zero.
     pub fn snooze(self, now: Timestamp, minutes: u32) -> Result<Self, AlarmError> {
         Ok(Self {
-            enabled: true,
+            enabled: self.enabled || self.repeat.is_once(),
             snoozed_until: Some(snooze_until(now, minutes)?),
             ..self
         })

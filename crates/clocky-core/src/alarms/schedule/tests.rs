@@ -132,6 +132,19 @@ fn a_fired_once_alarm_still_rings_after_a_snooze() {
 }
 
 #[test]
+fn snooze_does_not_re_enable_a_disabled_repeating_alarm() {
+    let tz = brt();
+    let disabled = AlarmSchedule {
+        enabled: false,
+        ..daily()
+    };
+    let snoozed = disabled.snooze(nov(&tz, 2, 7, 0), 5).unwrap();
+    assert!(!snoozed.enabled);
+    assert_eq!(snoozed.due_at(nov(&tz, 2, 7, 0), &tz), None);
+    assert_eq!(snoozed.pending(nov(&tz, 2, 7, 5), &tz), None);
+}
+
+#[test]
 fn nothing_is_pending_before_the_first_occurrence() {
     let tz = brt();
     assert_eq!(daily().pending(nov(&tz, 2, 6, 59), &tz), None);
