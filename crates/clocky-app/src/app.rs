@@ -351,6 +351,7 @@ impl App {
                     app.set_theme(mode);
                 }
                 Applied::Wizard => app.timers.reload_wizard_defaults(),
+                Applied::Presets => app.timers.render(),
                 Applied::Stored => {}
             }
         });

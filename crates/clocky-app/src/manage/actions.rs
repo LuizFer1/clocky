@@ -254,6 +254,7 @@ impl Manage {
             Some(Pending::ArchiveProject(id)) => self.archive_project(id),
             Some(Pending::ArchiveTask(id)) => self.archive_task(id),
             Some(Pending::DeleteSession(id)) => self.delete_session(id),
+            Some(Pending::DeletePreset(id)) => self.delete_preset(id),
             None => {}
         }
     }

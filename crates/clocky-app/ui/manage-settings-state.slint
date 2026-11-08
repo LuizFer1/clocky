@@ -1,6 +1,14 @@
 // State of the Configurações page. Rust (`src/manage/settings.rs`) fills it from the settings
 // table and saves every change right away.
 
+// A saved pomodoro in "Pomodoros salvos".
+export struct SavedPomodoro {
+    id: int,
+    name: string,
+    // "25 · 5 · 15 min · 4×"
+    summary: string,
+}
+
 export global SettingsState {
     // Escuro, Claro, Sistema.
     in property <int> theme: 0;
@@ -24,7 +32,25 @@ export global SettingsState {
     in property <string> autostart-help;
     in-out property <string> alarm-sound;
 
+    // Pomodoros salvos: the list and the inline editor (`editing-id` = -1 when closed).
+    in property <[SavedPomodoro]> presets;
+    in property <int> editing-id: -1;
+    in-out property <string> draft-name;
+    // Foco, Pausa curta, Pausa longa (min) and Fluxos of the pomodoro being edited.
+    in property <[int]> draft: [25, 5, 15, 4];
+    in property <[bool]> draft-at-min: [false, false, false, false];
+    in property <[bool]> draft-at-max: [false, false, false, false];
+    in property <string> draft-summary;
+    // Why the last save was refused, or empty.
+    in property <string> draft-error;
+
     callback set-theme(int);
+    callback edit-preset(int);
+    callback step-draft(int, int);
+    callback draft-name-edited(string);
+    callback save-preset();
+    callback cancel-preset();
+    callback delete-preset(int);
     callback step-forgotten(int);
     callback step-wizard(int, int);
     callback set-autostart(bool);

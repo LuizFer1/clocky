@@ -11,7 +11,7 @@ use std::time::Duration;
 use chrono::{Days, NaiveDate};
 use clocky_core::domain::{ProjectId, TaskId};
 use clocky_core::store::DEFAULT_FORGOTTEN_LIMIT;
-use slint::{ComponentHandle, LogicalSize};
+use slint::{ComponentHandle, LogicalSize, Model};
 
 use crate::app::{App, quit};
 use crate::manage_view::Nav;
@@ -108,8 +108,29 @@ const STEPS: &[Step] = &[
         }
         app.manage.open_settings();
     }),
-    step("settings-full", |app, _| resize(app, (WIDE.0, 1180.0))),
+    step("settings-full", |app, _| resize(app, (WIDE.0, 1500.0))),
+    // Pomodoros salvos: the inline editor on the first saved pomodoro.
+    step("settings-preset-edit", |app, _| {
+        let first = crate::settings_view::presets::rows(&app.core.borrow())
+            .ok()
+            .and_then(|rows| rows.first().map(|r| r.id.0));
+        if let Some(id) = first.and_then(|id| i32::try_from(id).ok()) {
+            app.manage
+                .ui
+                .global::<ui::SettingsState>()
+                .invoke_edit_preset(id);
+        }
+    }),
+    step("dialog-delete-preset", |app, _| {
+        let s = app.manage.ui.global::<ui::SettingsState>();
+        s.invoke_cancel_preset();
+        let first = s.get_presets().row_data(0).map(|r| r.id);
+        if let Some(id) = first {
+            s.invoke_delete_preset(id);
+        }
+    }),
     step("dialog-archive-project", |app, t| {
+        cancel_dialog(app);
         resize(app, WIDE);
         app.manage.navigate(Nav {
             project: t.project,

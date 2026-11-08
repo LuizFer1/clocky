@@ -6,11 +6,13 @@
 use std::fmt::Display;
 use std::time::Duration;
 
+use clocky_core::domain::PomodoroPresetId;
 use slint::{ComponentHandle, ModelRc, SharedString, VecModel};
 
-use super::{Manage, Section};
+use super::{Manage, Pending, Section};
 use crate::core::AppCore;
 use crate::settings::ThemeMode;
+use crate::settings_view::presets;
 use crate::settings_view::{self, Applied, FORGOTTEN_MAX, FORGOTTEN_MIN, SettingsForm};
 use crate::timers::STEP_INFO;
 use crate::{autostart, format, ui};
@@ -48,6 +50,25 @@ impl Manage {
             });
         }));
         settings.on_set_autostart(self.handler1(Self::set_autostart));
+        settings.on_edit_preset(self.handler1(Self::edit_preset));
+        settings.on_step_draft(self.handler2(|m, index, direction| {
+            if let Some(d) = m.preset_draft.borrow_mut().as_mut() {
+                d.step(usize::try_from(index).unwrap_or(usize::MAX), direction);
+            }
+            m.apply_presets();
+        }));
+        settings.on_draft_name_edited(self.handler1(|m, name: SharedString| {
+            if let Some(d) = m.preset_draft.borrow_mut().as_mut() {
+                d.name = name.to_string();
+            }
+            m.settings_state().set_draft_error(SharedString::new());
+        }));
+        settings.on_save_preset(self.handler0(Self::save_preset));
+        settings.on_cancel_preset(self.handler0(|m| {
+            m.preset_draft.borrow_mut().take();
+            m.apply_presets();
+        }));
+        settings.on_delete_preset(self.handler1(Self::ask_delete_preset));
         self.state()
             .on_open_settings(self.handler0(Self::open_settings));
     }
@@ -58,6 +79,7 @@ impl Manage {
 
     pub fn open_settings(&self) {
         self.section.set(Section::Settings);
+        self.preset_draft.borrow_mut().take();
         self.settings_state()
             .set_autostart_error(SharedString::new());
         self.refresh();
@@ -92,6 +114,97 @@ impl Manage {
             Err(e) => tracing::warn!("failed to {what}: {e}"),
         }
         self.refresh();
+    }
+
+    fn edit_preset(&self, id: i32) {
+        let Some(id) = preset_id(id) else { return };
+        let draft = match presets::draft(&self.core.borrow(), id) {
+            Ok(draft) => draft,
+            Err(e) => {
+                tracing::warn!("cannot read the saved pomodoro: {e}");
+                None
+            }
+        };
+        if let Some(d) = &draft {
+            self.settings_state().set_draft_name(d.name.as_str().into());
+        }
+        *self.preset_draft.borrow_mut() = draft;
+        self.settings_state().set_draft_error(SharedString::new());
+        self.apply_presets();
+    }
+
+    fn save_preset(&self) {
+        let Some(draft) = self.preset_draft.borrow().clone() else {
+            return;
+        };
+        if let Err(message) = draft.clean_name() {
+            self.settings_state().set_draft_error(message.into());
+            return;
+        }
+        self.preset_draft.borrow_mut().take();
+        self.change_setting("save the pomodoro", |c| presets::save(c, &draft));
+    }
+
+    fn ask_delete_preset(&self, id: i32) {
+        let Some(id) = preset_id(id) else { return };
+        let name = presets::draft(&self.core.borrow(), id)
+            .ok()
+            .flatten()
+            .map(|d| d.name)
+            .unwrap_or_default();
+        self.ask(
+            Pending::DeletePreset(id),
+            &format!("Apagar o pomodoro “{name}”?"),
+            "Ele some do painel Pomodoro. As sessões já registradas continuam nos relatórios \
+             e um pomodoro dele que estiver rodando vai até o fim.",
+            "Apagar pomodoro",
+        );
+    }
+
+    /// The confirmed "Apagar pomodoro".
+    pub(super) fn delete_preset(&self, id: PomodoroPresetId) {
+        if self
+            .preset_draft
+            .borrow()
+            .as_ref()
+            .is_some_and(|d| d.id == id)
+        {
+            self.preset_draft.borrow_mut().take();
+        }
+        self.change_setting("delete the pomodoro", |c| presets::delete(c, id));
+    }
+
+    /// Fills "Pomodoros salvos": the list and the editor.
+    fn apply_presets(&self) {
+        let s = self.settings_state();
+        let rows = presets::rows(&self.core.borrow()).unwrap_or_else(|e| {
+            tracing::warn!("cannot list the saved pomodoros: {e}");
+            Vec::new()
+        });
+        let model: Vec<ui::SavedPomodoro> = rows
+            .iter()
+            .map(|r| ui::SavedPomodoro {
+                id: i32::try_from(r.id.0).unwrap_or(-1),
+                name: r.name.as_str().into(),
+                summary: r.summary.as_str().into(),
+            })
+            .collect();
+        s.set_presets(ModelRc::new(VecModel::from(model)));
+        let draft = self.preset_draft.borrow();
+        let Some(d) = draft.as_ref() else {
+            s.set_editing_id(-1);
+            return;
+        };
+        s.set_editing_id(i32::try_from(d.id.0).unwrap_or(-1));
+        let values: Vec<i32> = d
+            .values
+            .iter()
+            .map(|v| i32::try_from(*v).unwrap_or(i32::MAX))
+            .collect();
+        s.set_draft(ModelRc::new(VecModel::from(values)));
+        s.set_draft_at_min(ModelRc::new(VecModel::from(d.at_min().to_vec())));
+        s.set_draft_at_max(ModelRc::new(VecModel::from(d.at_max().to_vec())));
+        s.set_draft_summary(d.summary().into());
     }
 
     fn set_autostart(&self, on: bool) {
@@ -144,6 +257,7 @@ impl Manage {
         if s.get_alarm_sound().trim() != form.alarm_sound {
             s.set_alarm_sound(form.alarm_sound.as_str().into());
         }
+        self.apply_presets();
         let enabled = self.autostart.borrow().is_enabled();
         s.set_autostart_available(enabled.is_ok());
         s.set_autostart(enabled.unwrap_or(false));
@@ -152,7 +266,25 @@ impl Manage {
         state.set_page(5);
         state.set_crumb("Configurações".into());
         state.set_heading("Configurações".into());
-        state.set_subheading("Tema, valores iniciais e o início com o sistema".into());
+        state.set_subheading(
+            "Tema, pomodoros salvos, valores iniciais e o início com o sistema".into(),
+        );
         state.set_has_heading_color(false);
+    }
+}
+
+/// A preset id from the UI (`-1` = none).
+fn preset_id(id: i32) -> Option<PomodoroPresetId> {
+    (id >= 0).then(|| PomodoroPresetId(i64::from(id)))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn negative_ui_ids_are_no_preset() {
+        assert_eq!(preset_id(-1), None);
+        assert_eq!(preset_id(7), Some(PomodoroPresetId(7)));
     }
 }

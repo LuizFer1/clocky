@@ -2,9 +2,9 @@
 // forgotten-stopwatch limit, the default alarm sound and the start with the system. Every
 // control saves on change.
 import { Theme } from "theme.slint";
-import { TextAction, TextField } from "widgets.slint";
+import { AccentButton, SecondaryButton, TextAction, TextField } from "widgets.slint";
 import { Card, Segmented, Stepper, Switch } from "manage-controls.slint";
-import { SettingsState } from "manage-settings-state.slint";
+import { SavedPomodoro, SettingsState } from "manage-settings-state.slint";
 
 // Label and help on the left, the control on the right.
 component SettingRow inherits HorizontalLayout {
@@ -93,6 +93,159 @@ component WizardValue inherits VerticalLayout {
     }
 }
 
+// One value of the pomodoro being edited: label and stepper.
+component DraftValue inherits VerticalLayout {
+    in property <string> label;
+    in property <string> unit;
+    in property <int> index;
+
+    horizontal-stretch: 1;
+    spacing: Theme.space-2;
+
+    Text {
+        text: root.label;
+        color: Theme.muted;
+        font-size: Theme.fs-sm;
+        font-weight: Theme.fw-medium;
+    }
+
+    Stepper {
+        value: SettingsState.draft[root.index];
+        unit: root.unit;
+        can-decrease: !SettingsState.draft-at-min[root.index];
+        can-increase: !SettingsState.draft-at-max[root.index];
+        decrease => { SettingsState.step-draft(root.index, -1); }
+        increase => { SettingsState.step-draft(root.index, 1); }
+    }
+}
+
+// The inline editor of a saved pomodoro: name, the four values and Cancelar / Salvar.
+component PresetEditor inherits VerticalLayout {
+    spacing: Theme.space-3;
+
+    name := TextField {
+        font-size: Theme.fs-md;
+        placeholder: "Nome do pomodoro";
+        text <=> SettingsState.draft-name;
+        edited(text) => { SettingsState.draft-name-edited(text); }
+        accepted => { SettingsState.save-preset(); }
+        cancelled => { SettingsState.cancel-preset(); }
+    }
+
+    HorizontalLayout {
+        spacing: Theme.space-3;
+
+        DraftValue {
+            label: "Foco";
+            unit: "min";
+            index: 0;
+        }
+
+        DraftValue {
+            label: "Pausa curta";
+            unit: "min";
+            index: 1;
+        }
+    }
+
+    HorizontalLayout {
+        spacing: Theme.space-3;
+
+        DraftValue {
+            label: "Pausa longa";
+            unit: "min";
+            index: 2;
+        }
+
+        DraftValue {
+            label: "Fluxos";
+            unit: "focos";
+            index: 3;
+        }
+    }
+
+    HorizontalLayout {
+        spacing: Theme.space-2;
+
+        VerticalLayout {
+            horizontal-stretch: 1;
+            alignment: center;
+
+            Text {
+                text: SettingsState.draft-error != "" ? SettingsState.draft-error : SettingsState.draft-summary;
+                color: SettingsState.draft-error != "" ? Theme.danger : Theme.muted;
+                font-family: SettingsState.draft-error != "" ? Theme.font-sans : Theme.font-mono;
+                font-size: Theme.fs-sm;
+                wrap: word-wrap;
+            }
+        }
+
+        SecondaryButton {
+            text: "Cancelar";
+            clicked => { SettingsState.cancel-preset(); }
+        }
+
+        AccentButton {
+            text: "Salvar";
+            clicked => { SettingsState.save-preset(); }
+        }
+    }
+
+    init => { name.focus-input(); }
+}
+
+// A saved pomodoro: name and summary, with Editar and Apagar; the editor while it is edited.
+component PresetItem inherits VerticalLayout {
+    in property <SavedPomodoro> preset;
+
+    spacing: Theme.space-3;
+
+    if SettingsState.editing-id != root.preset.id: HorizontalLayout {
+        spacing: Theme.space-2;
+
+        VerticalLayout {
+            horizontal-stretch: 1;
+            alignment: center;
+            spacing: 3px;
+
+            Text {
+                text: root.preset.name;
+                color: Theme.text;
+                font-size: Theme.fs-md;
+                font-weight: Theme.fw-medium;
+                overflow: elide;
+            }
+
+            Text {
+                text: root.preset.summary;
+                color: Theme.muted;
+                font-family: Theme.font-mono;
+                font-size: Theme.fs-sm;
+            }
+        }
+
+        VerticalLayout {
+            alignment: center;
+
+            TextAction {
+                text: "Editar";
+                clicked => { SettingsState.edit-preset(root.preset.id); }
+            }
+        }
+
+        VerticalLayout {
+            alignment: center;
+
+            TextAction {
+                text: "Apagar";
+                clicked => { SettingsState.delete-preset(root.preset.id); }
+            }
+        }
+    }
+
+    if SettingsState.editing-id == root.preset.id: PresetEditor { }
+}
+
 export component SettingsPage inherits VerticalLayout {
     alignment: start;
     spacing: Theme.space-5;
@@ -158,6 +311,30 @@ export component SettingsPage inherits VerticalLayout {
             color: Theme.muted;
             font-family: Theme.font-mono;
             font-size: Theme.fs-sm;
+        }
+    }
+
+    Card {
+        SectionTitle {
+            text: "Pomodoros salvos";
+            help: "Os pomodoros que aparecem no painel Pomodoro. Apagar não mexe nas sessões já registradas.";
+        }
+
+        if SettingsState.presets.length == 0: Text {
+            text: "Nenhum pomodoro salvo. Crie um pelo painel Pomodoro, no menu do ícone flutuante.";
+            color: Theme.muted;
+            font-size: Theme.fs-sm;
+            wrap: word-wrap;
+        }
+
+        for row[index] in SettingsState.presets: VerticalLayout {
+            spacing: Theme.space-3-5;
+
+            if index > 0: Divider { }
+
+            PresetItem {
+                preset: row;
+            }
         }
     }
 
