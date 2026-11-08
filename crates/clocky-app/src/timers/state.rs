@@ -135,12 +135,17 @@ pub fn pick_countdown(
 }
 
 /// Selects `id` in its panel (`kind`), so the view stays on it, and on its end state once it
-/// stops, instead of moving to another timer of that kind.
+/// stops, instead of moving to another timer of that kind. A saved pomodoro opened but not
+/// started yet (a draft) stays selected: stopping another pomodoro (from Ativos) keeps it.
 pub fn select(state: &mut State, kind: Kind, id: TimerId) {
     match kind {
         Kind::Stopwatch => state.stopwatch = Some(id),
         Kind::Countdown => state.countdown = Some(id),
-        Kind::Pomodoro => state.pomodoro = PomodoroPick::Active(Some(id)),
+        Kind::Pomodoro => {
+            if let PomodoroPick::Active(_) = state.pomodoro {
+                state.pomodoro = PomodoroPick::Active(Some(id));
+            }
+        }
     }
 }
 
@@ -246,6 +251,17 @@ mod tests {
         // A selection that is not an active timer of that kind shows none.
         assert_eq!(pick(&timers, Kind::Stopwatch, Some(c)), None);
         assert_eq!(pick(&timers, Kind::Pomodoro, None), None);
+    }
+
+    #[test]
+    fn stopping_a_pomodoro_keeps_a_pending_draft() {
+        let mut state = State::new();
+        state.pomodoro = PomodoroPick::Draft(PomodoroPresetId(3));
+        select(&mut state, Kind::Pomodoro, TimerId(9));
+        assert_eq!(state.pomodoro, PomodoroPick::Draft(PomodoroPresetId(3)));
+        state.pomodoro = PomodoroPick::Active(None);
+        select(&mut state, Kind::Pomodoro, TimerId(9));
+        assert_eq!(state.pomodoro, PomodoroPick::Active(Some(TimerId(9))));
     }
 
     #[test]
