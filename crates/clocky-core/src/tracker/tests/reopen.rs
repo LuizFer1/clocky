@@ -182,3 +182,77 @@ fn corrupted_active_timer_is_an_error_on_open() {
         Err(TrackerError::Store(StoreError::Corrupt { .. }))
     ));
 }
+
+fn classic(auto_start: bool) -> PomodoroConfig {
+    PomodoroConfig::new(mins(25), mins(5), mins(15), 4, auto_start).unwrap()
+}
+
+fn pomodoro(tracker: &Tracker, id: TimerId) -> Pomodoro {
+    let Timer::Pomodoro(p) = &tracker.timers().get(id).unwrap().timer else {
+        panic!("expected a pomodoro");
+    };
+    p.clone()
+}
+
+#[test]
+fn reopening_within_the_grace_still_stops_the_pomodoro() {
+    let db = TempDb::new("reopen-grace");
+    let (mut tracker, _) = open(&db, at(0));
+    let pomo = tracker
+        .start_pomodoro(None, classic(true), None, at(0))
+        .unwrap();
+    drop(tracker);
+
+    let (tracker, events) = open(&db, at(25 * 60 + 30));
+    let session = tracker.store().session(recorded(&events)[0]).unwrap();
+    assert_eq!(session.session.ended_at, at(25 * 60));
+    let p = pomodoro(&tracker, pomo);
+    assert_eq!(p.phase(), Phase::ShortBreak);
+    assert!(p.is_waiting());
+}
+
+#[test]
+fn reopening_after_a_long_break_does_not_start_the_next_round() {
+    let db = TempDb::new("reopen-long-break");
+    let (mut tracker, _) = open(&db, at(0));
+    let pomo = tracker
+        .start_pomodoro(None, quick(false), None, at(0))
+        .unwrap();
+    let _events = tracker.skip(pomo, at(1)).unwrap(); // short break waits
+    let _events = tracker.skip(pomo, at(2)).unwrap(); // focus 2 waits
+    let _events = tracker.skip(pomo, at(3)).unwrap(); // long break waits
+    tracker.start_phase(pomo, at(3)).unwrap(); // due at 13
+    drop(tracker);
+
+    let (tracker, events) = open(&db, at(13 + 30));
+    assert_eq!(recorded(&events).len(), 0);
+    let p = pomodoro(&tracker, pomo);
+    assert_eq!(
+        (p.phase(), p.round(), p.focus_index()),
+        (Phase::Focus, 2, 1)
+    );
+    assert!(p.is_waiting());
+}
+
+#[test]
+fn reopening_never_records_phases_that_did_not_happen() {
+    let db = TempDb::new("reopen-short-phases");
+    let (mut tracker, _) = open(&db, at(0));
+    let task = tracker
+        .store_mut()
+        .create_task(None, "report", at(0))
+        .unwrap();
+    let pomo = tracker
+        .start_pomodoro(Some(task), quick(true), None, at(0))
+        .unwrap();
+    drop(tracker);
+
+    let (tracker, events) = open(&db, at(40));
+    assert_eq!(recorded(&events).len(), 1);
+    let sessions = tracker.store().recent_sessions(task, 10).unwrap();
+    assert_eq!(sessions.len(), 1);
+    assert_eq!(sessions[0].ended_at, at(10));
+    let p = pomodoro(&tracker, pomo);
+    assert_eq!((p.phase(), p.focus_index()), (Phase::ShortBreak, 1));
+    assert!(p.is_waiting());
+}

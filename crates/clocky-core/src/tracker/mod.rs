@@ -47,13 +47,21 @@ pub struct Tracker {
     /// The store was lent out mutably: a task or preset may have been deleted, so the links of
     /// the timers must be read back before the next write.
     links_stale: bool,
+    /// Instant of the last successful tick, to detect a suspension (in memory only).
+    last_tick: Option<Timestamp>,
 }
 
+/// Gap between two ticks beyond which the PC is taken as suspended: the next tick applies the
+/// reopen rules ([`Timers::catch_up`]) instead of a normal tick (spec §4).
+pub const SUSPENSION_GAP: Duration = Duration::from_secs(60);
+
 impl Tracker {
-    /// Restores the saved timers and applies the reopen rules with one tick at `now`: a
-    /// countdown that came due is recorded at its due time, an overdue pomodoro phase closes at
-    /// its scheduled time and waits, a stopwatch keeps counting (see [`Tracker::forgotten`]).
-    /// Returns the events of that tick, so the app can say what happened while it was closed.
+    /// Restores the saved timers and applies the reopen rules at `now` ([`Timers::catch_up`],
+    /// decision 1): a countdown that came due is recorded at its due time; an overdue pomodoro
+    /// phase closes at its scheduled time and the pomodoro stops and waits, with no grace period,
+    /// no auto-start and no simulated phases; a stopwatch keeps counting (see
+    /// [`Tracker::forgotten`]). Returns those events, so the app can say what happened while it
+    /// was closed.
     ///
     /// # Errors
     /// [`TrackerError::Store`] if a saved timer is corrupt or the database fails.
@@ -64,8 +72,9 @@ impl Tracker {
             store,
             timers,
             links_stale: false,
+            last_tick: None,
         };
-        let events = tracker.tick(now)?;
+        let events = tracker.advance(now, true)?;
         Ok((tracker, events))
     }
 
@@ -204,15 +213,35 @@ impl Tracker {
     }
 
     /// Advances every timer to `now` and records what came due. Only timers whose state changed
-    /// are written. A gap of more than a minute since the last tick (suspension) gets the same
-    /// treatment as reopening: overdue phases close at their scheduled time.
+    /// are written. If more than [`SUSPENSION_GAP`] passed since the last tick (the PC was
+    /// suspended), it applies the reopen rules instead, as [`Tracker::open`] does.
     ///
     /// # Errors
     /// [`TrackerError::Store`] if the database fails (memory is unchanged, so the next tick
     /// retries).
     pub fn tick(&mut self, now: Timestamp) -> Result<Vec<TrackerEvent>, TrackerError> {
-        self.apply(|timers| Ok(((), timers.tick(now))))
-            .map(|((), events)| events)
+        let suspended = self
+            .last_tick
+            .is_some_and(|last| now.since(last) > SUSPENSION_GAP);
+        self.advance(now, suspended)
+    }
+
+    /// A normal tick, or the reopen rules if `catch_up`; remembers `now` once it is written.
+    fn advance(
+        &mut self,
+        now: Timestamp,
+        catch_up: bool,
+    ) -> Result<Vec<TrackerEvent>, TrackerError> {
+        let ((), events) = self.apply(|timers| {
+            let events = if catch_up {
+                timers.catch_up(now)
+            } else {
+                timers.tick(now)
+            };
+            Ok(((), events))
+        })?;
+        self.last_tick = Some(now);
+        Ok(events)
     }
 
     /// Running stopwatches that ran longer than the store's forgotten limit (the "forgotten?"

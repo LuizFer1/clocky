@@ -288,21 +288,38 @@ impl Timers {
     pub fn tick(&mut self, now: Timestamp) -> Vec<TimersEvent> {
         let ids: Vec<TimerId> = self.active.keys().copied().collect();
         ids.into_iter()
-            .flat_map(|id| self.tick_one(id, now))
+            .flat_map(|id| self.tick_one(id, now, false))
             .collect()
     }
 
-    fn tick_one(&mut self, id: TimerId, now: Timestamp) -> Vec<TimersEvent> {
+    /// Like [`Timers::tick`], after the app was closed or the PC was suspended (decision 1):
+    /// countdowns finish at their due time and an overdue pomodoro phase closes at its
+    /// scheduled time and waits ([`Pomodoro::catch_up`]).
+    #[must_use = "events must be processed (sessions to record)"]
+    pub fn catch_up(&mut self, now: Timestamp) -> Vec<TimersEvent> {
+        let ids: Vec<TimerId> = self.active.keys().copied().collect();
+        ids.into_iter()
+            .flat_map(|id| self.tick_one(id, now, true))
+            .collect()
+    }
+
+    fn tick_one(&mut self, id: TimerId, now: Timestamp, catch_up: bool) -> Vec<TimersEvent> {
         let Some(active) = self.active.get_mut(&id) else {
             return Vec::new();
         };
         let task = active.task;
         match &mut active.timer {
-            Timer::Pomodoro(p) => p
-                .tick(now)
-                .into_iter()
-                .map(|event| from_pomodoro(id, task, event))
-                .collect(),
+            Timer::Pomodoro(p) => {
+                let events = if catch_up {
+                    p.catch_up(now)
+                } else {
+                    p.tick(now)
+                };
+                events
+                    .into_iter()
+                    .map(|event| from_pomodoro(id, task, event))
+                    .collect()
+            }
             Timer::Countdown(cd) => match cd.finished_at(now) {
                 Some(at) => self.finish_countdown(id, at),
                 None => Vec::new(),
@@ -600,6 +617,27 @@ mod tests {
                 ..
             }
         ));
+    }
+
+    #[test]
+    fn catch_up_finishes_countdowns_and_stops_pomodoros() {
+        let mut timers = Timers::new();
+        let cd = timers.add(None, Timer::Countdown(Countdown::start(at(0), secs(60))));
+        let config = PomodoroConfig::new(secs(10), secs(10), secs(10), 2, true).unwrap();
+        let pomo = timers.add(None, Timer::Pomodoro(Pomodoro::start(config, at(0))));
+        let sw = timers.add(None, stopwatch());
+        let events = timers.catch_up(at(65));
+        assert_eq!(events.len(), 4); // countdown finished + session, one focus session + phase
+        assert!(timers.get(cd).is_none());
+        let Some(ActiveTimer {
+            timer: Timer::Pomodoro(p),
+            ..
+        }) = timers.get(pomo)
+        else {
+            panic!("expected the pomodoro");
+        };
+        assert!(p.is_waiting());
+        assert!(timers.get(sw).is_some());
     }
 
     #[test]

@@ -344,3 +344,32 @@ fn suspension_closes_overdue_phases_at_their_scheduled_time() {
     assert_eq!(watch.elapsed(at(3600)), secs(3600));
     assert_eq!(recorded(&events).len(), 1); // the countdown; the break makes no session
 }
+
+#[test]
+fn a_suspension_gap_stops_the_pomodoro_even_within_the_grace() {
+    let config = PomodoroConfig::new(mins(25), mins(5), mins(15), 4, true).unwrap();
+    let mut awake = tracker();
+    let mut slept = tracker();
+    for t in [&mut awake, &mut slept] {
+        t.start_pomodoro(None, config.clone(), None, at(0)).unwrap();
+        assert_eq!(t.tick(at(1440)).unwrap(), vec![]);
+    }
+    // Ticking every second, the focus ends on time and the break starts on its own.
+    for second in 1441..=1510 {
+        let _events = awake.tick(at(second)).unwrap();
+    }
+    // The PC slept from 1440 to 1510 (70s): the focus closes 10s late, inside the grace, but
+    // the gap means suspension, so the pomodoro stops and waits (decision 1).
+    let events = slept.tick(at(1510)).unwrap();
+    assert_eq!(recorded(&events).len(), 1);
+    let running = |t: &Tracker| {
+        let active = t.timers().iter().next().unwrap();
+        let Timer::Pomodoro(p) = &active.timer else {
+            panic!("expected a pomodoro");
+        };
+        (p.phase(), p.is_running())
+    };
+    assert_eq!(running(&awake), (Phase::ShortBreak, true));
+    assert_eq!(running(&slept), (Phase::ShortBreak, false));
+    assert_eq!(SUSPENSION_GAP, secs(60));
+}
