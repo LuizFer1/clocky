@@ -103,15 +103,12 @@ fn segment_from_row(row: &Row<'_>) -> Result<Segment, StoreError> {
     })
 }
 
-/// Inserts the segments of `session` that have a duration (zero-length ones are dropped).
+/// Inserts the segments of session `id`.
 fn insert_segments(conn: &Connection, id: i64, segments: &[Segment]) -> Result<(), StoreError> {
     let mut insert = conn.prepare(
         "INSERT INTO session_segments (session_id, start_ms, end_ms) VALUES (?1, ?2, ?3)",
     )?;
-    for segment in segments
-        .iter()
-        .filter(|segment| segment.end > segment.start)
-    {
+    for segment in segments {
         insert.execute(params![
             id,
             segment.start.as_millis(),
@@ -126,9 +123,14 @@ impl Store {
     /// (zero-length ones are dropped) and the link to the subtask events of `run` that happened
     /// inside `[started_at, ended_at]` and are not linked yet.
     ///
+    /// `started_at`, `ended_at` and `effective` are computed from the segments that are kept, so
+    /// a zero-length segment at either edge does not widen the session.
+    ///
     /// # Errors
     /// [`StoreError::Sqlite`] if the task does not exist or SQLite fails (nothing is recorded);
-    /// [`StoreError::OutOfRange`] if `run` or the duration does not fit an `INTEGER`.
+    /// [`StoreError::OutOfRange`] if `run` or the duration does not fit an `INTEGER`;
+    /// [`StoreError::EmptySession`] if no segment has a duration (a [`CompletedSession`] built
+    /// by the engine always has one).
     pub fn record_session(
         &mut self,
         task: Option<TaskId>,
@@ -137,9 +139,18 @@ impl Store {
         session: &CompletedSession,
     ) -> Result<SessionId, StoreError> {
         let run_id = timer_id_to_sql(run)?;
-        let effective = duration_to_ms(session.effective(), "session duration")?;
-        let started = session.started_at().as_millis();
-        let ended = session.ended_at().as_millis();
+        let segments: Vec<Segment> = session
+            .segments()
+            .iter()
+            .copied()
+            .filter(|segment| segment.end > segment.start)
+            .collect();
+        let (Some(first), Some(last)) = (segments.first(), segments.last()) else {
+            return Err(StoreError::EmptySession);
+        };
+        let (started, ended) = (first.start.as_millis(), last.end.as_millis());
+        let effective: Duration = segments.iter().map(Segment::duration).sum();
+        let effective = duration_to_ms(effective, "session duration")?;
         let tx = self.conn.transaction()?;
         tx.execute(
             "INSERT INTO sessions (kind, task_id, run_id, round, started_at_ms, ended_at_ms,
@@ -155,7 +166,7 @@ impl Store {
             ],
         )?;
         let id = tx.last_insert_rowid();
-        insert_segments(&tx, id, session.segments())?;
+        insert_segments(&tx, id, &segments)?;
         tx.execute(
             "UPDATE subtask_events SET session_id = ?1
              WHERE run_id = ?2 AND session_id IS NULL AND at_ms BETWEEN ?3 AND ?4",

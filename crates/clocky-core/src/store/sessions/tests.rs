@@ -318,3 +318,20 @@ fn editing_a_missing_session_is_not_found() {
         Err(StoreError::Sqlite(_))
     ));
 }
+
+#[test]
+fn bounds_come_from_the_segments_that_are_kept() {
+    let (mut store, task, subtask) = fixture();
+    store
+        .complete_subtask(subtask, at(25), Some(TimerId(1)))
+        .unwrap();
+    let edges = completed(TimerKind::Stopwatch, &[(0, 0), (10, 20), (30, 30)]);
+    let id = store
+        .record_session(Some(task), TimerId(1), None, &edges)
+        .unwrap();
+    let detail = store.session(id).unwrap();
+    assert_eq!(detail.session.started_at, at(10));
+    assert_eq!(detail.session.ended_at, at(20));
+    assert_eq!(detail.session.effective, secs(10));
+    assert_eq!(detail.events.len(), 0);
+}

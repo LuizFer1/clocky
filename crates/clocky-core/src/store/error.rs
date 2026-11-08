@@ -25,6 +25,9 @@ pub enum StoreError {
     /// A number does not fit the target type (checked conversion).
     #[error("{0} is out of range")]
     OutOfRange(&'static str),
+    /// A session to record has no segment with a duration.
+    #[error("the session has no segment with a duration")]
+    EmptySession,
     /// A value read from the database is invalid.
     #[error("invalid {what} in the database: {value}")]
     Corrupt {
