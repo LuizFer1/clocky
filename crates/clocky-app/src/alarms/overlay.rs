@@ -12,6 +12,24 @@ use crate::dock::hide_from_taskbar;
 use crate::geometry::{Anchor, Point, Rect, to_px};
 use crate::ui;
 
+thread_local! {
+    /// Set while the overlay's window is created, so the attributes hook recognizes it.
+    static CREATING: Cell<bool> = const { Cell::new(false) };
+}
+
+/// Window attributes hook of the backend (`main.rs`): the overlay's window is created inactive,
+/// so showing it does not take the focus (on Windows the first show uses `SW_SHOWNOACTIVATE`).
+/// Every other window keeps the defaults.
+pub fn window_attributes(
+    attributes: slint::winit_030::winit::window::WindowAttributes,
+) -> slint::winit_030::winit::window::WindowAttributes {
+    if CREATING.with(Cell::get) {
+        attributes.with_active(false)
+    } else {
+        attributes
+    }
+}
+
 /// Width of the overlay (logical px, `alarm-overlay.slint`).
 pub const OVERLAY_W: f64 = 360.0;
 /// Its top edge sits this share of the monitor height below the monitor's top.
@@ -64,7 +82,11 @@ pub struct Overlay {
 
 impl Overlay {
     pub fn new() -> anyhow::Result<Rc<Self>> {
-        let ui = ui::AlarmOverlay::new()?;
+        // The attributes hook (`window_attributes`) applies to the window created here only.
+        CREATING.with(|c| c.set(true));
+        let ui = ui::AlarmOverlay::new();
+        CREATING.with(|c| c.set(false));
+        let ui = ui?;
         Ok(Rc::new_cyclic(|weak| Self {
             ui,
             prepared: Cell::new(false),
@@ -158,5 +180,15 @@ mod tests {
     fn position_shows_only_with_several_alarms() {
         assert_eq!(position_label(0, 1), "");
         assert_eq!(position_label(0, 3), "1 de 3");
+    }
+
+    #[test]
+    fn only_the_overlay_window_is_created_inactive() {
+        use slint::winit_030::winit::window::WindowAttributes;
+        assert!(window_attributes(WindowAttributes::default()).active);
+        CREATING.with(|c| c.set(true));
+        let inactive = window_attributes(WindowAttributes::default());
+        CREATING.with(|c| c.set(false));
+        assert!(!inactive.active);
     }
 }

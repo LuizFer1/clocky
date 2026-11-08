@@ -10,6 +10,7 @@ pub mod demo;
 mod draft;
 mod editor;
 mod overlay;
+pub use overlay::window_attributes;
 pub mod queue;
 mod ringer;
 mod runtime;

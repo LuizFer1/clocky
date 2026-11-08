@@ -156,6 +156,8 @@ fn start_logging() {
 /// Selects the winit backend (the dock relies on winit window APIs).
 fn select_backend() -> anyhow::Result<()> {
     let selector = slint::BackendSelector::new().backend_name("winit".into());
+    // M7: the alarm overlay is created without activation (it must not take the focus).
+    let selector = selector.with_winit_window_attributes_hook(alarms::window_attributes);
     #[cfg(all(unix, not(target_vendor = "apple")))]
     let selector = selector.with_winit_event_loop_builder(linux_event_loop_builder());
     selector.select()?;
