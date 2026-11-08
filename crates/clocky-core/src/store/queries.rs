@@ -5,6 +5,7 @@ use std::time::Duration;
 
 use rusqlite::params;
 
+use super::alarms::Alarm;
 use super::convert::{duration_from_ms, u32_from_sql};
 use super::projects::{PROJECT_COLUMNS, project_from_row};
 use super::rows::collect;
@@ -26,6 +27,8 @@ pub struct ProjectOverview {
 /// What a task is linked to ("Linked to").
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct TaskLinks {
+    /// Alarms of the task, by time of day (the task row shows an alarm icon if any).
+    pub alarms: Vec<Alarm>,
     /// Saved countdown timers of the task.
     pub timer_presets: Vec<TimerPreset>,
     /// Saved pomodoros of the task.
@@ -107,12 +110,13 @@ impl Store {
         })
     }
 
-    /// Presets and active timers linked to `task` ("Linked to").
+    /// Alarms, presets and active timers linked to `task` ("Linked to").
     ///
     /// # Errors
     /// [`StoreError::Corrupt`] or [`StoreError::OutOfRange`] if a stored value is invalid.
     pub fn task_links(&self, task: TaskId) -> Result<TaskLinks, StoreError> {
         Ok(TaskLinks {
+            alarms: self.alarms_of(Some(task))?,
             timer_presets: self.timer_presets_of(Some(task))?,
             pomodoro_presets: self.pomodoro_presets_of(Some(task))?,
             active_timers: self.active_timers_of(task)?,
