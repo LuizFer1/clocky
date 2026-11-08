@@ -425,3 +425,67 @@ fn deleting_through_the_tracker_unlinks_the_timers_at_once() {
     tracker.refresh_links().unwrap();
     assert_eq!(tracker.timers().get(cd).unwrap().task, None);
 }
+
+#[test]
+fn a_write_that_fails_after_the_session_insert_records_once_on_retry() {
+    let mut tracker = tracker();
+    let task = tracker
+        .store_mut()
+        .create_task(None, "report", at(0))
+        .unwrap();
+    let pomo = tracker
+        .start_pomodoro(Some(task), quick(true), None, at(0))
+        .unwrap();
+    let before = tracker.timers().clone();
+    // The session INSERT succeeds; the UPDATE of the pomodoro row in the same transaction fails.
+    tracker.store().execute_batch_for_tests(
+        "CREATE TEMP TRIGGER fail_update BEFORE UPDATE ON active_timers
+         BEGIN SELECT RAISE(ABORT, 'disk is broken'); END;",
+    );
+    assert!(tracker.tick(at(10)).is_err());
+    assert_eq!(tracker.timers(), &before);
+    assert_eq!(tracker.store().recent_sessions(task, 10).unwrap().len(), 0);
+
+    tracker
+        .store()
+        .execute_batch_for_tests("DROP TRIGGER fail_update;");
+    let events = tracker.tick(at(11)).unwrap();
+    assert_eq!(recorded(&events).len(), 1);
+    let sessions = tracker.store().recent_sessions(task, 10).unwrap();
+    assert_eq!(sessions.len(), 1);
+    assert_eq!((sessions[0].run, sessions[0].ended_at), (pomo, at(10)));
+}
+
+#[test]
+fn each_recorded_id_follows_its_own_session() {
+    let mut tracker = tracker();
+    let pomo = tracker
+        .start_pomodoro(None, quick(true), None, at(0))
+        .unwrap();
+    let cd = tracker
+        .start_countdown(None, secs(25), None, at(0))
+        .unwrap();
+    let events = tracker.tick(at(35)).unwrap(); // two focus sessions and the countdown
+    let mut pairs = Vec::new();
+    for (index, event) in events.iter().enumerate() {
+        let TrackerEvent::SessionRecorded { timer, session } = event else {
+            continue;
+        };
+        let TrackerEvent::Timer(TimersEvent::SessionCompleted {
+            timer: completed_by,
+            session: completed,
+            ..
+        }) = &events[index - 1]
+        else {
+            panic!("SessionRecorded must follow its SessionCompleted");
+        };
+        let stored = tracker.store().session(*session).unwrap().session;
+        assert_eq!(
+            (stored.run, stored.started_at),
+            (*timer, completed.started_at())
+        );
+        assert_eq!(completed_by, timer);
+        pairs.push((*timer, stored.started_at));
+    }
+    assert_eq!(pairs, vec![(pomo, at(0)), (pomo, at(20)), (cd, at(0))]);
+}
