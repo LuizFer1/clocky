@@ -85,8 +85,9 @@ fn days_split_projects_and_add_up_the_week() {
     let weekly = weekly(&store, date(2026, 11, 2), &New_York).unwrap();
     let z = Duration::ZERO;
     assert_eq!(day_totals(&weekly), [z, z, min(90), min(70), z, z, z]);
-    assert_eq!(ids(&weekly.days[2].projects), [Some(work), Some(home)]);
-    assert_eq!(weekly.days[2].projects[1].total, min(30));
+    // Every day follows the week's order (home, work, none), not its own totals.
+    assert_eq!(ids(&weekly.days[2].projects), [Some(home), Some(work)]);
+    assert_eq!(weekly.days[2].projects[0].total, min(30));
     assert_eq!(ids(&weekly.days[3].projects), [Some(home), None]);
     assert_eq!(weekly.total, min(160));
     assert_eq!(ids(&weekly.projects), [Some(home), Some(work), None]);
