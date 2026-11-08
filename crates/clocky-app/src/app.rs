@@ -228,6 +228,15 @@ pub fn run_command(command: Command) {
     }
 }
 
+/// Releases the app after the event loop ends. The thread-local keeps an `Rc<App>`, which would
+/// otherwise live until the process dies and skip the tray's `Drop` (the icon would stay in the
+/// tray until hovered).
+pub fn shutdown(app: Rc<App>) {
+    let registered = APP.with(|cell| cell.borrow_mut().take());
+    drop(registered);
+    drop(app);
+}
+
 /// Ends the event loop (tray "Sair").
 pub fn quit() {
     if let Err(e) = slint::quit_event_loop() {

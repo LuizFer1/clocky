@@ -64,7 +64,10 @@ fn run() -> anyhow::Result<()> {
         app.schedule_screenshots(dir);
     }
     // The app lives in the tray: closing every window does not end it, only "Sair" does.
-    slint::run_event_loop_until_quit()?;
+    let result = slint::run_event_loop_until_quit();
+    // Drops the windows and the tray icon before the process exits.
+    app::shutdown(app);
+    result?;
     Ok(())
 }
 
