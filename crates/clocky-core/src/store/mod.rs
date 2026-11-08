@@ -8,10 +8,12 @@ mod error;
 mod migrations;
 mod projects;
 mod rows;
+mod subtasks;
 mod tasks;
 
 pub use error::StoreError;
 pub use projects::Project;
+pub use subtasks::{Subtask, SubtaskEvent, SubtaskEventKind};
 pub use tasks::Task;
 
 use std::path::{Path, PathBuf};
