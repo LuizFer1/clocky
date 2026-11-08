@@ -330,3 +330,53 @@ fn a_small_backward_correction_can_ring_an_occurrence_twice() {
         Some((nov(&tz, 2, 7, 0), Firing::Late { by: mins(2) }))
     );
 }
+
+#[test]
+fn an_expired_snooze_does_not_hide_later_occurrences() {
+    let tz = brt();
+    // Snoozed on Monday until 07:05, then the computer was off until Thursday at 12:00.
+    let snoozed = daily().snooze(nov(&tz, 2, 7, 0), 5).unwrap();
+    let pending = snoozed.pending(nov(&tz, 5, 12, 0), &tz);
+    assert_eq!(pending, Some((nov(&tz, 5, 7, 0), Firing::Missed)));
+    // One absence, one notice.
+    let handled = snoozed.after_fired(nov(&tz, 5, 7, 0));
+    assert_eq!(handled.pending(nov(&tz, 5, 12, 0), &tz), None);
+}
+
+#[test]
+fn an_expired_snooze_with_no_later_occurrence_is_pending() {
+    let tz = brt();
+    let fired = daily().after_fired(nov(&tz, 2, 7, 0));
+    let snoozed = fired.snooze(nov(&tz, 2, 7, 0), 5).unwrap();
+    assert_eq!(
+        snoozed.pending(nov(&tz, 2, 7, 6), &tz),
+        Some((nov(&tz, 2, 7, 5), Firing::OnTime))
+    );
+}
+
+#[test]
+fn a_fired_once_alarm_with_an_expired_snooze_reports_only_the_snooze() {
+    let tz = brt();
+    let fired = once().after_fired(nov(&tz, 2, 7, 0));
+    let snoozed = fired.snooze(nov(&tz, 2, 7, 0), 5).unwrap();
+    assert_eq!(
+        snoozed.pending(nov(&tz, 5, 12, 0), &tz),
+        Some((nov(&tz, 2, 7, 5), Firing::Missed))
+    );
+}
+
+#[test]
+fn a_re_armed_once_alarm_rings_again() {
+    let tz = brt();
+    // Rang on Monday, then re-enabled on Tuesday at 06:00 (which resets `created_at`).
+    let fired = once().after_fired(nov(&tz, 2, 7, 0));
+    let re_armed = AlarmSchedule {
+        enabled: true,
+        created_at: nov(&tz, 3, 6, 0),
+        ..fired
+    };
+    assert_eq!(
+        re_armed.pending(nov(&tz, 3, 7, 0), &tz),
+        Some((nov(&tz, 3, 7, 0), Firing::OnTime))
+    );
+}

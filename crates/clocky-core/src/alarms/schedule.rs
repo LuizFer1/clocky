@@ -95,7 +95,8 @@ impl AlarmSchedule {
     ///
     /// Covers the app being closed or the computer suspended: it looks for occurrences
     /// after `last_fired_at` (or `created_at`) up to `now`, inclusive. When several were
-    /// missed, only the most recent is reported. While snoozed, only the snooze counts.
+    /// missed, only the most recent is reported. A snooze that has not expired hides the
+    /// regular schedule; an expired one counts as one more occurrence.
     ///
     /// If the clock moved back, `last_fired_at` or `created_at` can be later than `now`.
     /// Such an instant is ignored, so the alarm keeps ringing; history before `now` is then
@@ -108,7 +109,9 @@ impl AlarmSchedule {
             return None;
         }
         let due = match self.snoozed_until {
-            Some(until) => Some(until).filter(|until| *until <= now),
+            // An expired snooze must not hide regular occurrences that came due after it.
+            Some(until) if until <= now => Some(until).max(self.latest_due(now, tz)),
+            Some(_) => None,
             None => self.latest_due(now, tz),
         }?;
         Some((due, classify(due, now)))
@@ -120,8 +123,12 @@ impl AlarmSchedule {
         let due_after =
             |after| next_fire(self.time, self.repeat, after, tz).filter(|due| *due <= now);
         if self.repeat.is_once() {
-            // A once-alarm only had one occurrence, however long ago it was.
-            return due_after(handled);
+            // A once-alarm has one occurrence, however long ago it was, and none left once
+            // it fired (unless re-armed later, which resets `created_at`).
+            let used_up = self
+                .last_fired_at
+                .is_some_and(|fired| fired >= self.created_at);
+            return if used_up { None } else { due_after(handled) };
         }
         let window_start = millis_before(now, LOOKBACK_MILLIS);
         let mut latest = None;
