@@ -311,3 +311,34 @@ fn pending_alarms_carry_the_whole_alarm() {
         }]
     );
 }
+
+#[test]
+fn reenabling_a_once_alarm_after_its_time_rings_the_next_day() {
+    let mut store = Store::open_in_memory().unwrap();
+    let once = NewAlarm {
+        repeat: Weekdays::ONCE,
+        ..at_time("once", 10, 0)
+    };
+    let skipped = store.create_alarm(&once, nov(2, 6, 0)).unwrap();
+    store
+        .set_alarm_enabled(skipped, false, nov(2, 8, 0))
+        .unwrap();
+    let fired = store.create_alarm(&once, nov(2, 6, 0)).unwrap();
+    fire(&mut store, fired, nov(2, 10, 0));
+
+    for id in [skipped, fired] {
+        store.set_alarm_enabled(id, true, nov(2, 11, 0)).unwrap();
+    }
+    assert_eq!(pending_at(&store, nov(2, 11, 0)), vec![]);
+    assert_eq!(
+        store.next_alarm(nov(2, 11, 0), &brt()).unwrap(),
+        Some((skipped, nov(3, 10, 0)))
+    );
+    assert_eq!(
+        pending_at(&store, nov(3, 10, 0)),
+        vec![
+            (skipped, nov(3, 10, 0), Firing::OnTime),
+            (fired, nov(3, 10, 0), Firing::OnTime),
+        ]
+    );
+}
