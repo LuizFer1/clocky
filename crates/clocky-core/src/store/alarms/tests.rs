@@ -342,3 +342,53 @@ fn linked_alarms_appear_in_task_links_and_summaries() {
         .collect();
     assert_eq!(alarm_counts, vec![(task, 2), (other, 1)]);
 }
+
+#[test]
+fn schema_accepts_only_real_times_of_day() {
+    let store = Store::open_in_memory().unwrap();
+    let insert = |time: &str| {
+        store.conn.execute(
+            "INSERT INTO alarms (name, time_local, repeat_days, snooze_minutes, enabled,
+                 created_at_ms) VALUES ('raw', ?1, 0, 1, 1, 0)",
+            [time],
+        )
+    };
+    for good in ["00:00", "09:59", "19:05", "20:00", "23:59"] {
+        assert!(insert(good).is_ok(), "{good}");
+    }
+    for bad in ["24:00", "29:59", "7:30", "07:60", "07:5", "ab:cd"] {
+        assert!(insert(bad).is_err(), "{bad}");
+    }
+}
+
+#[test]
+fn negative_instants_are_not_written() {
+    let mut store = Store::open_in_memory().unwrap();
+    let before_epoch = Timestamp::from_millis(-1);
+    let out_of_range =
+        |result: Result<(), StoreError>| matches!(result, Err(StoreError::OutOfRange(_)));
+    assert!(out_of_range(
+        store.create_alarm(&wake(None), before_epoch).map(|_| ())
+    ));
+    let id = store.create_alarm(&wake(None), at(0)).unwrap();
+    assert!(out_of_range(store.update_alarm(
+        id,
+        &wake(None),
+        before_epoch
+    )));
+    store.set_alarm_enabled(id, false, at(1)).unwrap();
+    assert!(out_of_range(store.set_alarm_enabled(
+        id,
+        true,
+        before_epoch
+    )));
+    assert!(out_of_range(store.mark_alarm_fired(
+        id,
+        before_epoch,
+        at(2)
+    )));
+    store.set_alarm_enabled(id, true, at(3)).unwrap();
+    let far_past = Timestamp::from_millis(-3_600_000);
+    assert!(out_of_range(store.snooze_alarm(id, far_past).map(|_| ())));
+    assert_eq!(store.alarm(id).unwrap().created_at, at(3));
+}
