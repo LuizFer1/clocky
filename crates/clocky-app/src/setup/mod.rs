@@ -77,21 +77,14 @@ mod tests {
     #[test]
     fn the_setup_name_installs() {
         let none = args(&[]);
+        // Plain file names: `\` is no separator on Linux and macOS.
+        let setup = std::env::temp_dir().join("clocky-setup-x86_64-pc-windows-msvc.exe");
+        assert_eq!(mode(&none, &setup), Some(Mode::Install));
         assert_eq!(
-            mode(
-                &none,
-                Path::new(r"C:\Downloads\clocky-setup-x86_64-pc-windows-msvc.exe")
-            ),
+            mode(&none, Path::new("Clocky-Setup.exe")),
             Some(Mode::Install)
         );
-        assert_eq!(
-            mode(&none, Path::new(r"C:\Downloads\Clocky-Setup.exe")),
-            Some(Mode::Install)
-        );
-        assert_eq!(
-            mode(&none, Path::new(r"C:\Programs\Clocky\clocky.exe")),
-            None
-        );
+        assert_eq!(mode(&none, &std::env::temp_dir().join("clocky.exe")), None);
         // A second launch of the installer with `--send` is not an install.
         assert_eq!(
             mode(&args(&["--send", "show"]), Path::new("clocky-setup.exe")),
