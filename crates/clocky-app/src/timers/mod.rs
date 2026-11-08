@@ -136,6 +136,8 @@ impl TimerPanels {
 
     /// A radial option was chosen: shows the right view of its panel.
     pub fn show(&self, kind: PanelKind) {
+        // A picker left open for another timer must not apply its choice here.
+        self.chooser.cancel();
         {
             let handle = self.core.borrow();
             let timers = handle.tracker().timers();
@@ -163,6 +165,7 @@ impl TimerPanels {
 
     /// The header's back button. `true` = handled inside the panel; `false` = back to the menu.
     pub fn back(&self) -> bool {
+        self.chooser.cancel();
         let parent = self.state.borrow().view.parent();
         let Some(parent) = parent else {
             return false;
