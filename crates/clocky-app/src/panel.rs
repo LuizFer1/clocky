@@ -13,7 +13,7 @@ use slint::{ComponentHandle, PhysicalPosition};
 
 use crate::core::AppCore;
 use crate::dock::hide_from_taskbar;
-use crate::geometry::{Anchor, PANEL_H};
+use crate::geometry::{Anchor, PANEL_H, PANEL_MAX_H};
 use crate::picker_ui::TaskPicker;
 use crate::ui;
 
@@ -165,16 +165,31 @@ impl Panel {
         }
     }
 
-    /// Sizes the window to `height` logical px and places it next to the dock.
+    /// Sizes the placeholder or the picker to `height` logical px and the timer views up to
+    /// the monitor's cap, then places the window. The timer views size to their content, so the
+    /// window is placed again with its real height when it resizes (see [`Panel::prepare`]).
     fn place(&self, height: f64) {
+        let cap = self
+            .anchor
+            .get()
+            .map_or(PANEL_MAX_H, |anchor| anchor.panel_max_height());
         #[expect(clippy::cast_possible_truncation, reason = "a few hundred px")]
-        self.ui.set_panel_height(height as f32);
-        if let Some(anchor) = self.anchor.get() {
-            let origin = anchor.panel_origin_for(height);
-            self.ui
-                .window()
-                .set_position(PhysicalPosition::new(origin.x, origin.y));
+        {
+            self.ui.set_height_cap(cap as f32);
+            self.ui.set_panel_height(height.min(cap) as f32);
         }
+        self.reposition();
+    }
+
+    /// Places the window next to the dock for its current height.
+    fn reposition(&self) {
+        let Some(anchor) = self.anchor.get() else {
+            return;
+        };
+        let window = self.ui.window();
+        let height = f64::from(window.size().height) / f64::from(window.scale_factor());
+        let origin = anchor.panel_origin_for(height);
+        window.set_position(PhysicalPosition::new(origin.x, origin.y));
     }
 
     /// Opens the task picker in this panel with `current` selected. `on_done` runs with the
@@ -213,7 +228,16 @@ impl Panel {
         hide_from_taskbar(window);
         let weak = self.weak.clone();
         // A click outside the panel takes the focus away from it: close it, as the handoff asks.
+        // A new height (the timer view changed) places it again so it stays on screen.
         self.ui.window().on_winit_window_event(move |_, event| {
+            if matches!(event, winit::event::WindowEvent::Resized(_)) {
+                let weak = weak.clone();
+                slint::Timer::single_shot(Duration::ZERO, move || {
+                    if let Some(p) = weak.upgrade() {
+                        p.reposition();
+                    }
+                });
+            }
             if matches!(event, winit::event::WindowEvent::Focused(false)) {
                 let weak = weak.clone();
                 // Hiding from inside the event handler is deferred to the next loop iteration.

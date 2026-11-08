@@ -14,9 +14,15 @@ pub const COMPACT_H: f64 = 60.0;
 pub const HUB_OPEN_OFFSET: f64 = 105.0;
 /// Floating panel (handoff SPEC 2): 380 wide, 30 from the edge, 28 below the area top.
 pub const PANEL_W: f64 = 380.0;
-// M6b: the timer panels size to their content up to 800 (`panel-window.slint`); the panel is
-// placed so that the tallest one still fits on the monitor.
-pub const PANEL_H: f64 = 800.0;
+/// Height of the placeholder panel (the Alarme option until M7).
+pub const PANEL_H: f64 = 420.0;
+/// The timer panels size to their content up to this, or less on a short monitor
+/// ([`Anchor::panel_max_height`]); past it their body scrolls.
+pub const PANEL_MAX_H: f64 = 800.0;
+/// Kept free at the bottom of the monitor for the taskbar (winit has no work-area API).
+pub const PANEL_BOTTOM_MARGIN: f64 = 48.0;
+/// Kept free at the top of the monitor when the panel is as tall as it can be.
+pub const PANEL_TOP_MARGIN: f64 = 8.0;
 pub const PANEL_EDGE_GAP: f64 = 30.0;
 pub const PANEL_TOP_GAP: f64 = 28.0;
 
@@ -141,8 +147,16 @@ impl Anchor {
         self.panel_origin_for(PANEL_H)
     }
 
-    /// Top-left corner of a panel `height` logical px tall (the task picker is taller than the
-    /// timer panels): same rule as [`Anchor::panel_origin`], clamped with the real height.
+    /// The tallest the panel may be on this monitor (logical px): [`PANEL_MAX_H`], or the
+    /// monitor height without the taskbar and top margins.
+    pub fn panel_max_height(&self) -> f64 {
+        let logical = f64::from(self.monitor.h) / self.scale;
+        (logical - PANEL_BOTTOM_MARGIN - PANEL_TOP_MARGIN).min(PANEL_MAX_H)
+    }
+
+    /// Top-left corner of a panel `height` logical px tall (its real height, so the panel
+    /// stays 28 px below the menu area unless that would push it past the taskbar margin):
+    /// same rule as [`Anchor::panel_origin`].
     pub fn panel_origin_for(&self, height: f64) -> Point {
         let x = if self.is_left() {
             self.monitor.x + self.px(PANEL_EDGE_GAP)
@@ -154,7 +168,8 @@ impl Anchor {
             area_top + self.px(PANEL_TOP_GAP),
             self.monitor.y,
             // A panel taller than the monitor keeps its top (and header) on screen.
-            (self.monitor.bottom() - self.px(height)).max(self.monitor.y),
+            (self.monitor.bottom() - self.px(PANEL_BOTTOM_MARGIN) - self.px(height))
+                .max(self.monitor.y),
         );
         Point { x, y }
     }
@@ -429,20 +444,49 @@ mod tests {
     #[test]
     fn a_taller_panel_is_clamped_with_its_own_height() {
         let low = Anchor::new(&main_monitor(), Edge::Right, 5000);
-        assert_eq!(low.panel_origin_for(680.0).y, 1080 - 680);
+        assert_eq!(low.panel_origin_for(680.0).y, 1080 - 48 - 680);
         // Taller than the monitor: the top stays inside.
         assert_eq!(low.panel_origin_for(2000.0).y, 0);
+        // Centred: a 600 px timer panel keeps the 28 px gap; the 680 px picker moves up just
+        // enough to end at the taskbar margin.
         let mid = Anchor::new(&main_monitor(), Edge::Right, 540);
-        assert_eq!(mid.panel_origin_for(680.0), mid.panel_origin());
+        assert_eq!(mid.panel_origin_for(600.0), mid.panel_origin());
+        assert_eq!(mid.panel_origin_for(680.0).y, 1080 - 48 - 680);
     }
 
     #[test]
-    fn panel_stays_inside_the_monitor_at_the_bottom() {
+    fn panel_stays_above_the_taskbar_margin() {
         let low = Anchor::new(&main_monitor(), Edge::Right, 5000);
-        assert_eq!(low.panel_origin().y, 1080 - 800);
-        // Centred on a 1080p monitor, the tallest panel (800) still ends on screen.
-        let centred = Anchor::new(&main_monitor(), Edge::Right, 540);
-        assert!(centred.panel_origin().y + 800 <= 1080);
+        assert_eq!(low.panel_origin().y, 1080 - 48 - 420);
+    }
+
+    #[test]
+    fn the_cap_fits_a_1080p_monitor_under_the_area_top() {
+        let anchor = Anchor::new(&main_monitor(), Edge::Right, 540);
+        assert!((anchor.panel_max_height() - 800.0).abs() < f64::EPSILON);
+        let y = anchor.panel_origin_for(anchor.panel_max_height()).y;
+        assert!(y >= 0 && y + 800 <= 1080 - 48, "y = {y}");
+    }
+
+    #[test]
+    fn a_short_scaled_monitor_caps_the_panel_and_keeps_its_header_on_screen() {
+        // 1366×768 at 125%: 614.4 logical px tall.
+        let laptop = Monitor {
+            name: None,
+            rect: Rect {
+                x: 0,
+                y: 0,
+                w: 1366,
+                h: 768,
+            },
+            scale: 1.25,
+        };
+        let anchor = Anchor::new(&laptop, Edge::Right, 384);
+        let cap = anchor.panel_max_height();
+        assert!((cap - (614.4 - 56.0)).abs() < 1e-9, "cap = {cap}");
+        let y = anchor.panel_origin_for(cap).y;
+        assert!(y >= 0, "header off screen: y = {y}");
+        assert!(y + to_px(cap, 1.25) <= 768 - to_px(48.0, 1.25), "y = {y}");
     }
 
     #[test]

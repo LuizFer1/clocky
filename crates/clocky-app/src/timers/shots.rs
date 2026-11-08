@@ -9,7 +9,6 @@ use std::time::Duration;
 use slint::ComponentHandle;
 
 use super::TimerPanels;
-use super::actions_overview::TaskTarget;
 use super::demo::{self, DemoTimers};
 use super::state::View;
 use crate::panel::PanelKind;
@@ -40,6 +39,8 @@ enum Scene {
     WizardCreated,
     /// "Iniciar" in the configuration, then "Pausar".
     CountdownPaused,
+    /// The configuration on a 1366×768 screen at 125% (558 px cap): the body scrolls.
+    SmallScreen,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -84,6 +85,7 @@ fn plan() -> Vec<Step> {
         Step::Shot("pomodoro-wizard-step4", Scene::WizardStep4),
         Step::Shot("pomodoro-criado", Scene::WizardCreated),
         Step::Shot("temporizador-pausado", Scene::CountdownPaused),
+        Step::Shot("temporizador-config-tela-pequena", Scene::SmallScreen),
     ]);
     steps
 }
@@ -179,6 +181,12 @@ fn show(run: &Run, scene: Scene) {
     let Some(window) = run.ctx.window.upgrade() else {
         return;
     };
+    if matches!(scene, Scene::SmallScreen) {
+        // The cap `Anchor::panel_max_height` gives a 1366×768 monitor at 125%.
+        window.set_height_cap(558.4);
+        run.ctx.panels.set_view(View::CountdownConfig);
+        return;
+    }
     let global = window.global::<ui::TimerUi>();
     run.ctx.panels.cancel_chooser();
     if !click(run, &global, scene) {
@@ -202,6 +210,10 @@ fn click(run: &Run, global: &ui::TimerUi<'_>, scene: Scene) -> bool {
             global.invoke_cd_start();
             global.invoke_cd_run_primary();
         }
+        Scene::Chooser => {
+            run.ctx.panels.show(PanelKind::Stopwatch);
+            global.invoke_sw_change_task();
+        }
         _ => return false,
     }
     true
@@ -224,12 +236,13 @@ fn open(run: &Run, scene: Scene) {
             None => panels.show(PanelKind::Pomodoro),
         },
         Scene::Overview => panels.show(PanelKind::Overview),
-        Scene::Chooser => {
-            panels.show(PanelKind::Stopwatch);
-            panels.choose_task(TaskTarget::Stopwatch);
-        }
         Scene::Forgotten => panels.render(),
-        Scene::Recorded | Scene::WizardStep4 | Scene::WizardCreated | Scene::CountdownPaused => {}
+        Scene::Chooser
+        | Scene::SmallScreen
+        | Scene::Recorded
+        | Scene::WizardStep4
+        | Scene::WizardCreated
+        | Scene::CountdownPaused => {}
     }
 }
 

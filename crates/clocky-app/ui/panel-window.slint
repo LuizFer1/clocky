@@ -21,6 +21,9 @@ export component PanelWindow inherits Window {
     // The body is the task picker.
     in property <bool> picking;
     in property <length> panel-height: 420px;
+    // The tallest the timer views may make the window on this monitor (set from Rust).
+    in property <length> height-cap: 800px;
+    property <bool> timer-view: !root.picking && TimerUi.view != "";
     callback back();
     callback dismiss();
     callback action();
@@ -31,8 +34,8 @@ export component PanelWindow inherits Window {
     background: transparent;
     default-font-family: Theme.font-sans;
     width: Theme.size-panel-width;
-    // M6b: timer views size the window to their content (capped; long lists scroll).
-    height: root.picking || TimerUi.view == "" ? root.panel-height : min(content.preferred-height, 800px);
+    // Header (64 + 1) plus the timer view, capped; past the cap the view scrolls.
+    height: root.timer-view ? min(65px + timer-body.preferred-height, root.height-cap) : root.panel-height;
     forward-focus: keys;
 
     keys := FocusScope {
@@ -115,7 +118,17 @@ export component PanelWindow inherits Window {
                 }
 
                 // M6b: timer views.
-                if !root.picking && TimerUi.view != "": TimerBody { }
+                // Always present (sized to 0 when hidden) so the window height can read it.
+                Flickable {
+                    height: root.timer-view ? root.height - 65px : 0px;
+                    visible: root.timer-view;
+                    content-height: timer-body.preferred-height;
+
+                    timer-body := TimerBody {
+                        width: parent.width;
+                        height: self.preferred-height;
+                    }
+                }
 
                 // Placeholder body (the Alarme panel until M7).
                 if !root.picking && TimerUi.view == "": VerticalLayout {
