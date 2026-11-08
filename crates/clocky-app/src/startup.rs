@@ -12,6 +12,7 @@ use clocky_core::clock::SystemClock;
 use clocky_core::store::StoreError;
 use clocky_core::tracker::{TrackerError, TrackerOpenError};
 use slint::ComponentHandle;
+use slint::winit_030::WinitWindowAccessor;
 
 use crate::core::{AppCore, OpenError, Reopened};
 use crate::{paths, screenshot, ui};
@@ -126,6 +127,32 @@ fn can_discard(error: &TrackerError) -> bool {
     }
 }
 
+thread_local! {
+    /// The error window while it is up, for the commands of a second launch.
+    static ERROR_WINDOW: RefCell<Option<slint::Weak<ui::ErrorWindow>>> = const { RefCell::new(None) };
+}
+
+/// A command from a second launch while the error window is up (the app does not exist yet):
+/// "show" brings the window to the front, "quit" quits. `false` when no error window is up.
+pub fn run_command(command: crate::command::Command) -> bool {
+    let window = ERROR_WINDOW.with(|cell| cell.borrow().as_ref().and_then(slint::Weak::upgrade));
+    let Some(window) = window else {
+        return false;
+    };
+    if command == crate::command::Command::Quit {
+        crate::app::quit();
+        return true;
+    }
+    if let Err(e) = window.show() {
+        tracing::warn!("failed to show the error window: {e}");
+    }
+    window.window().with_winit_window(|w| {
+        w.set_minimized(false);
+        w.focus_window();
+    });
+    true
+}
+
 /// Shows the error window; the caller runs the event loop and keeps the returned window alive.
 /// "Descartar timers ativos" (only offered when [`OpenFailure::timers`] is set) deletes the saved
 /// timers, opens the core again and hands it to `on_opened` in place of the window. In
@@ -159,6 +186,7 @@ pub fn show_failure(
                 if let Err(e) = window.hide() {
                     tracing::warn!("failed to hide the error window: {e}");
                 }
+                ERROR_WINDOW.with(|cell| cell.borrow_mut().take());
                 on_opened(core, reopened);
             }
             Err(e) => {
@@ -176,6 +204,7 @@ pub fn show_failure(
         slint::CloseRequestResponse::HideWindow
     });
     window.show()?;
+    ERROR_WINDOW.with(|cell| *cell.borrow_mut() = Some(window.as_weak()));
     if let Some(dir) = screenshot_dir {
         let weak = window.as_weak();
         slint::Timer::single_shot(Duration::from_millis(800), move || {

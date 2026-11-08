@@ -291,7 +291,7 @@ pub fn run_command(command: Command) {
     let app = APP.with(|cell| cell.borrow().clone());
     if let Some(app) = app {
         app.handle(command);
-    } else {
+    } else if !crate::startup::run_command(command) {
         tracing::warn!("command {command:?} arrived before the app was ready");
     }
 }

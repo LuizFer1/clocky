@@ -65,6 +65,12 @@ fn run() -> anyhow::Result<()> {
     // Only the primary instance logs: a second launch must not touch the running one's log.
     start_logging();
     select_backend()?;
+    // Claim the single-instance name before the database is opened: a second launch then
+    // reaches this instance even while the database error window is up (it never gets its own
+    // window on the same file), and during the seconds a cold start takes.
+    if screenshot_dir.is_none() {
+        instance::listen(app::run_command)?;
+    }
     let app = match startup::open_core(screenshot_dir.is_some()) {
         Ok((core, reopened)) => start_app(core, &reopened, screenshot_dir)?,
         Err(failure) => return recover(failure, screenshot_dir),
@@ -84,11 +90,6 @@ fn start_app(
     reopened: &core::Reopened,
     screenshot_dir: Option<std::path::PathBuf>,
 ) -> anyhow::Result<std::rc::Rc<app::App>> {
-    // Listen before creating the windows: that can take seconds on a cold start, and a launch
-    // during it must reach this instance instead of starting a second one.
-    if screenshot_dir.is_none() {
-        instance::listen(app::run_command)?;
-    }
     if demo::requested() {
         match demo::seed_if_empty(&mut core, &chrono::Local) {
             Ok(seeded) => tracing::info!("demo data requested (seeded: {seeded})"),
