@@ -8,10 +8,14 @@
 //! sessions: with clipping, the overview of a day and the weekly column of that day agree.
 
 mod error;
+mod overview;
 mod period;
+mod rows;
 
 pub use error::ReportError;
+pub use overview::{Overview, ProjectTotal, TaskTotal, overview};
 pub use period::Period;
+pub use rows::{ProjectInfo, TaskInfo};
 
 #[cfg(test)]
 mod test_support;
