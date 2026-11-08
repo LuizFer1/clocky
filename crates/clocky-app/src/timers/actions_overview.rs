@@ -65,17 +65,27 @@ impl TimerPanels {
         self.render();
     }
 
+    /// "Registrar tudo" / "Descartar". If the tracker refuses, the dialog stays up (the notice
+    /// says it failed) so the user can try again.
     pub(super) fn forgotten_answer(&self, record: bool) {
         let Some(id) = self.state.borrow_mut().forgotten.take() else {
             return;
         };
-        if record {
-            self.stop(id);
+        let done = if record {
+            self.stop(id)
         } else {
-            self.command("discard stopwatch", |t, _| t.discard(id));
-            "Sessão descartada".clone_into(&mut self.state.borrow_mut().notice);
-            self.render();
+            let discarded = self.command("discard stopwatch", |t, _| t.discard(id));
+            if discarded.is_some() {
+                "Sessão descartada".clone_into(&mut self.state.borrow_mut().notice);
+            }
+            discarded.is_some()
+        };
+        if !done {
+            let mut state = self.state.borrow_mut();
+            state.forgotten = Some(id);
+            state.forgotten_asked.insert(id);
         }
+        self.render();
     }
 
     /// "Vincular tarefa" / "Trocar": opens the picker for the timer shown now. The choice goes
