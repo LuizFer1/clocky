@@ -79,8 +79,6 @@ fn launch_agent_file_is_named_after_its_label() {
 /// Run key. The guard deletes the key even when an assertion fails.
 #[cfg(windows)]
 mod registry {
-    use std::time::{SystemTime, UNIX_EPOCH};
-
     use winreg::RegKey;
     use winreg::enums::HKEY_CURRENT_USER;
 
@@ -98,14 +96,7 @@ mod registry {
 
     #[test]
     fn run_value_is_written_read_and_removed() {
-        let nanos = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        let key = Throwaway(format!(
-            r"Software\ClockyTest-{}-{nanos}",
-            std::process::id()
-        ));
+        let key = Throwaway(format!(r"Software\ClockyTest-{}", std::process::id()));
         let reg = Registry::new(&format!(r"{}\Run", key.0));
         assert!(!reg.is_enabled().unwrap());
         reg.disable().unwrap();

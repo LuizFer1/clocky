@@ -1,0 +1,31 @@
+// State of the Configurações page. Rust (`src/manage/settings.rs`) fills it from the settings
+// table and saves every change right away.
+
+export global SettingsState {
+    in property <bool> dark: true;
+    // "8h"
+    in property <string> forgotten: "8h";
+    in property <bool> forgotten-at-min;
+    in property <bool> forgotten-at-max;
+    // Foco, Pausa curta, Pausa longa (min) and Fluxos.
+    in property <[int]> wizard: [25, 5, 15, 4];
+    in property <[bool]> wizard-at-min: [false, false, false, false];
+    in property <[bool]> wizard-at-max: [false, false, false, false];
+    // "25 · 5 · 15 min · 4×"
+    in property <string> wizard-summary;
+    // The real OS state.
+    in property <bool> autostart;
+    // `false` where the OS has no entry to write.
+    in property <bool> autostart-available: true;
+    // Why the last change failed, or empty.
+    in property <string> autostart-error;
+    // "Abre o Clocky na bandeja quando você entra no Windows."
+    in property <string> autostart-help;
+    in-out property <string> alarm-sound;
+
+    callback set-theme(bool);
+    callback step-forgotten(int);
+    callback step-wizard(int, int);
+    callback set-autostart(bool);
+    callback alarm-sound-edited(string);
+}

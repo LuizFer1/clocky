@@ -3,7 +3,7 @@
 use std::time::Duration;
 
 use chrono::{Datelike, NaiveDate};
-use clocky_core::reports::Weekly;
+use clocky_core::reports::{DayTotals, Weekly};
 use slint::{ModelRc, VecModel};
 
 use super::{project_label, share};
@@ -35,35 +35,7 @@ pub fn build(weekly: &Weekly, today: NaiveDate) -> WeeklyView {
     let days = weekly
         .days
         .iter()
-        .map(|day| {
-            // Top to bottom: the week's smallest project on top, the largest at the base.
-            let parts: Vec<ui::StackPart> = day
-                .projects
-                .iter()
-                .rev()
-                .filter(|p| !p.total.is_zero())
-                .map(|p| {
-                    let (_, color, none) = project_label(p.project.as_ref());
-                    ui::StackPart {
-                        color,
-                        none,
-                        size: share(p.total, day.total),
-                    }
-                })
-                .collect();
-            ui::DayColumn {
-                weekday: dates::weekday_short(day.date.weekday()).into(),
-                day: day.date.day().to_string().into(),
-                total: if day.total.is_zero() {
-                    "".into()
-                } else {
-                    format::duration(day.total).into()
-                },
-                height: share(day.total, scale_len),
-                parts: ModelRc::new(VecModel::from(parts)),
-                today: day.date == today,
-            }
-        })
+        .map(|day| day_column(day, scale_len, today))
         .collect();
     let largest = weekly.projects.first().map(|p| p.total).unwrap_or_default();
     let projects = weekly
@@ -88,6 +60,37 @@ pub fn build(weekly: &Weekly, today: NaiveDate) -> WeeklyView {
         scale_top: hours_label(half * 2),
         scale_mid: hours_label(half),
         projects,
+    }
+}
+
+/// A day's column: its height on the scale and its slices.
+fn day_column(day: &DayTotals, scale_len: Duration, today: NaiveDate) -> ui::DayColumn {
+    // Top to bottom: the week's smallest project on top, the largest at the base.
+    let parts: Vec<ui::StackPart> = day
+        .projects
+        .iter()
+        .rev()
+        .filter(|p| !p.total.is_zero())
+        .map(|p| {
+            let (_, color, none) = project_label(p.project.as_ref());
+            ui::StackPart {
+                color,
+                none,
+                size: share(p.total, day.total),
+            }
+        })
+        .collect();
+    ui::DayColumn {
+        weekday: dates::weekday_short(day.date.weekday()).into(),
+        day: day.date.day().to_string().into(),
+        total: if day.total.is_zero() {
+            "".into()
+        } else {
+            format::duration(day.total).into()
+        },
+        height: share(day.total, scale_len),
+        parts: ModelRc::new(VecModel::from(parts)),
+        today: day.date == today,
     }
 }
 

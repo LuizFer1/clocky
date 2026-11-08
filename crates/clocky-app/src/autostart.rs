@@ -2,7 +2,7 @@
 //!
 //! - Windows: the value `Clocky` = `"<exe>"` under `HKCU\…\CurrentVersion\Run`.
 //! - Linux: an XDG autostart entry, `~/.config/autostart/clocky.desktop`.
-//! - macOS: a LaunchAgent, `~/Library/LaunchAgents/app.clocky.plist`.
+//! - macOS: a `LaunchAgent`, `~/Library/LaunchAgents/app.clocky.plist`.
 //!
 //! The OS state is the truth: the toggle shows [`Autostart::is_enabled`]. The app holds a
 //! `Box<dyn Autostart>`; screenshot runs and tests get [`Fake`], so they never write the real
@@ -16,7 +16,7 @@ use std::path::{Path, PathBuf};
 
 /// Name of the Run value and of the files.
 const NAME: &str = "Clocky";
-/// Label of the macOS LaunchAgent (also its file name).
+/// Label of the macOS `LaunchAgent` (also its file name).
 const LAUNCH_AGENT_LABEL: &str = "app.clocky";
 
 /// Turns the start with the system on and off.
@@ -40,6 +40,8 @@ pub fn set(backend: &dyn Autostart, on: bool) -> io::Result<bool> {
 }
 
 /// The real entry of this OS; `None` where there is none (or no home directory).
+// Always `Some` on Windows, not on the other systems.
+#[allow(clippy::unnecessary_wraps)]
 pub fn system() -> Option<Box<dyn Autostart>> {
     #[cfg(windows)]
     {
@@ -103,7 +105,7 @@ impl FileEntry {
         }
     }
 
-    /// `<dir>/app.clocky.plist` (LaunchAgent).
+    /// `<dir>/app.clocky.plist` (`LaunchAgent`).
     pub fn launch_agent(dir: &Path) -> Self {
         Self {
             path: dir.join(format!("{LAUNCH_AGENT_LABEL}.plist")),
@@ -157,7 +159,7 @@ pub fn desktop_entry(exe: &Path) -> String {
     )
 }
 
-/// The LaunchAgent: runs the exe at login (`RunAtLoad`), without restarting it on exit.
+/// The `LaunchAgent`: runs the exe at login (`RunAtLoad`), without restarting it on exit.
 #[cfg_attr(windows, allow(dead_code))]
 pub fn launch_agent_plist(exe: &Path) -> String {
     let exe = xml_escape(&exe.to_string_lossy());

@@ -136,6 +136,6 @@ mod tests {
         assert_eq!(overview.total, Duration::from_mins(17));
         core.delete_session(id).unwrap();
         assert!(core.session_report(id).is_err());
-        assert!(core.daily(day, &Utc).unwrap().blocks.is_empty());
+        assert_eq!(core.daily(day, &Utc).unwrap().blocks.len(), 0);
     }
 }

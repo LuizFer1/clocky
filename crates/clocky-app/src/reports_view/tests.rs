@@ -262,6 +262,14 @@ fn daily_places_sessions_and_markers_on_the_hours() {
             ("Capítulo 4".to_owned(), "08:52".to_owned(), true),
         ]
     );
+}
+
+#[test]
+fn daily_lists_the_sessions_with_their_milestones() {
+    let core = demo_core();
+    let Content::Daily(day) = view(&core, &nav(Tab::Daily, d(11, 6))).content else {
+        panic!("not the day")
+    };
     let row = &day.sessions[0];
     assert_eq!(row.range, "08:00 – 09:10");
     assert_eq!(row.task, "ler 20 páginas");

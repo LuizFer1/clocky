@@ -45,59 +45,12 @@ where
 {
     let hh_mm = |at: Timestamp| format::hh_mm_in(at, tz);
     let (project, color, none) = project_label(report.project.as_ref());
-    let axis = Axis {
-        start: report.started_at,
-        end: report.ended_at,
-    };
     let date = tz
         .timestamp_millis_opt(report.started_at.as_millis())
         .earliest()
         .map_or(today, |t| t.date_naive());
     let pause_total: Duration = report.pauses.iter().map(|p| p.duration).sum();
-    let mut events = vec![(
-        report.started_at,
-        0,
-        event(
-            ui::SessionEventKind::Edge,
-            hh_mm(report.started_at),
-            "Início",
-            "",
-        ),
-    )];
-    for pause in &report.pauses {
-        let time = format!("{} – {}", hh_mm(pause.start), hh_mm(pause.end));
-        let detail = format::duration(pause.duration);
-        events.push((
-            pause.start,
-            1,
-            event(ui::SessionEventKind::Pause, time, "Pausa", &detail),
-        ));
-    }
-    for milestone in &report.milestones {
-        let marker = &milestone.marker;
-        let kind = match marker.kind {
-            SubtaskEventKind::Completed => ui::SessionEventKind::Done,
-            SubtaskEventKind::Reopened => ui::SessionEventKind::Reopened,
-        };
-        let detail = format!("aos {}", format::duration(milestone.offset));
-        events.push((
-            marker.at,
-            2,
-            event(kind, hh_mm(marker.at), &marker.name, &detail),
-        ));
-    }
-    events.push((
-        report.ended_at,
-        3,
-        event(
-            ui::SessionEventKind::Edge,
-            hh_mm(report.ended_at),
-            "Fim",
-            "",
-        ),
-    ));
-    // Stable: same instant keeps start, pause, milestone, end order.
-    events.sort_by_key(|(at, order, _)| (*at, *order));
+    let (parts, marks) = bar(report, tz);
     SessionView {
         task: report
             .task
@@ -117,24 +70,8 @@ where
         effective: format::duration(report.effective),
         pauses: pauses_text(report.pauses.len(), pause_total),
         wall: format::duration(report.wall),
-        parts: report
-            .segments
-            .iter()
-            .map(|s| ui::TimelinePart {
-                start: axis.at(s.start),
-                size: axis.len(s.start, s.end),
-            })
-            .collect(),
-        marks: report
-            .milestones
-            .iter()
-            .map(|m| ui::TimelineMarker {
-                at: axis.at(m.marker.at),
-                name: m.marker.name.as_str().into(),
-                time: hh_mm(m.marker.at).into(),
-                done: m.marker.kind == SubtaskEventKind::Completed,
-            })
-            .collect(),
+        parts,
+        marks,
         ticks: vec![
             ui::HourTick {
                 at: 0.0,
@@ -145,8 +82,71 @@ where
                 label: hh_mm(report.ended_at).into(),
             },
         ],
-        events: events.into_iter().map(|(_, _, e)| e).collect(),
+        events: events(report, tz),
     }
+}
+
+/// The running parts and the milestones on the bar from start to end.
+fn bar<Tz: TimeZone>(
+    report: &SessionReport,
+    tz: &Tz,
+) -> (Vec<ui::TimelinePart>, Vec<ui::TimelineMarker>)
+where
+    Tz::Offset: Display,
+{
+    let axis = Axis {
+        start: report.started_at,
+        end: report.ended_at,
+    };
+    let parts = report
+        .segments
+        .iter()
+        .map(|s| ui::TimelinePart {
+            start: axis.at(s.start),
+            size: axis.len(s.start, s.end),
+        })
+        .collect();
+    let marks = report
+        .milestones
+        .iter()
+        .map(|m| ui::TimelineMarker {
+            at: axis.at(m.marker.at),
+            name: m.marker.name.as_str().into(),
+            time: format::hh_mm_in(m.marker.at, tz).into(),
+            done: m.marker.kind == SubtaskEventKind::Completed,
+        })
+        .collect();
+    (parts, marks)
+}
+
+/// Start, pauses, milestones and end, by time.
+fn events<Tz: TimeZone>(report: &SessionReport, tz: &Tz) -> Vec<ui::SessionEvent>
+where
+    Tz::Offset: Display,
+{
+    let hh_mm = |at: Timestamp| format::hh_mm_in(at, tz);
+    let edge = |at: Timestamp, text: &str| event(ui::SessionEventKind::Edge, hh_mm(at), text, "");
+    let mut events = vec![(report.started_at, 0, edge(report.started_at, "Início"))];
+    for pause in &report.pauses {
+        let time = format!("{} – {}", hh_mm(pause.start), hh_mm(pause.end));
+        let detail = format::duration(pause.duration);
+        let line = event(ui::SessionEventKind::Pause, time, "Pausa", &detail);
+        events.push((pause.start, 1, line));
+    }
+    for milestone in &report.milestones {
+        let marker = &milestone.marker;
+        let kind = match marker.kind {
+            SubtaskEventKind::Completed => ui::SessionEventKind::Done,
+            SubtaskEventKind::Reopened => ui::SessionEventKind::Reopened,
+        };
+        let detail = format!("aos {}", format::duration(milestone.offset));
+        let line = event(kind, hh_mm(marker.at), &marker.name, &detail);
+        events.push((marker.at, 2, line));
+    }
+    events.push((report.ended_at, 3, edge(report.ended_at, "Fim")));
+    // Same instant: start, pause, milestone, end.
+    events.sort_by_key(|(at, order, _)| (*at, *order));
+    events.into_iter().map(|(_, _, e)| e).collect()
 }
 
 fn event(kind: ui::SessionEventKind, time: String, text: &str, detail: &str) -> ui::SessionEvent {

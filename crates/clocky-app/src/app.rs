@@ -19,6 +19,8 @@ use crate::{notify, sound};
 use crate::{tray, ui};
 // M6b: timer panels.
 use crate::timers::{self, TimerPanels};
+// M7b: Configurações.
+use crate::settings_view::Applied;
 
 thread_local! {
     /// The running app, for commands that arrive from other threads (single instance).
@@ -79,6 +81,7 @@ impl App {
             timers,
         });
         app.connect();
+        app.connect_settings();
         APP.with(|cell| *cell.borrow_mut() = Some(app.clone()));
         Ok(app)
     }
@@ -276,6 +279,30 @@ impl App {
                 }
             }),
             done: Box::new(quit),
+        });
+    }
+}
+
+/// M7b: Configurações. The theme and the wizard defaults apply right away; the real autostart
+/// entry is only used by interactive runs (screenshot runs keep the in-memory one).
+impl App {
+    fn connect_settings(self: &Rc<Self>) {
+        if !self.screenshot_mode
+            && let Some(backend) = crate::autostart::system()
+        {
+            self.manage.set_autostart_backend(backend);
+        }
+        let weak = Rc::downgrade(self);
+        self.manage.set_on_settings(move |applied| {
+            let Some(app) = weak.upgrade() else { return };
+            match applied {
+                Applied::Theme(dark) => {
+                    app.settings.borrow_mut().dark_theme = dark;
+                    app.set_dark(dark);
+                }
+                Applied::Wizard => app.timers.reload_wizard_defaults(),
+                Applied::Stored => {}
+            }
         });
     }
 }
