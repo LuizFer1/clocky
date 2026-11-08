@@ -89,7 +89,7 @@ fn select_backend() -> anyhow::Result<()> {
 }
 
 /// Wayland does not let an app place its own windows, and the dock must sit at a screen edge.
-/// So on Linux the app goes through X11 (XWayland on Wayland desktops) whenever `DISPLAY` is set.
+/// So on Linux the app goes through X11 (`XWayland` on Wayland desktops) whenever `DISPLAY` is set.
 #[cfg(all(unix, not(target_vendor = "apple")))]
 fn linux_event_loop_builder() -> slint::winit_030::EventLoopBuilder {
     use slint::winit_030::winit::platform::x11::EventLoopBuilderExtX11;
