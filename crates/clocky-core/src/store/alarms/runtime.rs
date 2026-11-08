@@ -54,13 +54,32 @@ impl Store {
     /// Records that the occurrence due at `at` was handled (it rang or was reported as
     /// missed): clears the snooze, sets `last_fired_at` and disables a once-alarm.
     ///
-    /// `at` is the due instant returned by [`Store::pending_alarms`], not the current time.
+    /// `at` is the due instant returned by [`Store::pending_alarms`] and `now` the instant
+    /// passed to it: call it in the same tick, before any [`Store::snooze_alarm`].
+    ///
+    /// A stale mark is ignored, so it never drops a snooze or moves `last_fired_at` back (which
+    /// would ring a later occurrence twice): when the alarm is snoozed until after `at`, or
+    /// already handled an occurrence after `at` that is not in the future. A `last_fired_at`
+    /// later than `now` means the clock moved back; [`AlarmSchedule::pending`] ignores it and
+    /// reports `at` again, so that mark is written, or the alarm would ring on every tick.
     ///
     /// # Errors
     /// [`StoreError::NotFound`] if the alarm does not exist; [`StoreError::Corrupt`] or
     /// [`StoreError::OutOfRange`] if a stored value is invalid.
-    pub fn mark_alarm_fired(&mut self, id: AlarmId, at: Timestamp) -> Result<(), StoreError> {
-        self.change_schedule(id, |alarm| Ok(Some(alarm.schedule().after_fired(at))))?;
+    pub fn mark_alarm_fired(
+        &mut self,
+        id: AlarmId,
+        at: Timestamp,
+        now: Timestamp,
+    ) -> Result<(), StoreError> {
+        self.change_schedule(id, |alarm| {
+            let snoozed_later = alarm.snoozed_until.is_some_and(|until| until > at);
+            let fired_later = alarm
+                .last_fired_at
+                .is_some_and(|fired| fired > at && fired <= now);
+            let stale = snoozed_later || fired_later;
+            Ok((!stale).then(|| alarm.schedule().after_fired(at)))
+        })?;
         Ok(())
     }
 

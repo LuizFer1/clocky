@@ -2,6 +2,12 @@ use super::super::test_support::{at_time, brt, daily, nov, time};
 use super::super::{AlarmId, NewAlarm, Store, StoreError};
 use crate::alarms::{Firing, Weekdays};
 use crate::test_util::{TempDb, mins};
+use crate::time::Timestamp;
+
+/// Marks the occurrence due at `due` as handled, noticed right on time.
+fn fire(store: &mut Store, id: AlarmId, due: Timestamp) {
+    store.mark_alarm_fired(id, due, due).unwrap();
+}
 
 #[test]
 fn pending_alarms_are_sorted_and_firing_handles_them() {
@@ -25,7 +31,7 @@ fn pending_alarms_are_sorted_and_firing_handles_them() {
     );
 
     for (id, due, _) in pending {
-        store.mark_alarm_fired(id, due).unwrap();
+        fire(&mut store, id, due);
         let alarm = store.alarm(id).unwrap();
         assert_eq!(alarm.last_fired_at, Some(due));
         assert!(alarm.enabled, "a repeating alarm stays enabled");
@@ -44,7 +50,7 @@ fn once_alarm_is_disabled_after_firing_and_rings_again_when_rearmed() {
     let pending = store.pending_alarms(nov(2, 10, 0), &brt()).unwrap();
     assert_eq!(pending, vec![(id, nov(2, 10, 0), Firing::OnTime)]);
 
-    store.mark_alarm_fired(id, nov(2, 10, 0)).unwrap();
+    fire(&mut store, id, nov(2, 10, 0));
     assert!(!store.alarm(id).unwrap().enabled);
     assert_eq!(store.pending_alarms(nov(3, 10, 0), &brt()).unwrap(), vec![]);
     assert_eq!(store.next_alarm(nov(2, 10, 1), &brt()).unwrap(), None);
@@ -64,7 +70,7 @@ fn snooze_survives_reopening_the_file() {
     let db = TempDb::new("alarms-snooze");
     let mut store = Store::open(db.path()).unwrap();
     let id = daily(&mut store, 10, 0);
-    store.mark_alarm_fired(id, nov(2, 10, 0)).unwrap();
+    fire(&mut store, id, nov(2, 10, 0));
     let until = store.snooze_alarm(id, nov(2, 10, 1)).unwrap();
     assert_eq!(until, Some(nov(2, 10, 6)));
     drop(store);
@@ -79,7 +85,7 @@ fn snooze_survives_reopening_the_file() {
     let pending = store.pending_alarms(nov(2, 10, 6), &brt()).unwrap();
     assert_eq!(pending, vec![(id, nov(2, 10, 6), Firing::OnTime)]);
 
-    store.mark_alarm_fired(id, nov(2, 10, 6)).unwrap();
+    fire(&mut store, id, nov(2, 10, 6));
     let alarm = store.alarm(id).unwrap();
     assert_eq!(alarm.snoozed_until, None);
     assert_eq!(alarm.last_fired_at, Some(nov(2, 10, 6)));
@@ -94,13 +100,13 @@ fn snoozing_a_fired_once_alarm_enables_it_until_the_snooze_rings() {
         ..at_time("once", 10, 0)
     };
     let id = store.create_alarm(&once, nov(2, 6, 0)).unwrap();
-    store.mark_alarm_fired(id, nov(2, 10, 0)).unwrap();
+    fire(&mut store, id, nov(2, 10, 0));
     assert_eq!(
         store.snooze_alarm(id, nov(2, 10, 0)).unwrap(),
         Some(nov(2, 10, 9))
     );
     assert!(store.alarm(id).unwrap().enabled);
-    store.mark_alarm_fired(id, nov(2, 10, 9)).unwrap();
+    fire(&mut store, id, nov(2, 10, 9));
     assert!(!store.alarm(id).unwrap().enabled);
 }
 
@@ -126,7 +132,7 @@ fn next_alarm_is_the_earliest_enabled_one() {
 fn firing_or_snoozing_a_missing_alarm_is_not_found() {
     let mut store = Store::open_in_memory().unwrap();
     assert!(matches!(
-        store.mark_alarm_fired(AlarmId(9), nov(2, 10, 0)),
+        store.mark_alarm_fired(AlarmId(9), nov(2, 10, 0), nov(2, 10, 0)),
         Err(StoreError::NotFound {
             entity: "alarm",
             ..
@@ -151,7 +157,11 @@ fn a_corrupted_alarm_fails_the_runtime_operations() {
         .unwrap();
     assert!(store.pending_alarms(nov(2, 10, 0), &brt()).is_err());
     assert!(store.next_alarm(nov(2, 10, 0), &brt()).is_err());
-    assert!(store.mark_alarm_fired(id, nov(2, 10, 0)).is_err());
+    assert!(
+        store
+            .mark_alarm_fired(id, nov(2, 10, 0), nov(2, 10, 0))
+            .is_err()
+    );
     assert!(store.snooze_alarm(id, nov(2, 10, 0)).is_err());
 }
 
@@ -159,7 +169,7 @@ fn a_corrupted_alarm_fails_the_runtime_operations() {
 fn snoozing_a_disabled_repeating_alarm_does_nothing() {
     let mut store = Store::open_in_memory().unwrap();
     let id = daily(&mut store, 10, 0);
-    store.mark_alarm_fired(id, nov(2, 10, 0)).unwrap();
+    fire(&mut store, id, nov(2, 10, 0));
     store.set_alarm_enabled(id, false, nov(2, 10, 1)).unwrap();
     assert_eq!(store.snooze_alarm(id, nov(2, 10, 1)).unwrap(), None);
     let alarm = store.alarm(id).unwrap();
@@ -176,7 +186,7 @@ fn snoozing_a_disabled_repeating_alarm_does_nothing() {
 fn reenabling_clears_a_leftover_snooze() {
     let mut store = Store::open_in_memory().unwrap();
     let id = daily(&mut store, 10, 0);
-    store.mark_alarm_fired(id, nov(2, 10, 0)).unwrap();
+    fire(&mut store, id, nov(2, 10, 0));
     store
         .conn
         .execute(
@@ -202,7 +212,7 @@ fn editing_a_snoozed_once_alarm_does_not_ring_again() {
         ..at_time("once", 10, 0)
     };
     let id = store.create_alarm(&once, nov(2, 6, 0)).unwrap();
-    store.mark_alarm_fired(id, nov(2, 10, 0)).unwrap();
+    fire(&mut store, id, nov(2, 10, 0));
     store.snooze_alarm(id, nov(2, 10, 0)).unwrap();
 
     let reworded = NewAlarm {
@@ -221,7 +231,7 @@ fn editing_a_snoozed_once_alarm_does_not_ring_again() {
 fn editing_after_firing_today_does_not_fire_again() {
     let mut store = Store::open_in_memory().unwrap();
     let id = daily(&mut store, 10, 0);
-    store.mark_alarm_fired(id, nov(2, 10, 0)).unwrap();
+    fire(&mut store, id, nov(2, 10, 0));
     let earlier = NewAlarm {
         repeat: Weekdays::EVERY_DAY,
         ..at_time("daily", 10, 10)
@@ -236,4 +246,46 @@ fn editing_after_firing_today_does_not_fire_again() {
         store.next_alarm(nov(2, 10, 30), &brt()).unwrap(),
         Some((id, nov(3, 10, 10)))
     );
+}
+
+#[test]
+fn a_stale_mark_keeps_the_snooze() {
+    let mut store = Store::open_in_memory().unwrap();
+    let id = daily(&mut store, 10, 0);
+    fire(&mut store, id, nov(2, 10, 0));
+    store.snooze_alarm(id, nov(2, 10, 1)).unwrap();
+    store
+        .mark_alarm_fired(id, nov(2, 10, 0), nov(2, 10, 2))
+        .unwrap();
+    assert_eq!(store.alarm(id).unwrap().snoozed_until, Some(nov(2, 10, 6)));
+    let pending = store.pending_alarms(nov(2, 10, 6), &brt()).unwrap();
+    assert_eq!(pending, vec![(id, nov(2, 10, 6), Firing::OnTime)]);
+}
+
+#[test]
+fn an_out_of_order_mark_keeps_the_later_fire() {
+    let mut store = Store::open_in_memory().unwrap();
+    let id = daily(&mut store, 10, 0);
+    fire(&mut store, id, nov(3, 10, 0));
+    store
+        .mark_alarm_fired(id, nov(2, 10, 0), nov(3, 10, 1))
+        .unwrap();
+    assert_eq!(store.alarm(id).unwrap().last_fired_at, Some(nov(3, 10, 0)));
+    assert_eq!(store.pending_alarms(nov(3, 10, 5), &brt()).unwrap(), vec![]);
+}
+
+#[test]
+fn a_mark_after_the_clock_moved_back_is_kept() {
+    let mut store = Store::open_in_memory().unwrap();
+    let id = daily(&mut store, 10, 0);
+    fire(&mut store, id, nov(3, 10, 0));
+
+    // The clock moves back a day: the fire on the 3rd is in the future, so the 10:00 of the
+    // 2nd rings again, and marking it must stop it from ringing on every tick.
+    let now = nov(2, 10, 0);
+    let pending = store.pending_alarms(now, &brt()).unwrap();
+    assert_eq!(pending, vec![(id, nov(2, 10, 0), Firing::OnTime)]);
+    store.mark_alarm_fired(id, nov(2, 10, 0), now).unwrap();
+    assert_eq!(store.alarm(id).unwrap().last_fired_at, Some(nov(2, 10, 0)));
+    assert_eq!(store.pending_alarms(nov(2, 10, 1), &brt()).unwrap(), vec![]);
 }
