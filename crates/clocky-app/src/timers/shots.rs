@@ -150,7 +150,7 @@ fn step(run: &Rc<Run>, index: usize) {
 }
 
 fn seed(run: &Run) {
-    let seeded = demo::seed(&mut run.ctx.panels.handle().borrow_mut());
+    let seeded = demo::seed(&mut run.ctx.panels.core().borrow_mut());
     match seeded {
         Ok(timers) => run.demo.set(Some(timers)),
         Err(e) => tracing::error!("demo seeding failed: {e:#}"),
@@ -164,7 +164,7 @@ fn forget(run: &Run) {
     let result = run
         .ctx
         .panels
-        .handle()
+        .core()
         .borrow_mut()
         .tracker_mut()
         .store_mut()

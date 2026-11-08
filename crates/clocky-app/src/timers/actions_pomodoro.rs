@@ -24,7 +24,7 @@ impl TimerPanels {
             return;
         };
         let task = {
-            let handle = self.handle.borrow();
+            let handle = self.core.borrow();
             let presets = handle
                 .tracker()
                 .store()
@@ -62,7 +62,7 @@ impl TimerPanels {
 
     fn pomodoro_start(&self, id: PomodoroPresetId) {
         let config = {
-            let handle = self.handle.borrow();
+            let handle = self.core.borrow();
             let presets = handle
                 .tracker()
                 .store()
@@ -102,7 +102,7 @@ impl TimerPanels {
     /// Reads the wizard defaults from the store settings (constants when unset or invalid).
     pub(super) fn load_wizard_defaults(&self) {
         let values: Vec<Option<String>> = {
-            let handle = self.handle.borrow();
+            let handle = self.core.borrow();
             let store = handle.tracker().store();
             DEFAULT_KEYS
                 .iter()

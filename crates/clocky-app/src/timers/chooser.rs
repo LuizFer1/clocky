@@ -14,7 +14,7 @@ use clocky_core::store::Store;
 use slint::{ComponentHandle, Model, VecModel};
 
 use super::convert::{color, row_from_ui, row_to_ui};
-use crate::tracker_handle::TrackerHandle;
+use crate::core::AppCore;
 use crate::ui;
 
 /// Called with the chosen task (`None` = "Sem tarefa"). Not called when the user cancels.
@@ -27,13 +27,13 @@ pub trait TaskChooser {
 
 pub struct ListChooser {
     ui: slint::Weak<ui::PanelWindow>,
-    handle: Rc<RefCell<TrackerHandle>>,
+    handle: Rc<RefCell<AppCore>>,
     rows: Rc<VecModel<ui::ChooserRow>>,
     pending: Rc<RefCell<Option<OnChosen>>>,
 }
 
 impl ListChooser {
-    pub fn new(ui: &ui::PanelWindow, handle: Rc<RefCell<TrackerHandle>>) -> Self {
+    pub fn new(ui: &ui::PanelWindow, handle: Rc<RefCell<AppCore>>) -> Self {
         let chooser = Self {
             ui: ui.as_weak(),
             handle,

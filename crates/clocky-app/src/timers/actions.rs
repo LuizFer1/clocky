@@ -23,7 +23,7 @@ impl TimerPanels {
         f: impl FnOnce(&mut Tracker, Timestamp) -> Result<T, TrackerError>,
     ) -> Option<T> {
         let result = {
-            let mut handle = self.handle.borrow_mut();
+            let mut handle = self.core.borrow_mut();
             let now = handle.now();
             f(handle.tracker_mut(), now)
         };
@@ -38,7 +38,7 @@ impl TimerPanels {
     }
 
     pub(super) fn picked(&self, kind: Kind) -> Option<TimerId> {
-        let handle = self.handle.borrow();
+        let handle = self.core.borrow();
         let state = self.state.borrow();
         let selected = match kind {
             Kind::Stopwatch => state.stopwatch,
@@ -54,7 +54,7 @@ impl TimerPanels {
     /// Pause, resume or start the waiting phase, depending on the timer's state.
     pub(super) fn toggle(&self, id: TimerId) {
         let action = {
-            let handle = self.handle.borrow();
+            let handle = self.core.borrow();
             handle.tracker().timers().get(id).map(|a| match &a.timer {
                 Timer::Pomodoro(p) if p.is_waiting() => Toggle::StartPhase,
                 Timer::Pomodoro(p) if p.is_running() => Toggle::Pause,
@@ -78,7 +78,7 @@ impl TimerPanels {
     pub(super) fn stop(&self, id: TimerId) {
         // The ready stopwatch keeps the task of the session that just ended (screen 32).
         let stopwatch_task = {
-            let handle = self.handle.borrow();
+            let handle = self.core.borrow();
             handle
                 .tracker()
                 .timers()
@@ -167,7 +167,7 @@ impl TimerPanels {
         let name = name.trim();
         let task = match self.picked(Kind::Stopwatch) {
             Some(id) => self
-                .handle
+                .core
                 .borrow()
                 .tracker()
                 .timers()
@@ -233,7 +233,7 @@ impl TimerPanels {
     }
 
     fn timer_preset(&self, id: TimerPresetId) -> Option<(std::time::Duration, Option<TaskId>)> {
-        let handle = self.handle.borrow();
+        let handle = self.core.borrow();
         let presets = handle.tracker().store().timer_presets();
         presets
             .inspect_err(|e| tracing::warn!("cannot read the timer presets: {e}"))
@@ -300,7 +300,7 @@ impl TimerPanels {
     pub(super) fn dismiss(&self, id: Option<TimerId>) {
         {
             let mut state = self.state.borrow_mut();
-            let handle = self.handle.borrow();
+            let handle = self.core.borrow();
             let target = id.or_else(|| {
                 pick_countdown(handle.tracker().timers(), &state.ringing, state.countdown)
             });

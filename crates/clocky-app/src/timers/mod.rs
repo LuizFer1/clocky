@@ -1,8 +1,9 @@
 //! The timer panels (M6b): Cronômetro, Temporizador, Pomodoro and Ativos, driven by the core
 //! `Tracker`.
 //!
-//! [`TimerPanels`] owns the tracker handle and the panel state, fills the `TimerUi` global and
-//! answers its callbacks. Everything runs on the UI thread. Borrows of the handle and the state
+//! [`TimerPanels`] shares the [`AppCore`] (which owns the tracker), owns the panel state, fills
+//! the `TimerUi` global and answers its callbacks. Everything runs on the UI thread. Borrows of
+//! the core and the state
 //! are short and never held while Slint is called: a frame is built first, then applied.
 
 mod actions;
@@ -44,8 +45,8 @@ use chooser::{ListChooser, TaskChooser};
 use names::Names;
 use state::{PomodoroPick, State, View};
 
+use crate::core::{AppCore, Reopened};
 use crate::panel::PanelKind;
-use crate::tracker_handle::{Opened, TrackerHandle};
 use crate::ui;
 
 /// What the app does after a tick.
@@ -59,7 +60,7 @@ pub struct TickOutcome {
 
 pub struct TimerPanels {
     ui: slint::Weak<ui::PanelWindow>,
-    handle: Rc<RefCell<TrackerHandle>>,
+    core: Rc<RefCell<AppCore>>,
     state: RefCell<State>,
     models: Models,
     alerts: Box<dyn Alerts>,
@@ -74,22 +75,16 @@ pub struct TimerPanels {
 impl TimerPanels {
     pub fn new(
         window: &ui::PanelWindow,
-        opened: Opened,
+        core: Rc<RefCell<AppCore>>,
+        reopened: &Reopened,
         alerts: Box<dyn Alerts>,
         interactive: bool,
     ) -> Rc<Self> {
-        let Opened {
-            handle,
-            events,
-            before,
-            discarded,
-        } = opened;
-        let handle = Rc::new(RefCell::new(handle));
-        let chooser = Box::new(ListChooser::new(window, handle.clone()));
+        let chooser = Box::new(ListChooser::new(window, core.clone()));
         let models = Models::install(&window.global::<ui::TimerUi>());
         let panels = Rc::new_cyclic(|weak| Self {
             ui: window.as_weak(),
-            handle,
+            core,
             state: RefCell::new(State::new()),
             models,
             alerts,
@@ -99,12 +94,7 @@ impl TimerPanels {
             weak: weak.clone(),
         });
         panels.load_wizard_defaults();
-        panels.reopened(&events, &before);
-        if let Some(why) = discarded {
-            panels.state.borrow_mut().notice = format!(
-                "Os timers ativos não puderam ser restaurados e foram descartados ({why})."
-            );
-        }
+        panels.reopened(&reopened.events, &reopened.before);
         connect::connect(&panels);
         panels
     }
@@ -121,14 +111,14 @@ impl TimerPanels {
     }
 
     /// The tracker, for the demo seeding of the screenshot hook.
-    pub fn handle(&self) -> &Rc<RefCell<TrackerHandle>> {
-        &self.handle
+    pub fn core(&self) -> &Rc<RefCell<AppCore>> {
+        &self.core
     }
 
     /// A radial option was chosen: shows the right view of its panel.
     pub fn show(&self, kind: PanelKind) {
         {
-            let handle = self.handle.borrow();
+            let handle = self.core.borrow();
             let timers = handle.tracker().timers();
             let mut state = self.state.borrow_mut();
             if std::mem::take(&mut state.notice_seen) {
@@ -171,7 +161,7 @@ impl TimerPanels {
     /// refreshes the visible panel.
     pub fn tick(&self) -> TickOutcome {
         let result = {
-            let mut handle = self.handle.borrow_mut();
+            let mut handle = self.core.borrow_mut();
             let now = handle.now();
             let infos = infos_of_due(&handle, now);
             handle.tracker_mut().tick(now).map(|events| (events, infos))
@@ -201,7 +191,7 @@ impl TimerPanels {
     }
 
     pub fn active_count(&self) -> i32 {
-        let count = self.handle.borrow().tracker().timers().iter().count();
+        let count = self.core.borrow().tracker().timers().iter().count();
         i32::try_from(count).unwrap_or(i32::MAX)
     }
 
@@ -256,7 +246,7 @@ impl TimerPanels {
         if let Some(info) = infos.get(&timer) {
             return info.clone();
         }
-        let handle = self.handle.borrow();
+        let handle = self.core.borrow();
         let tracker = handle.tracker();
         tracker.timers().get(timer).map_or_else(
             || TimerInfo {
@@ -275,7 +265,7 @@ impl TimerPanels {
             return;
         }
         let infos = {
-            let handle = self.handle.borrow();
+            let handle = self.core.borrow();
             infos_of(&handle, &before.iter().collect::<Vec<_>>())
         };
         for event in events {
@@ -291,7 +281,7 @@ impl TimerPanels {
     /// Shows the forgotten dialog for a running stopwatch past the limit, once per stopwatch.
     fn check_forgotten(&self) -> Option<PanelKind> {
         let found = {
-            let handle = self.handle.borrow();
+            let handle = self.core.borrow();
             handle.tracker().forgotten(handle.now())
         };
         let ids = found
@@ -320,7 +310,7 @@ impl TimerPanels {
             return;
         };
         let frame = {
-            let handle = self.handle.borrow();
+            let handle = self.core.borrow();
             let tracker = handle.tracker();
             let mut state = self.state.borrow_mut();
             state::normalize(&mut state, tracker.timers());
@@ -364,7 +354,7 @@ fn linked_tasks(
 }
 
 /// Names of the timers that come due at `now` (a finished countdown leaves the set).
-fn infos_of_due(handle: &TrackerHandle, now: Timestamp) -> HashMap<TimerId, TimerInfo> {
+fn infos_of_due(handle: &AppCore, now: Timestamp) -> HashMap<TimerId, TimerInfo> {
     let due: Vec<&ActiveTimer> = handle
         .tracker()
         .timers()
@@ -374,7 +364,7 @@ fn infos_of_due(handle: &TrackerHandle, now: Timestamp) -> HashMap<TimerId, Time
     infos_of(handle, &due)
 }
 
-fn infos_of(handle: &TrackerHandle, timers: &[&ActiveTimer]) -> HashMap<TimerId, TimerInfo> {
+fn infos_of(handle: &AppCore, timers: &[&ActiveTimer]) -> HashMap<TimerId, TimerInfo> {
     if timers.is_empty() {
         return HashMap::new();
     }
@@ -394,7 +384,7 @@ fn is_due(active: &ActiveTimer, now: Timestamp) -> bool {
 }
 
 /// The kind of an active timer, for opening its panel.
-fn kind_of(handle: &TrackerHandle, id: TimerId) -> Option<Kind> {
+fn kind_of(handle: &AppCore, id: TimerId) -> Option<Kind> {
     handle
         .tracker()
         .timers()

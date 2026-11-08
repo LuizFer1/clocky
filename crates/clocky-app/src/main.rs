@@ -35,9 +35,8 @@ mod sound;
 mod startup;
 mod tour;
 mod tray;
-// M6b: timer panels and the tracker handle (merge: M6a's `core` owns the tracker).
+// M6b: the timer panels.
 mod timers;
-mod tracker_handle;
 
 fn main() {
     match run() {
@@ -66,8 +65,8 @@ fn run() -> anyhow::Result<()> {
     // Only the primary instance logs: a second launch must not touch the running one's log.
     start_logging();
     select_backend()?;
-    let mut core = match startup::open_core() {
-        Ok(core) => core,
+    let (mut core, reopened) = match startup::open_core() {
+        Ok(opened) => opened,
         Err(failure) => {
             // The cause was logged by `open_core`; the window shows it in PT-BR.
             startup::show_failure(&failure, screenshot_dir)?;
@@ -85,7 +84,7 @@ fn run() -> anyhow::Result<()> {
             Err(e) => tracing::warn!("failed to seed the demo data: {e}"),
         }
     }
-    let app = app::App::new(core, screenshot_dir.is_some())?;
+    let app = app::App::new(core, &reopened, screenshot_dir.is_some())?;
     app.start()?;
     if let Some(dir) = screenshot_dir {
         app.schedule_screenshots(dir);

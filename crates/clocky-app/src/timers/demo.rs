@@ -10,7 +10,7 @@ use clocky_core::domain::TimerId;
 use clocky_core::engine::pomodoro::PomodoroConfig;
 use clocky_core::store::NewPomodoroPreset;
 
-use crate::tracker_handle::TrackerHandle;
+use crate::core::AppCore;
 
 /// Environment variable that turns the demo data on (screenshot runs only).
 pub const ENV_VAR: &str = "CLOCKY_DEMO";
@@ -30,13 +30,13 @@ fn mins(m: u64) -> Duration {
     Duration::from_mins(m)
 }
 
-fn ago(handle: &TrackerHandle, secs: i64) -> clocky_core::time::Timestamp {
+fn ago(handle: &AppCore, secs: i64) -> clocky_core::time::Timestamp {
     clocky_core::time::Timestamp::from_millis(handle.now().as_millis() - secs * 1000)
 }
 
 /// Projects, tasks with subtasks, presets and running timers like the handoff screens. The
 /// tea countdown and the deep-work focus are already due: the next tick rings them.
-pub fn seed(handle: &mut TrackerHandle) -> anyhow::Result<DemoTimers> {
+pub fn seed(handle: &mut AppCore) -> anyhow::Result<DemoTimers> {
     let now = handle.now();
     let store = handle.tracker_mut().store_mut();
     let connect = store.create_project("connect", "#3d8fd6", now)?;
@@ -91,7 +91,7 @@ mod tests {
     fn seed_starts_five_timers_and_the_due_ones_finish_on_the_next_tick() {
         let clock = Box::new(FakeClock::new(Timestamp::from_millis(1_794_159_120_000)));
         let store = Store::open_in_memory().unwrap();
-        let mut handle = TrackerHandle::with_store(store, clock).unwrap().handle;
+        let mut handle = AppCore::with_store(store, clock).unwrap().0;
         let demo = seed(&mut handle).unwrap();
         assert_eq!(handle.tracker().timers().iter().count(), 5);
         let now = handle.now();

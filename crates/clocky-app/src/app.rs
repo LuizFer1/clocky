@@ -10,7 +10,7 @@ use slint::ComponentHandle;
 
 use crate::bridge::{self, Bridge};
 use crate::command::Command;
-use crate::core::AppCore;
+use crate::core::{AppCore, Reopened};
 use crate::dock::Dock;
 use crate::manage::Manage;
 use crate::panel::{Panel, PanelKind};
@@ -19,7 +19,6 @@ use crate::{notify, sound};
 use crate::{tray, ui};
 // M6b: timer panels.
 use crate::timers::{self, TimerPanels};
-use crate::tracker_handle::TrackerHandle;
 
 thread_local! {
     /// The running app, for commands that arrive from other threads (single instance).
@@ -47,23 +46,21 @@ pub struct App {
 
 impl App {
     /// Creates the windows and registers the app for [`run_command`].
-    pub fn new(core: AppCore, screenshot_mode: bool) -> anyhow::Result<Rc<Self>> {
+    pub fn new(
+        core: AppCore,
+        reopened: &Reopened,
+        screenshot_mode: bool,
+    ) -> anyhow::Result<Rc<Self>> {
         let path = settings::default_path();
         let settings = path.as_deref().map(Settings::load).unwrap_or_default();
         let core = Rc::new(RefCell::new(core));
         let panel = Panel::new(core.clone())?;
-        // M6b: the tracker. Merge: M6a's startup shows the database error window instead.
         let alerts: Box<dyn timers::Alerts> = if screenshot_mode {
             Box::new(timers::SilentAlerts)
         } else {
             Box::new(timers::SystemAlerts)
         };
-        let timers = TimerPanels::new(
-            &panel.ui,
-            TrackerHandle::open_default()?,
-            alerts,
-            !screenshot_mode,
-        );
+        let timers = TimerPanels::new(&panel.ui, core.clone(), reopened, alerts, !screenshot_mode);
         let app = Rc::new(Self {
             dock: Dock::new()?,
             panel,

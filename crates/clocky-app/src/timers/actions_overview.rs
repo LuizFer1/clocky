@@ -20,7 +20,7 @@ pub enum TaskTarget {
 impl TimerPanels {
     /// A card click opens that timer's panel.
     pub(super) fn open_card(&self, id: TimerId) {
-        let kind = kind_of(&self.handle.borrow(), id);
+        let kind = kind_of(&self.core.borrow(), id);
         {
             let mut state = self.state.borrow_mut();
             let ringing = state.ringing(id).is_some();
@@ -71,7 +71,7 @@ impl TimerPanels {
 
     fn current_task(&self, target: TaskTarget) -> Option<TaskId> {
         let timer = self.target_timer(target);
-        let handle = self.handle.borrow();
+        let handle = self.core.borrow();
         if let Some(active) = timer.and_then(|id| handle.tracker().timers().get(id)) {
             return active.task;
         }

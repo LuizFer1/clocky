@@ -5,6 +5,8 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use clocky_core::store::StoreError;
+
+use crate::core::{OpenError, Reopened};
 use slint::ComponentHandle;
 
 use crate::core::AppCore;
@@ -19,7 +21,7 @@ pub struct OpenFailure {
 }
 
 /// Opens the database (see [`paths::db_path`]), creating its directory when needed.
-pub fn open_core() -> Result<AppCore, OpenFailure> {
+pub fn open_core() -> Result<(AppCore, Reopened), OpenFailure> {
     let Some(path) = paths::db_path() else {
         tracing::error!("no user data directory for the database");
         return Err(OpenFailure {
@@ -30,7 +32,7 @@ pub fn open_core() -> Result<AppCore, OpenFailure> {
     open_at(&path)
 }
 
-fn open_at(path: &Path) -> Result<AppCore, OpenFailure> {
+fn open_at(path: &Path) -> Result<(AppCore, Reopened), OpenFailure> {
     let failure = |message: String| OpenFailure {
         path: path.display().to_string(),
         message,
@@ -52,7 +54,16 @@ fn open_at(path: &Path) -> Result<AppCore, OpenFailure> {
 }
 
 /// The error in PT-BR. SQLite's own text stays in English (it is a technical detail).
-fn user_message(error: &StoreError) -> String {
+fn user_message(error: &OpenError) -> String {
+    match error {
+        OpenError::Store(e) => store_message(e),
+        OpenError::Timers(_) => {
+            "Os timers ativos salvos no banco não puderam ser restaurados.".into()
+        }
+    }
+}
+
+fn store_message(error: &StoreError) -> String {
     match error {
         StoreError::UnsupportedSchema { found, supported } => format!(
             "O banco foi criado por uma versão mais nova do Clocky (esquema {found}; esta versão \
@@ -114,7 +125,7 @@ mod tests {
 
     #[test]
     fn a_newer_schema_is_explained_in_portuguese() {
-        let message = user_message(&StoreError::UnsupportedSchema {
+        let message = store_message(&StoreError::UnsupportedSchema {
             found: 99,
             supported: 1,
         });
