@@ -15,6 +15,7 @@ mod sessions;
 mod settings;
 mod subtasks;
 mod tasks;
+pub(crate) mod writes;
 
 pub use active::ActiveTimerLink;
 pub use error::StoreError;
