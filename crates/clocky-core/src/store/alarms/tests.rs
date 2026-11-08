@@ -1,10 +1,38 @@
+use chrono::Weekday;
 use rusqlite::Connection;
 
 use super::super::migrations::MIGRATIONS;
+use super::*;
 use crate::domain::TimerId;
 use crate::engine::session::TimerKind;
-use crate::store::{Store, backup_path};
+use crate::store::backup_path;
 use crate::test_util::{TempDb, at, completed, secs};
+
+fn time(hour: u8, minute: u8) -> AlarmTime {
+    AlarmTime::new(hour, minute).unwrap()
+}
+
+/// A weekday alarm at 07:30, snoozing for 5 minutes.
+fn wake(task: Option<TaskId>) -> NewAlarm<'static> {
+    NewAlarm {
+        name: "wake up",
+        time: time(7, 30),
+        repeat: Weekdays::WEEKDAYS,
+        sound: None,
+        message: "",
+        snooze_minutes: 5,
+        task,
+    }
+}
+
+/// An alarm named `name` at `hour:minute`, otherwise like [`wake`].
+fn at_time(name: &'static str, hour: u8, minute: u8) -> NewAlarm<'static> {
+    NewAlarm {
+        name,
+        time: time(hour, minute),
+        ..wake(None)
+    }
+}
 
 /// Inserts an alarm row with the given `repeat_days`, `snooze_minutes` and `enabled`.
 fn insert_raw(store: &Store, repeat: i64, snooze: i64, enabled: i64) -> rusqlite::Result<usize> {
@@ -69,4 +97,213 @@ fn migrating_a_version_1_file_keeps_its_data() {
         .pragma_query_value(None, "user_version", |row| row.get(0))
         .unwrap();
     assert_eq!(version, 1);
+}
+
+#[test]
+fn alarms_roundtrip_and_sort_by_time_then_id() {
+    let mut store = Store::open_in_memory().unwrap();
+    let task = store.create_task(None, "standup", at(0)).unwrap();
+    let late = store.create_alarm(&at_time("late", 9, 0), at(10)).unwrap();
+    let early = store.create_alarm(&at_time("early", 7, 5), at(11)).unwrap();
+    let full = NewAlarm {
+        name: "meeting",
+        time: time(9, 0),
+        repeat: Weekdays::single(Weekday::Wed),
+        sound: Some("C:/sounds/bell.ogg"),
+        message: "Bring the report",
+        snooze_minutes: 10,
+        task: Some(task),
+    };
+    let tie = store.create_alarm(&full, at(12)).unwrap();
+
+    assert_eq!(
+        store.alarm(tie).unwrap(),
+        Alarm {
+            id: tie,
+            name: "meeting".into(),
+            time: time(9, 0),
+            repeat: Weekdays::single(Weekday::Wed),
+            sound: Some("C:/sounds/bell.ogg".into()),
+            message: "Bring the report".into(),
+            snooze_minutes: 10,
+            task: Some(task),
+            enabled: true,
+            snoozed_until: None,
+            last_fired_at: None,
+            created_at: at(12),
+        }
+    );
+    assert_eq!(ids(&store), vec![early, late, tie]);
+
+    store.delete_alarm(late).unwrap();
+    assert_eq!(ids(&store), vec![early, tie]);
+}
+
+fn ids(store: &Store) -> Vec<AlarmId> {
+    store.alarms().unwrap().iter().map(|a| a.id).collect()
+}
+
+#[test]
+fn missing_alarms_are_not_found() {
+    let mut store = Store::open_in_memory().unwrap();
+    let missing = AlarmId(9);
+    let not_found = |result: Result<(), StoreError>| {
+        matches!(
+            result,
+            Err(StoreError::NotFound {
+                entity: "alarm",
+                id: 9
+            })
+        )
+    };
+    assert!(not_found(store.alarm(missing).map(|_| ())));
+    assert!(not_found(store.update_alarm(missing, &wake(None), at(0))));
+    assert!(not_found(store.delete_alarm(missing)));
+    assert!(not_found(store.set_alarm_enabled(missing, true, at(0))));
+    assert!(not_found(store.set_alarm_enabled(missing, false, at(0))));
+    assert!(not_found(store.set_alarm_task(missing, None)));
+}
+
+#[test]
+fn schema_rejects_invalid_alarms() {
+    let mut store = Store::open_in_memory().unwrap();
+    let no_snooze = NewAlarm {
+        snooze_minutes: 0,
+        ..wake(None)
+    };
+    assert!(matches!(
+        store.create_alarm(&no_snooze, at(0)),
+        Err(StoreError::Sqlite(_))
+    ));
+    assert!(store.create_alarm(&wake(Some(TaskId(99))), at(0)).is_err());
+    let id = store.create_alarm(&wake(None), at(0)).unwrap();
+    assert!(store.update_alarm(id, &no_snooze, at(1)).is_err());
+    assert!(store.set_alarm_task(id, Some(TaskId(99))).is_err());
+}
+
+/// Sets the snooze and the last fire of every alarm, bypassing the API.
+fn force_schedule_state(store: &Store, snoozed_until: i64, last_fired_at: i64) {
+    store
+        .conn
+        .execute(
+            "UPDATE alarms SET snoozed_until_ms = ?1, last_fired_at_ms = ?2",
+            [snoozed_until, last_fired_at],
+        )
+        .unwrap();
+}
+
+#[test]
+fn updating_an_alarm_rearms_it() {
+    let mut store = Store::open_in_memory().unwrap();
+    let id = store.create_alarm(&wake(None), at(0)).unwrap();
+    store.set_alarm_enabled(id, false, at(1)).unwrap();
+    force_schedule_state(&store, 5_000, 4_000);
+
+    let changed = NewAlarm {
+        repeat: Weekdays::ONCE,
+        sound: Some("gong.wav"),
+        message: "Go",
+        ..at_time("gym", 6, 0)
+    };
+    store.update_alarm(id, &changed, at(100)).unwrap();
+    let alarm = store.alarm(id).unwrap();
+    assert_eq!(alarm.name, "gym");
+    assert_eq!(alarm.time, time(6, 0));
+    assert_eq!(alarm.repeat, Weekdays::ONCE);
+    assert_eq!(alarm.sound.as_deref(), Some("gong.wav"));
+    assert_eq!(alarm.message, "Go");
+    assert_eq!(alarm.created_at, at(100));
+    assert_eq!(alarm.snoozed_until, None);
+    assert_eq!(alarm.last_fired_at, Some(Timestamp::from_millis(4_000)));
+    assert!(!alarm.enabled, "editing keeps the enabled state");
+}
+
+#[test]
+fn enabling_rearms_and_disabling_clears_the_snooze() {
+    let mut store = Store::open_in_memory().unwrap();
+    let id = store.create_alarm(&wake(None), at(0)).unwrap();
+    force_schedule_state(&store, 5_000, 4_000);
+
+    store.set_alarm_enabled(id, true, at(50)).unwrap();
+    let alarm = store.alarm(id).unwrap();
+    assert_eq!(
+        alarm.created_at,
+        at(0),
+        "enabling an enabled alarm changes nothing"
+    );
+    assert_eq!(alarm.snoozed_until, Some(Timestamp::from_millis(5_000)));
+
+    store.set_alarm_enabled(id, false, at(60)).unwrap();
+    let alarm = store.alarm(id).unwrap();
+    assert!(!alarm.enabled);
+    assert_eq!(alarm.snoozed_until, None);
+    assert_eq!(alarm.created_at, at(0));
+
+    store.set_alarm_enabled(id, true, at(70)).unwrap();
+    let alarm = store.alarm(id).unwrap();
+    assert!(alarm.enabled);
+    assert_eq!(alarm.created_at, at(70));
+    assert_eq!(alarm.last_fired_at, Some(Timestamp::from_millis(4_000)));
+}
+
+#[test]
+fn alarms_link_to_tasks_and_survive_their_deletion() {
+    let mut store = Store::open_in_memory().unwrap();
+    let task = store.create_task(None, "report", at(0)).unwrap();
+    let id = store.create_alarm(&wake(None), at(0)).unwrap();
+    store.set_alarm_task(id, Some(task)).unwrap();
+    assert_eq!(store.alarm(id).unwrap().task, Some(task));
+    store.set_alarm_task(id, None).unwrap();
+    assert_eq!(store.alarm(id).unwrap().task, None);
+
+    store.set_alarm_task(id, Some(task)).unwrap();
+    store.delete_task(task).unwrap();
+    assert_eq!(store.alarm(id).unwrap().task, None);
+}
+
+#[test]
+fn schedule_copies_the_scheduling_fields() {
+    let mut store = Store::open_in_memory().unwrap();
+    let id = store.create_alarm(&wake(None), at(0)).unwrap();
+    force_schedule_state(&store, 5_000, 4_000);
+    assert_eq!(
+        store.alarm(id).unwrap().schedule(),
+        AlarmSchedule {
+            time: time(7, 30),
+            repeat: Weekdays::WEEKDAYS,
+            enabled: true,
+            snoozed_until: Some(Timestamp::from_millis(5_000)),
+            last_fired_at: Some(Timestamp::from_millis(4_000)),
+            created_at: at(0),
+        }
+    );
+}
+
+#[test]
+fn corrupted_alarms_are_errors() {
+    for corruption in [
+        "time_local = '7:30'",
+        "time_local = '24:00'",
+        "time_local = 730",
+        "repeat_days = 200",
+        "repeat_days = 300",
+        "repeat_days = -1",
+        "snooze_minutes = 0",
+        "snooze_minutes = -5",
+        "enabled = 2",
+        "snoozed_until_ms = -1",
+        "last_fired_at_ms = -1",
+        "created_at_ms = -1",
+    ] {
+        let mut store = Store::open_in_memory().unwrap();
+        let id = store.create_alarm(&wake(None), at(0)).unwrap();
+        store
+            .conn
+            .execute_batch(&format!(
+                "PRAGMA ignore_check_constraints = ON; UPDATE alarms SET {corruption};"
+            ))
+            .unwrap();
+        assert!(store.alarm(id).is_err(), "{corruption}");
+        assert!(store.alarms().is_err(), "{corruption}");
+    }
 }

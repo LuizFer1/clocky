@@ -19,6 +19,7 @@ mod tasks;
 pub(crate) mod writes;
 
 pub use active::ActiveTimerLink;
+pub use alarms::{Alarm, NewAlarm};
 pub use error::StoreError;
 pub use presets::{NewPomodoroPreset, PomodoroPreset, TimerPreset};
 pub use projects::Project;

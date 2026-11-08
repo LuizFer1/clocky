@@ -26,6 +26,10 @@ pub struct PomodoroPresetId(pub i64);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct SessionId(pub i64);
 
+/// Identifier of an alarm (assigned by storage).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct AlarmId(pub i64);
+
 /// Preset an active timer was started from (shown in the task's "Linked to").
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum PresetRef {
