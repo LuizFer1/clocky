@@ -255,6 +255,22 @@ mod tests {
     }
 
     #[test]
+    fn deleting_a_project_appends_its_tasks_after_the_loose_ones() {
+        let mut store = Store::open_in_memory().unwrap();
+        let l1 = store.create_task(None, "l1", at(0)).unwrap();
+        let l2 = store.create_task(None, "l2", at(0)).unwrap();
+        let work = store.create_project("work", "#000000", at(0)).unwrap();
+        let a = store.create_task(Some(work), "a", at(0)).unwrap();
+        let b = store.create_task(Some(work), "b", at(0)).unwrap();
+        store.delete_project(work).unwrap();
+        let positions: Vec<_> = [l1, l2, a, b]
+            .into_iter()
+            .map(|id| store.task(id).unwrap().position)
+            .collect();
+        assert_eq!(positions, vec![1, 2, 3, 4]);
+    }
+
+    #[test]
     fn delete_and_missing_tasks() {
         let mut store = Store::open_in_memory().unwrap();
         let id = store.create_task(None, "report", at(0)).unwrap();

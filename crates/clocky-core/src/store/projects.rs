@@ -128,15 +128,23 @@ impl Store {
         ensure_found(changed, "project", id.0)
     }
 
-    /// Deletes a project. Its tasks stay, without a project.
+    /// Deletes a project. Its tasks stay, without a project, after the tasks that already had
+    /// none (in their previous order).
     ///
     /// # Errors
     /// [`StoreError::NotFound`] if it does not exist.
     pub fn delete_project(&mut self, id: ProjectId) -> Result<(), StoreError> {
-        let changed = self
-            .conn
-            .execute("DELETE FROM projects WHERE id = ?1", [id.0])?;
-        ensure_found(changed, "project", id.0)
+        let tx = self.conn.transaction()?;
+        tx.execute(
+            "UPDATE tasks SET position = position + (
+                 SELECT COALESCE(MAX(position), 0) FROM tasks WHERE project_id IS NULL
+             ) WHERE project_id = ?1",
+            [id.0],
+        )?;
+        let changed = tx.execute("DELETE FROM projects WHERE id = ?1", [id.0])?;
+        ensure_found(changed, "project", id.0)?;
+        tx.commit()?;
+        Ok(())
     }
 }
 
