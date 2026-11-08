@@ -6,8 +6,11 @@
 mod convert;
 mod error;
 mod migrations;
+mod projects;
+mod rows;
 
 pub use error::StoreError;
+pub use projects::Project;
 
 use std::path::{Path, PathBuf};
 
