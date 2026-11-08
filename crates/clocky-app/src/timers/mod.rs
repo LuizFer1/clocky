@@ -324,6 +324,10 @@ impl TimerPanels {
         state.forgotten = Some(id);
         state.stopwatch = Some(id);
         state.view = View::Stopwatch;
+        drop(state);
+        // The window may be hidden (the tick renders only a visible one): fill it now, so it
+        // shows the dialog and not a stale view when it opens.
+        self.render();
         self.interactive.then_some(PanelKind::Stopwatch)
     }
 
