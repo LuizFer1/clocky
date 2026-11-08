@@ -3,6 +3,7 @@
 //! This crate depends on neither a UI nor operating system APIs.
 #![warn(missing_docs)]
 
+pub mod alarms;
 pub mod clock;
 pub mod domain;
 pub mod engine;
