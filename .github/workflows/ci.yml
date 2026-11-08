@@ -42,4 +42,10 @@ jobs:
       - uses: taiki-e/install-action@v2
         with:
           tool: just,cargo-deny,cargo-llvm-cov,cargo-machete
+      # clocky-app system libraries: rodio/cpal -> ALSA, Slint -> fontconfig (M0 report).
+      - name: System packages (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libasound2-dev libfontconfig1-dev
       - run: just check

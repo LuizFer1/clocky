@@ -5,6 +5,15 @@ all-features = true
 [advisories]
 version = 2
 yanked = "deny"
+# Unmaintained crates pulled in by Slint and zbus (its Linux D-Bus stack), with no direct
+# replacement. Review them when Slint is upgraded (M0 report).
+ignore = [
+    { id = "RUSTSEC-2026-0441", reason = "pin-utils (via Slint/zbus) is unmaintained" },
+    { id = "RUSTSEC-2026-0192", reason = "ttf-parser (via Slint) is unmaintained" },
+    { id = "RUSTSEC-2026-0371", reason = "zbus_names (via zbus) is unmaintained" },
+    { id = "RUSTSEC-2026-0370", reason = "zvariant (via zbus) is unmaintained" },
+    { id = "RUSTSEC-2026-0372", reason = "zvariant_derive (via zbus) is unmaintained" },
+]
 
 [licenses]
 version = 2
@@ -13,6 +22,9 @@ confidence-threshold = 0.9
 allow = [
     "MIT",
     "MIT-0",
+    # interprocess (recvmsg, doctest-file) and ksni (Slint's Linux tray).
+    "0BSD",
+    "Unlicense",
     "Apache-2.0",
     "Apache-2.0 WITH LLVM-exception",
     "BSD-2-Clause",
