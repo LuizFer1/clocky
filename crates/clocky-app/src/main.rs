@@ -11,14 +11,17 @@ mod ui {
 }
 
 mod app;
+mod command;
 mod dock;
 mod geometry;
+mod instance;
 mod log;
 mod manage;
 mod panel;
 mod paths;
 mod screenshot;
 mod settings;
+mod tray;
 
 fn main() {
     let log_file = log::init(&paths::log_dir()).ok();
@@ -27,7 +30,7 @@ fn main() {
         clocky_core::version()
     );
     match run() {
-        Ok(()) => tracing::info!("event loop finished, exiting"),
+        Ok(()) => tracing::info!("exiting"),
         Err(e) => {
             tracing::error!("fatal error: {e:#}");
             std::process::exit(1);
@@ -36,14 +39,32 @@ fn main() {
 }
 
 fn run() -> anyhow::Result<()> {
-    select_backend()?;
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    let launch = command::parse_args(&args)?;
     let screenshot_dir = screenshot::dir_from_env();
-    let app = app::App::new(screenshot_dir.is_none())?;
+    // Screenshot runs are independent of a running Clocky.
+    if screenshot_dir.is_none() {
+        if instance::forward(launch.command()) {
+            tracing::info!("Clocky is already running: sent {:?}", launch.command());
+            return Ok(());
+        }
+        if let command::Launch::Send(command) = launch {
+            anyhow::bail!("no running Clocky to receive {command:?}");
+        }
+    }
+    select_backend()?;
+    // Listen before creating the windows: that can take seconds on a cold start, and a launch
+    // during it must reach this instance instead of starting a second one.
+    if screenshot_dir.is_none() {
+        instance::listen(app::run_command)?;
+    }
+    let app = app::App::new(screenshot_dir.is_some())?;
     app.start()?;
     if let Some(dir) = screenshot_dir {
         app.schedule_screenshots(dir);
     }
-    slint::run_event_loop()?;
+    // The app lives in the tray: closing every window does not end it, only "Sair" does.
+    slint::run_event_loop_until_quit()?;
     Ok(())
 }
 

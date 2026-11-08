@@ -7,14 +7,21 @@ use std::time::Duration;
 
 use slint::ComponentHandle;
 
+use crate::command::Command;
 use crate::dock::Dock;
 use crate::manage::Manage;
 use crate::panel::{Panel, PanelKind};
 use crate::screenshot;
 use crate::settings::{self, DockPlacement, Settings};
+use crate::{tray, ui};
 
 /// Time for the windows to be placed and rendered before a screenshot.
 const SCREENSHOT_DELAY: Duration = Duration::from_millis(1500);
+
+thread_local! {
+    /// The running app, for commands that arrive from other threads (single instance).
+    static APP: RefCell<Option<Rc<App>>> = const { RefCell::new(None) };
+}
 
 pub struct App {
     pub dock: Rc<Dock>,
@@ -23,11 +30,15 @@ pub struct App {
     settings: RefCell<Settings>,
     /// `None` when settings must not be written (no config dir, or screenshot mode).
     settings_path: Option<PathBuf>,
+    /// Screenshot mode: no tray and no settings writes.
+    screenshot_mode: bool,
+    /// Keeps the tray icon alive (dropping it removes the icon).
+    tray: RefCell<Option<ui::ClockyTray>>,
 }
 
 impl App {
-    /// Creates the windows. `persist = false` leaves the settings file untouched.
-    pub fn new(persist: bool) -> anyhow::Result<Rc<Self>> {
+    /// Creates the windows and registers the app for [`run_command`].
+    pub fn new(screenshot_mode: bool) -> anyhow::Result<Rc<Self>> {
         let path = settings::default_path();
         let settings = path.as_deref().map(Settings::load).unwrap_or_default();
         let app = Rc::new(Self {
@@ -35,9 +46,12 @@ impl App {
             panel: Panel::new()?,
             manage: Manage::new()?,
             settings: RefCell::new(settings),
-            settings_path: path.filter(|_| persist),
+            settings_path: path.filter(|_| !screenshot_mode),
+            screenshot_mode,
+            tray: RefCell::new(None),
         });
         app.connect();
+        APP.with(|cell| *cell.borrow_mut() = Some(app.clone()));
         Ok(app)
     }
 
@@ -75,11 +89,34 @@ impl App {
         });
     }
 
-    /// Applies the theme and shows the dock. Runs before the event loop starts.
+    /// Applies the theme and shows the dock. Runs before the event loop starts; the tray is
+    /// created right after the loop starts (required on macOS).
     pub fn start(self: &Rc<Self>) -> anyhow::Result<()> {
         let settings = self.settings.borrow().clone();
         self.set_dark(settings.dark_theme);
-        self.dock.show_at(settings.dock)
+        self.dock.show_at(settings.dock)?;
+        if !self.screenshot_mode {
+            let weak = Rc::downgrade(self);
+            slint::Timer::single_shot(Duration::ZERO, move || {
+                if let Some(app) = weak.upgrade() {
+                    app.start_tray();
+                }
+            });
+        }
+        Ok(())
+    }
+
+    fn start_tray(&self) {
+        let tray = tray::create(|| run_command(Command::Show), || run_command(Command::Quit));
+        *self.tray.borrow_mut() = tray;
+    }
+
+    fn handle(&self, command: Command) {
+        tracing::info!("command: {}", command.as_str());
+        match command {
+            Command::Show => self.manage.bring_to_front(),
+            Command::Quit => quit(),
+        }
     }
 
     /// A radial option was clicked: "Gerenciar" opens the manage window (spec, section 2), the
@@ -156,6 +193,16 @@ impl App {
                 quit();
             });
         });
+    }
+}
+
+/// Runs a command on the UI thread (tray menu, second launch).
+pub fn run_command(command: Command) {
+    let app = APP.with(|cell| cell.borrow().clone());
+    if let Some(app) = app {
+        app.handle(command);
+    } else {
+        tracing::warn!("command {command:?} arrived before the app was ready");
     }
 }
 
