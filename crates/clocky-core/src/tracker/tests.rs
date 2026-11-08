@@ -176,6 +176,12 @@ fn missing_task_is_refused_without_touching_memory() {
     assert!(error.to_string().starts_with("database error"));
     assert_eq!(tracker.timers(), &before);
     assert!(tracker.start_stopwatch(Some(TaskId(999)), at(1)).is_err());
+    let missing_preset = Some(crate::domain::TimerPresetId(999));
+    assert!(
+        tracker
+            .start_countdown(None, secs(60), missing_preset, at(1))
+            .is_err()
+    );
     assert_eq!(tracker.timers(), &before);
 }
 

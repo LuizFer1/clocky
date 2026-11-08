@@ -30,7 +30,8 @@ pub struct ActiveTimerLink {
 #[derive(Debug, Default)]
 struct Columns<'a> {
     kind: &'static str,
-    preset: Option<i64>,
+    timer_preset: Option<i64>,
+    pomodoro_preset: Option<i64>,
     target_ms: Option<i64>,
     focus_ms: Option<i64>,
     short_break_ms: Option<i64>,
@@ -46,7 +47,7 @@ struct Columns<'a> {
 
 impl<'a> Columns<'a> {
     fn of(active: &'a ActiveTimer) -> Result<Self, StoreError> {
-        let preset = preset_to_sql(active)?;
+        let (timer_preset, pomodoro_preset) = preset_to_sql(active)?;
         Ok(match &active.timer {
             Timer::Stopwatch(sw) => Self {
                 kind: "stopwatch",
@@ -55,12 +56,12 @@ impl<'a> Columns<'a> {
             },
             Timer::Countdown(cd) => Self {
                 kind: "countdown",
-                preset,
+                timer_preset,
                 target_ms: Some(duration_to_ms(cd.target(), "countdown target")?),
                 run: Some(cd.run()),
                 ..Self::default()
             },
-            Timer::Pomodoro(p) => Self::of_pomodoro(p, preset)?,
+            Timer::Pomodoro(p) => Self::of_pomodoro(p, pomodoro_preset)?,
         })
     }
 
@@ -69,7 +70,7 @@ impl<'a> Columns<'a> {
         let phase_ms = |phase| duration_to_ms(config.duration(phase), "pomodoro phase");
         Ok(Self {
             kind: "pomodoro",
-            preset,
+            pomodoro_preset: preset,
             focus_ms: Some(phase_ms(Phase::Focus)?),
             short_break_ms: Some(phase_ms(Phase::ShortBreak)?),
             long_break_ms: Some(phase_ms(Phase::LongBreak)?),
@@ -85,11 +86,12 @@ impl<'a> Columns<'a> {
     }
 }
 
-fn preset_to_sql(active: &ActiveTimer) -> Result<Option<i64>, StoreError> {
+/// The `(timer_preset_id, pomodoro_preset_id)` columns.
+fn preset_to_sql(active: &ActiveTimer) -> Result<(Option<i64>, Option<i64>), StoreError> {
     match (&active.timer, active.preset) {
-        (_, None) => Ok(None),
-        (Timer::Countdown(_), Some(PresetRef::Timer(id))) => Ok(Some(id.0)),
-        (Timer::Pomodoro(_), Some(PresetRef::Pomodoro(id))) => Ok(Some(id.0)),
+        (_, None) => Ok((None, None)),
+        (Timer::Countdown(_), Some(PresetRef::Timer(id))) => Ok((Some(id.0), None)),
+        (Timer::Pomodoro(_), Some(PresetRef::Pomodoro(id))) => Ok((None, Some(id.0))),
         (_, Some(preset)) => Err(StoreError::Invalid {
             what: "preset of active timer",
             value: format!("{preset:?} for timer {}", active.id()),
@@ -110,12 +112,13 @@ pub(super) fn save_active_tx(tx: &Transaction<'_>, active: &ActiveTimer) -> Resu
     let id = timer_id_to_sql(active.id())?;
     let c = Columns::of(active)?;
     tx.execute(
-        "INSERT INTO active_timers (id, kind, task_id, preset_id, target_ms, focus_ms,
-             short_break_ms, long_break_ms, focus_per_round, auto_start, phase, focus_index,
-             round, phase_started)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
+        "INSERT INTO active_timers (id, kind, task_id, timer_preset_id, pomodoro_preset_id,
+             target_ms, focus_ms, short_break_ms, long_break_ms, focus_per_round, auto_start,
+             phase, focus_index, round, phase_started)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)
          ON CONFLICT (id) DO UPDATE SET kind = excluded.kind, task_id = excluded.task_id,
-             preset_id = excluded.preset_id, target_ms = excluded.target_ms,
+             timer_preset_id = excluded.timer_preset_id,
+             pomodoro_preset_id = excluded.pomodoro_preset_id, target_ms = excluded.target_ms,
              focus_ms = excluded.focus_ms, short_break_ms = excluded.short_break_ms,
              long_break_ms = excluded.long_break_ms, focus_per_round = excluded.focus_per_round,
              auto_start = excluded.auto_start, phase = excluded.phase,
@@ -125,7 +128,8 @@ pub(super) fn save_active_tx(tx: &Transaction<'_>, active: &ActiveTimer) -> Resu
             id,
             c.kind,
             active.task.map(|t| t.0),
-            c.preset,
+            c.timer_preset,
+            c.pomodoro_preset,
             c.target_ms,
             c.focus_ms,
             c.short_break_ms,
@@ -174,6 +178,7 @@ impl Store {
     ///
     /// # Errors
     /// [`StoreError::Invalid`] if its preset does not match its kind; [`StoreError::Sqlite`] if
+    /// the preset does not exist, or if
     /// the task does not exist or SQLite fails; [`StoreError::OutOfRange`] if the id or a
     /// duration does not fit an `INTEGER`.
     pub fn save_active(&mut self, active: &ActiveTimer) -> Result<(), StoreError> {

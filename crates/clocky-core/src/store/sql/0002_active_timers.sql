@@ -1,12 +1,13 @@
 -- Migration 2: active timers, so they survive closing the app.
--- The id is the TimerId (never reused). preset_id points to timer_presets for a countdown and
--- to pomodoro_presets for a pomodoro; the triggers below clear it when that preset is deleted.
+-- The id is the TimerId (never reused). A countdown may come from a timer preset and a
+-- pomodoro from a pomodoro preset; deleting the preset only unlinks the timer.
 
 CREATE TABLE active_timers (
     id              INTEGER PRIMARY KEY,
     kind            TEXT    NOT NULL CHECK (kind IN ('pomodoro', 'stopwatch', 'countdown')),
     task_id         INTEGER NULL REFERENCES tasks (id) ON DELETE SET NULL,
-    preset_id       INTEGER NULL,
+    timer_preset_id    INTEGER NULL REFERENCES timer_presets (id) ON DELETE SET NULL,
+    pomodoro_preset_id INTEGER NULL REFERENCES pomodoro_presets (id) ON DELETE SET NULL,
     target_ms       INTEGER NULL,
     focus_ms        INTEGER NULL,
     short_break_ms  INTEGER NULL,
@@ -16,7 +17,9 @@ CREATE TABLE active_timers (
     phase           TEXT    NULL CHECK (phase IN ('focus', 'short_break', 'long_break')),
     focus_index     INTEGER NULL,
     round           INTEGER NULL,
-    phase_started   INTEGER NULL CHECK (phase_started IN (0, 1))
+    phase_started   INTEGER NULL CHECK (phase_started IN (0, 1)),
+    CHECK (timer_preset_id IS NULL OR kind = 'countdown'),
+    CHECK (pomodoro_preset_id IS NULL OR kind = 'pomodoro')
 );
 
 -- Segments of the active timer's run; end_ms NULL = the open (running) segment.
@@ -31,15 +34,3 @@ CREATE INDEX active_timers_task_id ON active_timers (task_id);
 CREATE INDEX active_timer_segments_timer_id ON active_timer_segments (timer_id);
 CREATE UNIQUE INDEX active_timer_segments_one_open
     ON active_timer_segments (timer_id) WHERE end_ms IS NULL;
-
-CREATE TRIGGER timer_presets_unlink_active AFTER DELETE ON timer_presets
-BEGIN
-    UPDATE active_timers SET preset_id = NULL
-    WHERE kind = 'countdown' AND preset_id = old.id;
-END;
-
-CREATE TRIGGER pomodoro_presets_unlink_active AFTER DELETE ON pomodoro_presets
-BEGIN
-    UPDATE active_timers SET preset_id = NULL
-    WHERE kind = 'pomodoro' AND preset_id = old.id;
-END;
