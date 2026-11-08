@@ -16,7 +16,6 @@ mod chooser;
 mod connect;
 mod convert;
 pub mod demo;
-mod format;
 mod frame;
 mod frame_pomodoro;
 mod hms;
@@ -46,6 +45,7 @@ use names::Names;
 use state::{PomodoroPick, State, View};
 
 use crate::core::{AppCore, Reopened};
+use crate::format;
 use crate::panel::PanelKind;
 use crate::ui;
 

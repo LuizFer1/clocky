@@ -1,7 +1,7 @@
-//! Time formatting for the timer panels.
+//! Clock displays and durations of the timer panels (re-exported by [`crate::format`]).
 //!
-//! Merge note (M6a): M6a adds its own duration helpers for the manage window. When the branches
-//! meet, keep one module and point both sides at it; the rounding rules below must survive.
+//! Rounding: elapsed time rounds down (a second shows once it has passed), remaining time rounds
+//! up (a fresh 12-minute countdown shows 12:00; 00:00 only once it is over).
 
 use std::fmt::Display;
 use std::time::Duration;
@@ -75,8 +75,8 @@ pub fn duration_minutes(d: Duration) -> String {
     duration_short(Duration::from_secs(secs / 60 * 60))
 }
 
-/// Whole minutes of a pomodoro phase (presets are made of whole minutes).
-pub fn minutes(d: Duration) -> u64 {
+/// Whole minutes of a pomodoro phase, rounded up (presets are made of whole minutes).
+fn phase_minutes(d: Duration) -> u64 {
     secs_up(d).div_ceil(60)
 }
 
@@ -84,9 +84,9 @@ pub fn minutes(d: Duration) -> u64 {
 pub fn pomodoro_durations(focus: Duration, short: Duration, long: Duration) -> String {
     format!(
         "{} · {} · {} min",
-        minutes(focus),
-        minutes(short),
-        minutes(long)
+        phase_minutes(focus),
+        phase_minutes(short),
+        phase_minutes(long)
     )
 }
 

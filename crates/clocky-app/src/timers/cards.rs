@@ -9,7 +9,7 @@ use clocky_core::engine::timers::{ActiveTimer, Timer};
 use clocky_core::time::Timestamp;
 
 use super::convert::fraction;
-use super::format;
+use crate::format;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Kind {

@@ -6,7 +6,7 @@ use std::time::Duration;
 use clocky_core::domain::TaskId;
 use clocky_core::store::NewPomodoroPreset;
 
-use super::format;
+use crate::format;
 
 /// Number of steps.
 pub const STEPS: usize = 4;

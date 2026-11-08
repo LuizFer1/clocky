@@ -10,9 +10,9 @@ use slint::SharedString;
 
 use super::cards::Kind;
 use super::convert::{color, count_ratio, fraction, row_to_ui};
-use super::format;
 use super::names::{Names, TaskLabel};
 use super::state::{State, View, pick, pick_countdown};
+use crate::format;
 use crate::ui;
 
 /// Everything the current view needs.

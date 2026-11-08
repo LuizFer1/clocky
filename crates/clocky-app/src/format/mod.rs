@@ -1,4 +1,15 @@
 //! Display text in the handoff's style (PT-BR). Pure functions: no clock, no time zone lookup.
+//!
+//! The manage window and the picker use the helpers here ("1h 05min", "25min"); the timer
+//! panels use the clock displays and short durations of [`clock`] ("01:12:10", "12 min"), as
+//! their handoff screens do.
+
+mod clock;
+
+pub use clock::{
+    active_count, duration_minutes, duration_short, elapsed_label, hh_mm_ss, local_hh_mm,
+    pomodoro_durations, pomodoro_summary, remaining_label, session_recorded,
+};
 
 use std::time::Duration;
 

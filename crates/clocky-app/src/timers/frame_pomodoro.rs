@@ -7,12 +7,12 @@ use slint::{ModelRc, SharedString, VecModel};
 
 use super::cards::{self, Card, Kind, State as CardState};
 use super::convert::{row_to_ui, timer_to_ui};
-use super::format;
 use super::frame::{Body, Frame, Source, task_line};
 use super::pomodoro_view::{self, PomodoroView};
 use super::segments::segment_bar;
 use super::state::{PomodoroPick, pick};
 use super::wizard::STEPS;
+use crate::format;
 use crate::ui;
 
 pub struct PomodoroTimerFrame {

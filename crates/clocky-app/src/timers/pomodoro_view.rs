@@ -7,7 +7,7 @@ use clocky_core::time::Timestamp;
 
 use super::cards::phase_label;
 use super::convert::fraction;
-use super::format;
+use crate::format;
 
 /// Ring size and stroke (handoff: 220 with stroke 8).
 pub const RING_SIZE: f64 = 220.0;

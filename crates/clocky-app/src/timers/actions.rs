@@ -6,10 +6,11 @@ use clocky_core::engine::timers::{Timer, TimersEvent};
 use clocky_core::time::Timestamp;
 use clocky_core::tracker::{Tracker, TrackerError, TrackerEvent};
 
+use super::TimerPanels;
 use super::cards::Kind;
 use super::hms::Field;
 use super::state::{PomodoroPick, View, pick, pick_countdown};
-use super::{TimerPanels, format};
+use crate::format;
 
 /// Shown when a command fails (the details go to the log).
 const FAILED: &str = "Não deu para concluir a ação. Os detalhes estão no log.";
