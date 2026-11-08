@@ -259,12 +259,27 @@ impl Alarms {
         let weak = self.weak.clone();
         self.overlay.ui.on_dismiss(move || {
             if let Some(a) = weak.upgrade() {
-                let current = a.queue.borrow().current().map(|r| r.id);
-                if let Some(id) = current {
-                    a.dismiss(id);
-                }
+                a.dismiss_current();
             }
         });
+        // Closing the window through the OS (Alt+F4) answers like Dispensar, so no alarm keeps
+        // sounding behind a hidden overlay; the next queued one shows, or it hides.
+        let weak = self.weak.clone();
+        self.overlay.ui.window().on_close_requested(move || {
+            if let Some(a) = weak.upgrade() {
+                a.dismiss_current();
+            }
+            slint::CloseRequestResponse::KeepWindowShown
+        });
+    }
+
+    fn dismiss_current(&self) {
+        let current = self.queue.borrow().current().map(|r| r.id);
+        if let Some(id) = current {
+            self.dismiss(id);
+        } else {
+            self.overlay.hide();
+        }
     }
 
     /// Project name, task name and color of a task (`None` = no task, or it is gone).
