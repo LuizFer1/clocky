@@ -11,8 +11,8 @@ use crate::command::Command;
 use crate::dock::Dock;
 use crate::manage::Manage;
 use crate::panel::{Panel, PanelKind};
-use crate::screenshot;
 use crate::settings::{self, DockPlacement, Settings};
+use crate::{notify, screenshot, sound};
 use crate::{tray, ui};
 
 /// Time for the windows to be placed and rendered before a screenshot.
@@ -116,6 +116,8 @@ impl App {
         match command {
             Command::Show => self.manage.bring_to_front(),
             Command::Quit => quit(),
+            Command::NotifyTest => notify::show("Clocky", "Notificação de teste do Clocky."),
+            Command::SoundTest => sound::play_default(),
         }
     }
 

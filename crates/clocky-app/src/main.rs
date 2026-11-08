@@ -17,10 +17,12 @@ mod geometry;
 mod instance;
 mod log;
 mod manage;
+mod notify;
 mod panel;
 mod paths;
 mod screenshot;
 mod settings;
+mod sound;
 mod tray;
 
 fn main() {

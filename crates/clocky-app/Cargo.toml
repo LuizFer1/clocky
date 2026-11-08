@@ -19,11 +19,17 @@ directories = "6.0.0"
 # PNG encoder for the screenshot hook; already in the Slint dependency graph.
 image = { version = "0.25.10", default-features = false, features = ["png"] }
 interprocess = "2.4.7"
+notify-rust = "4.18.2"
+rodio = "0.23.0"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.149"
 slint = { version = "1.18.1", features = ["unstable-winit-030"] }
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", default-features = false, features = ["fmt", "std"] }
+
+[target.'cfg(windows)'.dependencies]
+# Registers the AppUserModelId so notifications show "Clocky" as the sender.
+winreg = "0.56.0"
 
 [dev-dependencies]
 tempfile = "3.27.0"

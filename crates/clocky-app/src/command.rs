@@ -7,6 +7,10 @@ pub enum Command {
     Show,
     /// Quit the app, as the tray's "Sair".
     Quit,
+    /// Debug: show a test notification.
+    NotifyTest,
+    /// Debug: play the default sound.
+    SoundTest,
 }
 
 impl Command {
@@ -14,6 +18,8 @@ impl Command {
         match text.trim() {
             "show" => Some(Self::Show),
             "quit" => Some(Self::Quit),
+            "notify-test" => Some(Self::NotifyTest),
+            "sound-test" => Some(Self::SoundTest),
             _ => None,
         }
     }
@@ -22,6 +28,8 @@ impl Command {
         match self {
             Self::Show => "show",
             Self::Quit => "quit",
+            Self::NotifyTest => "notify-test",
+            Self::SoundTest => "sound-test",
         }
     }
 }
@@ -85,7 +93,13 @@ mod tests {
 
     #[test]
     fn commands_roundtrip_through_text() {
-        for command in [Command::Show, Command::Quit] {
+        let all = [
+            Command::Show,
+            Command::Quit,
+            Command::NotifyTest,
+            Command::SoundTest,
+        ];
+        for command in all {
             assert_eq!(Command::parse(command.as_str()), Some(command));
         }
         assert_eq!(Command::parse(" show\n"), Some(Command::Show));
