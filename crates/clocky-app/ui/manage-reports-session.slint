@@ -10,7 +10,8 @@ import { ReportsState, SessionEventKind } from "manage-reports-state.slint";
 component Stat inherits Rectangle {
     in property <string> label;
     in property <string> value;
-    in property <bool> mono: true;
+    // A second, small line ("2 pausas").
+    in property <string> note;
 
     horizontal-stretch: 1;
     min-height: 76px;
@@ -34,10 +35,17 @@ component Stat inherits Rectangle {
         Text {
             text: root.value;
             color: Theme.text;
-            font-family: root.mono ? Theme.font-mono : Theme.font-sans;
-            font-size: root.mono ? Theme.fs-timer-sm : Theme.fs-md;
+            font-family: Theme.font-mono;
+            // The size of the "Tempo registrado" total; three tiles fit the narrow layout.
+            font-size: 18px;
             font-weight: Theme.fw-medium;
             overflow: elide;
+        }
+
+        if root.note != "": Text {
+            text: root.note;
+            color: Theme.muted;
+            font-size: Theme.fs-xs;
         }
     }
 }
@@ -136,8 +144,8 @@ export component SessionReportView inherits VerticalLayout {
 
             Stat {
                 label: "Pausas";
-                value: ReportsState.session-pauses;
-                mono: false;
+                value: ReportsState.session-pause-total;
+                note: ReportsState.session-pause-count;
             }
 
             Stat {

@@ -190,7 +190,7 @@ fn weekly_stacks_each_day_on_one_scale() {
         ("4h", "2h")
     );
     let thursday = &week.days[3];
-    assert_eq!(thursday.total, "3h 15min");
+    assert_eq!(thursday.total, "3h15");
     assert!((thursday.height - 195.0 / 240.0).abs() < 1e-6);
     // Top to bottom: pessoal (135 min) over connect (60 min), the week's order reversed.
     let parts: Vec<_> = thursday.parts.iter().collect();
@@ -356,8 +356,12 @@ fn session_detail_has_pauses_and_milestones_in_focus_minutes() {
         ("ler 20 páginas", "pessoal", "Cronômetro")
     );
     assert_eq!(
-        (s.effective.as_str(), s.pauses.as_str(), s.wall.as_str()),
-        ("1h 00min", "2 pausas · 10min", "1h 10min")
+        (s.effective.as_str(), s.wall.as_str()),
+        ("1h 00min", "1h 10min")
+    );
+    assert_eq!(
+        (s.pause_total.as_str(), s.pause_count.as_str()),
+        ("10min", "2 pausas")
     );
     assert_eq!(s.parts.len(), 3);
     assert_eq!(s.marks.len(), 2);

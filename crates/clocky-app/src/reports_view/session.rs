@@ -27,8 +27,10 @@ pub struct SessionView {
     pub when: String,
     /// "25min"
     pub effective: String,
-    /// "2 pausas · 6min" or "Sem pausas"
-    pub pauses: String,
+    /// Time in pauses: "6min" ("0min" without pauses).
+    pub pause_total: String,
+    /// "2 pausas", "1 pausa" or "Sem pausas".
+    pub pause_count: String,
     /// Start to end, pauses included.
     pub wall: String,
     /// Running segments on the bar from start to end.
@@ -68,7 +70,8 @@ where
             hh_mm(report.ended_at)
         ),
         effective: format::duration(report.effective),
-        pauses: pauses_text(report.pauses.len(), pause_total),
+        pause_total: format::duration(pause_total),
+        pause_count: pauses_text(report.pauses.len()),
         wall: format::duration(report.wall),
         parts,
         marks,
@@ -166,12 +169,12 @@ pub fn kind_text(kind: TimerKind, round: Option<u32>) -> String {
     }
 }
 
-/// "Sem pausas", "1 pausa · 3min", "2 pausas · 6min".
-fn pauses_text(count: usize, total: Duration) -> String {
+/// "Sem pausas", "1 pausa", "2 pausas".
+fn pauses_text(count: usize) -> String {
     match count {
         0 => "Sem pausas".into(),
-        1 => format!("1 pausa · {}", format::duration(total)),
-        n => format!("{n} pausas · {}", format::duration(total)),
+        1 => "1 pausa".into(),
+        n => format!("{n} pausas"),
     }
 }
 
@@ -187,10 +190,9 @@ mod tests {
     }
 
     #[test]
-    fn pauses_text_counts_and_sums() {
-        let m = Duration::from_mins;
-        assert_eq!(pauses_text(0, Duration::ZERO), "Sem pausas");
-        assert_eq!(pauses_text(1, m(3)), "1 pausa · 3min");
-        assert_eq!(pauses_text(2, m(6)), "2 pausas · 6min");
+    fn pauses_text_counts() {
+        assert_eq!(pauses_text(0), "Sem pausas");
+        assert_eq!(pauses_text(1), "1 pausa");
+        assert_eq!(pauses_text(2), "2 pausas");
     }
 }

@@ -83,11 +83,7 @@ fn day_column(day: &DayTotals, scale_len: Duration, today: NaiveDate) -> ui::Day
     ui::DayColumn {
         weekday: dates::weekday_short(day.date.weekday()).into(),
         day: day.date.day().to_string().into(),
-        total: if day.total.is_zero() {
-            "".into()
-        } else {
-            format::duration(day.total).into()
-        },
+        total: compact(day.total).into(),
         height: share(day.total, scale_len),
         parts: ModelRc::new(VecModel::from(parts)),
         today: day.date == today,
@@ -101,6 +97,17 @@ fn scale_hours(busiest: Duration) -> u32 {
     u32::try_from(hours.div_ceil(2).max(1)).unwrap_or(u32::MAX / 2)
 }
 
+/// A column label that fits a narrow column: "3h15", "2h", "45min"; empty for no time.
+fn compact(d: Duration) -> String {
+    let minutes = d.as_secs() / 60;
+    match (minutes / 60, minutes % 60) {
+        _ if d.is_zero() => String::new(),
+        (0, m) => format!("{m}min"),
+        (h, 0) => format!("{h}h"),
+        (h, m) => format!("{h}h{m:02}"),
+    }
+}
+
 /// "4h".
 fn hours_label(hours: u32) -> String {
     format!("{hours}h")
@@ -109,6 +116,17 @@ fn hours_label(hours: u32) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn column_labels_are_compact() {
+        let m = Duration::from_mins;
+        assert_eq!(compact(Duration::ZERO), "");
+        assert_eq!(compact(Duration::from_secs(20)), "0min");
+        assert_eq!(compact(m(45)), "45min");
+        assert_eq!(compact(m(120)), "2h");
+        assert_eq!(compact(m(195)), "3h15");
+        assert_eq!(compact(m(65)), "1h05");
+    }
 
     #[test]
     fn scale_rounds_up_to_an_even_number_of_hours() {

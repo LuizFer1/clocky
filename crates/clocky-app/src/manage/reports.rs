@@ -216,7 +216,8 @@ impl Manage {
                 rs.set_session_kind(s.kind.as_str().into());
                 rs.set_session_when(s.when.as_str().into());
                 rs.set_session_effective(s.effective.as_str().into());
-                rs.set_session_pauses(s.pauses.as_str().into());
+                rs.set_session_pause_total(s.pause_total.as_str().into());
+                rs.set_session_pause_count(s.pause_count.as_str().into());
                 rs.set_session_wall(s.wall.as_str().into());
                 rs.set_session_parts(model(s.parts.clone()));
                 rs.set_session_marks(model(s.marks.clone()));
