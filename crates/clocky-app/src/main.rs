@@ -33,6 +33,7 @@ mod picker_ui;
 mod reports_view;
 mod screenshot;
 mod settings;
+mod settings_view;
 mod sound;
 mod startup;
 mod tour;
