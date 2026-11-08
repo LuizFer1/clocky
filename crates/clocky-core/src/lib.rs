@@ -3,6 +3,14 @@
 //! This crate depends on neither a UI nor operating system APIs.
 #![warn(missing_docs)]
 
+pub mod clock;
+pub mod domain;
+pub mod engine;
+pub mod time;
+
+#[cfg(test)]
+mod test_util;
+
 /// Clocky version, set by the release pipeline.
 #[must_use]
 pub fn version() -> &'static str {
