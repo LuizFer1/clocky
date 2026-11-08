@@ -329,16 +329,21 @@ impl AppCore {
         Ok(self.store_mut().create_alarm(alarm, now)?)
     }
 
-    /// Saves the editor's fields and enables the alarm: saving a once-alarm that already rang
-    /// (the store keeps it disabled) arms it again, as the user expects from "Salvar alarme".
+    /// Saves the editor's fields. The enabled state follows the store's rules, except that a
+    /// once-alarm that already rang (off, or snoozed) is armed again when its time changes
+    /// (see [`crate::alarms::rearms_on_save`]).
     pub fn update_alarm(
         &mut self,
         id: clocky_core::domain::AlarmId,
         alarm: &clocky_core::store::NewAlarm<'_>,
     ) -> CoreResult<()> {
         let now = self.now();
+        let old = self.store().alarm(id)?;
         self.store_mut().update_alarm(id, alarm, now)?;
-        Ok(self.store_mut().set_alarm_enabled(id, true, now)?)
+        if crate::alarms::rearms_on_save(&old, alarm) {
+            self.store_mut().set_alarm_enabled(id, true, now)?;
+        }
+        Ok(())
     }
 
     pub fn delete_alarm(&mut self, id: clocky_core::domain::AlarmId) -> CoreResult<()> {

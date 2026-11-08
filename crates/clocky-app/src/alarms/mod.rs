@@ -32,6 +32,7 @@ use crate::geometry::Anchor;
 use crate::timers::TaskChooser;
 use crate::{palette, ui};
 use draft::Draft;
+pub use draft::rearms_on_save;
 use overlay::{Overlay, OverlayView};
 use queue::Queue;
 use runtime::Handled;

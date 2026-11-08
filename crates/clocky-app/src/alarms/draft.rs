@@ -190,6 +190,14 @@ impl Draft {
     }
 }
 
+/// Whether saving `new` over `old` arms the alarm again: only a once-alarm that already rang
+/// (switched off after it fired, or snoozed) whose time the user changed. Every other save keeps
+/// the enabled state (a repeating alarm switched off stays off when only its name changes).
+pub fn rearms_on_save(old: &Alarm, new: &NewAlarm<'_>) -> bool {
+    let rang = !old.enabled || old.snoozed_until.is_some();
+    new.repeat.is_once() && old.time != new.time && rang
+}
+
 /// A number of one or two digits from 0 to `max`.
 fn parse_in(text: &str, max: u8) -> Option<u8> {
     let text = text.trim();
@@ -336,6 +344,49 @@ mod tests {
         });
         assert!(!once.repeating);
         assert_eq!(once.days, Weekdays::WEEKDAYS);
+    }
+
+    #[test]
+    fn only_a_rung_once_alarm_with_a_new_time_is_armed_again() {
+        let old = Alarm {
+            id: AlarmId(1),
+            name: "x".into(),
+            time: AlarmTime::new(7, 30).unwrap(),
+            repeat: Weekdays::ONCE,
+            sound: None,
+            message: String::new(),
+            snooze_minutes: 5,
+            task: None,
+            enabled: false,
+            snoozed_until: None,
+            last_fired_at: None,
+            created_at: Timestamp::from_millis(0),
+        };
+        let mut d = Draft::from_alarm(&old);
+        assert!(!rearms_on_save(&old, &d.to_new().unwrap()), "same time");
+        d.step_hour(true);
+        assert!(rearms_on_save(&old, &d.to_new().unwrap()));
+        let snoozed = Alarm {
+            enabled: true,
+            snoozed_until: Some(Timestamp::from_millis(9)),
+            ..old.clone()
+        };
+        assert!(rearms_on_save(&snoozed, &d.to_new().unwrap()));
+        let on = Alarm {
+            enabled: true,
+            ..old.clone()
+        };
+        assert!(!rearms_on_save(&on, &d.to_new().unwrap()), "already on");
+        let weekly_off = Alarm {
+            repeat: Weekdays::WEEKDAYS,
+            ..old
+        };
+        let mut w = Draft::from_alarm(&weekly_off);
+        w.step_hour(true);
+        assert!(
+            !rearms_on_save(&weekly_off, &w.to_new().unwrap()),
+            "repeating"
+        );
     }
 
     #[test]

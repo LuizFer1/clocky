@@ -171,4 +171,38 @@ mod tests {
         let checked = check(&mut core, at(7, 30, 30), &Utc, &mut handled).unwrap();
         assert_eq!(checked.rings.len() + checked.missed.len(), 1);
     }
+
+    fn fields(name: &str, h: u8, repeat: Weekdays) -> NewAlarm<'_> {
+        NewAlarm {
+            name,
+            time: AlarmTime::new(h, 30).unwrap(),
+            repeat,
+            sound: None,
+            message: "",
+            snooze_minutes: 5,
+            task: None,
+        }
+    }
+
+    #[test]
+    fn saving_keeps_the_enabled_state_unless_a_rung_once_alarm_gets_a_new_time() {
+        let mut core = core();
+        // A repeating alarm switched off stays off when only its name changes.
+        let weekly = add(&mut core, "a", 7, 30, Weekdays::WEEKDAYS);
+        core.set_alarm_enabled(weekly, false).unwrap();
+        core.update_alarm(weekly, &fields("b", 7, Weekdays::WEEKDAYS))
+            .unwrap();
+        assert!(!core.alarm(weekly).unwrap().enabled);
+        // A snoozed once-alarm edited without a new time ends disabled (the store rule).
+        let once = add(&mut core, "c", 7, 30, Weekdays::ONCE);
+        check(&mut core, at(7, 30, 0), &Utc, &mut Handled::new()).unwrap();
+        core.snooze_alarm(once).unwrap();
+        core.update_alarm(once, &fields("d", 7, Weekdays::ONCE))
+            .unwrap();
+        assert!(!core.alarm(once).unwrap().enabled);
+        // With a new time it is armed again.
+        core.update_alarm(once, &fields("d", 9, Weekdays::ONCE))
+            .unwrap();
+        assert!(core.alarm(once).unwrap().enabled);
+    }
 }
