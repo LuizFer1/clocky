@@ -19,6 +19,8 @@ pub const PANEL_H: f64 = 420.0;
 /// The timer panels size to their content up to this, or less on a short monitor
 /// ([`Anchor::panel_max_height`]); past it their body scrolls.
 pub const PANEL_MAX_H: f64 = 800.0;
+/// The cap never goes below this, even on a tiny or zero-size monitor (header + a few rows).
+pub const PANEL_MIN_H: f64 = 240.0;
 /// Kept free at the bottom of the monitor for the taskbar (winit has no work-area API).
 pub const PANEL_BOTTOM_MARGIN: f64 = 48.0;
 /// Kept free at the top of the monitor when the panel is as tall as it can be.
@@ -148,10 +150,15 @@ impl Anchor {
     }
 
     /// The tallest the panel may be on this monitor (logical px): [`PANEL_MAX_H`], or the
-    /// monitor height without the taskbar and top margins.
+    /// monitor height without the taskbar and top margins, but never under [`PANEL_MIN_H`].
     pub fn panel_max_height(&self) -> f64 {
         let logical = f64::from(self.monitor.h) / self.scale;
-        (logical - PANEL_BOTTOM_MARGIN - PANEL_TOP_MARGIN).min(PANEL_MAX_H)
+        let available = logical - PANEL_BOTTOM_MARGIN - PANEL_TOP_MARGIN;
+        // A zero-size monitor with a zero scale gives NaN.
+        if available.is_nan() {
+            return PANEL_MIN_H;
+        }
+        available.clamp(PANEL_MIN_H, PANEL_MAX_H)
     }
 
     /// Top-left corner of a panel `height` logical px tall (its real height, so the panel
@@ -465,6 +472,28 @@ mod tests {
         assert!((anchor.panel_max_height() - 800.0).abs() < f64::EPSILON);
         let y = anchor.panel_origin_for(anchor.panel_max_height()).y;
         assert!(y >= 0 && y + 800 <= 1080 - 48, "y = {y}");
+    }
+
+    #[test]
+    fn a_tiny_or_zero_size_monitor_still_gets_a_usable_cap() {
+        let tiny = |h: i32, scale: f64| Anchor {
+            monitor: Rect {
+                x: 0,
+                y: 0,
+                w: 800,
+                h,
+            },
+            scale,
+            edge: Edge::Right,
+            center_y: 0,
+        };
+        for (h, scale) in [(0, 1.0), (200, 1.0), (0, 0.0), (480, 2.0)] {
+            let cap = tiny(h, scale).panel_max_height();
+            assert!(
+                (cap - PANEL_MIN_H).abs() < f64::EPSILON,
+                "{h} at {scale}: {cap}"
+            );
+        }
     }
 
     #[test]
