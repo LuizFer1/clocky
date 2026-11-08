@@ -41,6 +41,42 @@ impl Run {
         }
     }
 
+    /// Restores a run from its closed segments and, if running, the start of the open segment.
+    ///
+    /// # Errors
+    /// [`EngineError::InvalidRun`] if a segment ends before it starts, the segments are out of
+    /// order or overlap, or the open segment starts before the last closed one ends.
+    pub fn from_parts(
+        closed: Vec<Segment>,
+        running_since: Option<Timestamp>,
+    ) -> Result<Self, EngineError> {
+        let ordered = closed.iter().all(|segment| segment.end >= segment.start)
+            && closed.windows(2).all(|pair| pair[1].start >= pair[0].end);
+        let open_after_last = match (closed.last(), running_since) {
+            (Some(last), Some(since)) => since >= last.end,
+            _ => true,
+        };
+        if !ordered || !open_after_last {
+            return Err(EngineError::InvalidRun);
+        }
+        Ok(Self {
+            closed,
+            running_since,
+        })
+    }
+
+    /// Closed segments, in order.
+    #[must_use]
+    pub fn segments(&self) -> &[Segment] {
+        &self.closed
+    }
+
+    /// Start of the open segment, if running.
+    #[must_use]
+    pub fn running_since(&self) -> Option<Timestamp> {
+        self.running_since
+    }
+
     /// Whether it is running.
     #[must_use]
     pub fn is_running(&self) -> bool {
@@ -280,6 +316,56 @@ mod tests {
                     end: at(120)
                 },
             ]
+        );
+    }
+
+    fn seg(start: i64, end: i64) -> Segment {
+        Segment {
+            start: at(start),
+            end: at(end),
+        }
+    }
+
+    #[test]
+    fn from_parts_restores_a_run() {
+        let mut run = Run::start(at(0));
+        run.pause(at(10)).unwrap();
+        run.resume(at(20)).unwrap();
+        let restored = Run::from_parts(run.segments().to_vec(), run.running_since()).unwrap();
+        assert_eq!(restored, run);
+        assert_eq!(restored.segments(), &[seg(0, 10)]);
+        assert_eq!(restored.running_since(), Some(at(20)));
+    }
+
+    #[test]
+    fn from_parts_accepts_an_empty_paused_run() {
+        let run = Run::from_parts(vec![], None).unwrap();
+        assert!(!run.is_running());
+        assert_eq!(run.elapsed(at(100)), Duration::ZERO);
+    }
+
+    #[test]
+    fn from_parts_rejects_inverted_or_unordered_segments() {
+        assert_eq!(
+            Run::from_parts(vec![seg(10, 5)], None),
+            Err(EngineError::InvalidRun)
+        );
+        assert_eq!(
+            Run::from_parts(vec![seg(0, 10), seg(5, 20)], None),
+            Err(EngineError::InvalidRun)
+        );
+        assert_eq!(
+            Run::from_parts(vec![seg(20, 30), seg(0, 10)], None),
+            Err(EngineError::InvalidRun)
+        );
+        assert_eq!(
+            Run::from_parts(vec![seg(0, 10)], Some(at(5))),
+            Err(EngineError::InvalidRun)
+        );
+        assert!(Run::from_parts(vec![seg(0, 10), seg(10, 20)], Some(at(20))).is_ok());
+        assert_eq!(
+            EngineError::InvalidRun.to_string(),
+            "invalid run: segments must be ordered, non-overlapping and not inverted"
         );
     }
 }
