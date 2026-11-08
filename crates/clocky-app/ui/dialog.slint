@@ -11,7 +11,17 @@ export component Scrim inherits Rectangle {
     background: Theme.dark ? #000000b3 : #0000004d;
     // The backdrop and its card fade in together.
     property <bool> shown: false;
-    init => { self.shown = true; }
+    // Evaluates the opacity once while hidden, so the flip below has a start to animate from.
+    property <float> start-opacity;
+    init => { self.start-opacity = self.opacity; }
+    // Flipped right after creation: set in `init`, the animation would be skipped.
+    Timer {
+        interval: 1ms;
+        triggered => {
+            parent.shown = true;
+            self.running = false;
+        }
+    }
     opacity: self.shown ? 1 : 0;
     animate opacity { duration: Theme.dur-fade; easing: ease-out; }
 
