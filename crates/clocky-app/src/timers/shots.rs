@@ -152,7 +152,7 @@ fn step(run: &Rc<Run>, index: usize) {
 fn seed(run: &Run) {
     let seeded = demo::seed(&mut run.ctx.panels.core().borrow_mut());
     match seeded {
-        Ok(timers) => run.demo.set(Some(timers)),
+        Ok(timers) => run.demo.set(timers),
         Err(e) => tracing::error!("demo seeding failed: {e:#}"),
     }
     // Rings the due tea countdown and stops the deep-work pomodoro at its break (silently).

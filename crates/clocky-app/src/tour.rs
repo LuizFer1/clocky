@@ -121,19 +121,24 @@ const STEPS: &[Step] = &[
     },
 ];
 
+type Then = Box<dyn FnOnce(&Rc<App>)>;
+
 struct Tour {
     dir: PathBuf,
+    /// Runs after the light pass (the timer panel captures, or quit).
+    then: std::cell::RefCell<Option<Then>>,
     dark: Cell<bool>,
     targets: Targets,
 }
 
-/// Starts the tour once the windows had time to appear.
-pub fn run(app: &Rc<App>, dir: PathBuf) {
+/// Starts the tour once the windows had time to appear; `then` runs after the last snapshot.
+pub fn run(app: &Rc<App>, dir: PathBuf, then: impl FnOnce(&Rc<App>) + 'static) {
     if !app.manage.show() {
         tracing::warn!("the manage window could not be shown");
     }
     let tour = Rc::new(Tour {
         dir,
+        then: std::cell::RefCell::new(Some(Box::new(then))),
         dark: Cell::new(true),
         targets: targets(app),
     });
@@ -172,7 +177,8 @@ fn step(app: &Rc<App>, tour: Rc<Tour>, index: usize) {
             app.set_dark(false);
             return step(app, tour, 0);
         }
-        return quit();
+        let then = tour.then.borrow_mut().take();
+        return then.map_or_else(quit, |then| then(app));
     };
     (current.prepare)(app, &tour.targets);
     let weak = Rc::downgrade(app);

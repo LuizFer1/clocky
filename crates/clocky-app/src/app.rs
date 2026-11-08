@@ -245,12 +245,15 @@ impl App {
     /// Screenshot mode: the tour of `tour.rs` (dark, then light), then quit.
     /// Nothing here takes the focus, so no key press is simulated on the user's desktop.
     pub fn schedule_screenshots(self: &Rc<Self>, dir: PathBuf) {
-        // M6b: timer panel captures with demo data (`CLOCKY_DEMO=1`).
-        if timers::demo::enabled() {
-            self.schedule_timer_shots(dir);
-            return;
-        }
-        crate::tour::run(self, dir);
+        // With the demo data (`CLOCKY_DEMO=1`), the timer panel captures follow the tour.
+        let next = dir.clone();
+        crate::tour::run(self, dir, move |app| {
+            if crate::demo::requested() {
+                app.schedule_timer_shots(next);
+            } else {
+                quit();
+            }
+        });
     }
 }
 
