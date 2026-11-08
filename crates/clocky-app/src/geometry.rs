@@ -191,6 +191,17 @@ pub fn snap(monitors: &[Monitor], hub: Point) -> Option<(Anchor, &Monitor)> {
     Some((Anchor::new(monitor, edge, hub.y), monitor))
 }
 
+/// The monitor to use when the saved one is gone: the primary monitor, else the one the window
+/// was created on. Both are matched by their rectangle against `monitors`.
+pub fn fallback_monitor(
+    monitors: &[Monitor],
+    primary: Option<Rect>,
+    current: Option<Rect>,
+) -> Option<&Monitor> {
+    let find = |rect: Rect| monitors.iter().find(|m| m.rect == rect);
+    primary.and_then(find).or_else(|| current.and_then(find))
+}
+
 /// Restores a saved position: the monitor with that name, else `fallback` (the primary
 /// monitor), else the first one. Without a saved position: right edge, vertically centered.
 pub fn restore<'a>(
@@ -430,12 +441,47 @@ mod tests {
 
     #[test]
     fn restore_falls_back_to_primary_when_the_monitor_is_gone() {
-        let monitors = vec![main_monitor()];
+        // The saved monitor is unplugged; the primary is not the first one in the list and the
+        // window was created on the other monitor.
+        let other = Monitor {
+            name: Some("DISPLAY3".into()),
+            ..left_monitor()
+        };
+        let monitors = vec![other.clone(), main_monitor()];
+        let fallback = fallback_monitor(&monitors, Some(main_monitor().rect), Some(other.rect));
         let saved = Some(("DISPLAY1", Edge::Left, 0.99));
-        let (anchor, monitor) = restore(&monitors, saved, monitors.first()).unwrap();
+        let (anchor, monitor) = restore(&monitors, saved, fallback).unwrap();
         assert_eq!(monitor.name.as_deref(), Some("DISPLAY2"));
         assert_eq!(anchor.edge, Edge::Left);
         assert_eq!(anchor.center_y, 1080 - 180);
+    }
+
+    #[test]
+    fn fallback_prefers_the_primary_monitor() {
+        let monitors = both();
+        let picked = fallback_monitor(
+            &monitors,
+            Some(main_monitor().rect),
+            Some(left_monitor().rect),
+        );
+        assert_eq!(picked.unwrap().name.as_deref(), Some("DISPLAY2"));
+    }
+
+    #[test]
+    fn fallback_uses_the_current_monitor_without_a_primary() {
+        // Wayland/X11 setups may report no primary monitor.
+        let monitors = both();
+        let picked = fallback_monitor(&monitors, None, Some(left_monitor().rect));
+        assert_eq!(picked.unwrap().name.as_deref(), Some("DISPLAY1"));
+    }
+
+    #[test]
+    fn fallback_ignores_monitors_that_are_not_in_the_list() {
+        let monitors = vec![main_monitor()];
+        let gone = left_monitor().rect;
+        assert_eq!(fallback_monitor(&monitors, Some(gone), None), None);
+        let picked = fallback_monitor(&monitors, Some(gone), Some(main_monitor().rect));
+        assert_eq!(picked.unwrap().name.as_deref(), Some("DISPLAY2"));
     }
 
     #[test]
