@@ -207,10 +207,14 @@ export component StopwatchView inherits VerticalLayout {
             fill: Theme.ok;
         }
 
-        VerticalLayout {
-            padding-top: Theme.space-1;
+        // Five rows show at once; more scroll.
+        Flickable {
+            height: min(TimerUi.sw-subtasks.length, 5) * 40px + 4px;
+            content-height: TimerUi.sw-subtasks.length * 40px + 4px;
 
-            for row in TimerUi.sw-subtasks: SubtaskItem {
+            for row[i] in TimerUi.sw-subtasks: SubtaskItem {
+                y: 4px + i * 40px;
+                width: parent.width;
                 name: row.name;
                 done: row.done;
                 toggled(value) => { TimerUi.sw-toggle-subtask(row.id, value); }

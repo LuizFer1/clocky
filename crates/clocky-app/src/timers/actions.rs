@@ -76,6 +76,21 @@ impl TimerPanels {
 
     /// Stops a timer; a stopwatch session gets the "Sessão de … registrada" notice.
     pub(super) fn stop(&self, id: TimerId) {
+        // The ready stopwatch keeps the task of the session that just ended (screen 32).
+        let stopwatch_task = {
+            let handle = self.handle.borrow();
+            handle
+                .tracker()
+                .timers()
+                .get(id)
+                .and_then(|a| match a.timer {
+                    Timer::Stopwatch(_) => Some(a.task),
+                    _ => None,
+                })
+        };
+        if let Some(task) = stopwatch_task {
+            self.state.borrow_mut().stopwatch_task = task;
+        }
         let Some(events) = self.command("stop", |t, now| t.stop(id, now)) else {
             self.render();
             return;
@@ -127,19 +142,9 @@ impl TimerPanels {
     }
 
     pub(super) fn stopwatch_stop(&self) {
-        let Some(id) = self.picked(Kind::Stopwatch) else {
-            return;
-        };
-        // The ready view keeps the task of the session that just ended (screen 32).
-        let task = self
-            .handle
-            .borrow()
-            .tracker()
-            .timers()
-            .get(id)
-            .and_then(|a| a.task);
-        self.state.borrow_mut().stopwatch_task = task;
-        self.stop(id);
+        if let Some(id) = self.picked(Kind::Stopwatch) {
+            self.stop(id);
+        }
     }
 
     /// A checklist click: linked to the running stopwatch's session, if any.

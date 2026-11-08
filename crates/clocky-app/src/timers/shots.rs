@@ -31,6 +31,15 @@ enum Scene {
     /// The temporary task chooser over the stopwatch.
     Chooser,
     Forgotten,
+    // The ones below go through the `TimerUi` callbacks, as the buttons do.
+    /// "Registrar tudo" in the forgotten dialog.
+    Recorded,
+    /// Three "Próximo" clicks: the last step of the wizard.
+    WizardStep4,
+    /// "Criar pomodoro": the new preset's idle timer.
+    WizardCreated,
+    /// "Iniciar" in the configuration, then "Pausar".
+    CountdownPaused,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -71,6 +80,10 @@ fn plan() -> Vec<Step> {
         Step::Shot("esquecido-dialog", Scene::Forgotten),
         Step::Theme(true),
         Step::Shot("esquecido-dialog", Scene::Forgotten),
+        Step::Shot("cronometro-registrado", Scene::Recorded),
+        Step::Shot("pomodoro-wizard-step4", Scene::WizardStep4),
+        Step::Shot("pomodoro-criado", Scene::WizardCreated),
+        Step::Shot("temporizador-pausado", Scene::CountdownPaused),
     ]);
     steps
 }
@@ -163,11 +176,40 @@ fn forget(run: &Run) {
 }
 
 fn show(run: &Run, scene: Scene) {
+    let Some(window) = run.ctx.window.upgrade() else {
+        return;
+    };
+    let global = window.global::<ui::TimerUi>();
+    global.invoke_chooser_cancel();
+    if !click(run, &global, scene) {
+        open(run, scene);
+    }
+}
+
+/// Scenes reached through the callbacks; `false` for the others.
+fn click(run: &Run, global: &ui::TimerUi<'_>, scene: Scene) -> bool {
+    match scene {
+        Scene::Recorded => global.invoke_forgotten_record(),
+        Scene::WizardStep4 => {
+            run.ctx.panels.wizard_open();
+            for _ in 0..3 {
+                global.invoke_wz_next();
+            }
+        }
+        Scene::WizardCreated => global.invoke_wz_next(),
+        Scene::CountdownPaused => {
+            run.ctx.panels.set_view(View::CountdownConfig);
+            global.invoke_cd_start();
+            global.invoke_cd_run_primary();
+        }
+        _ => return false,
+    }
+    true
+}
+
+fn open(run: &Run, scene: Scene) {
     let panels = &run.ctx.panels;
     let demo = run.demo.get();
-    if let Some(window) = run.ctx.window.upgrade() {
-        window.global::<ui::TimerUi>().invoke_chooser_cancel();
-    }
     match scene {
         Scene::StopwatchRunning => panels.show(PanelKind::Stopwatch),
         Scene::CountdownConfig => panels.set_view(View::CountdownConfig),
@@ -187,6 +229,7 @@ fn show(run: &Run, scene: Scene) {
             panels.choose_task(TaskTarget::Stopwatch);
         }
         Scene::Forgotten => panels.render(),
+        Scene::Recorded | Scene::WizardStep4 | Scene::WizardCreated | Scene::CountdownPaused => {}
     }
 }
 

@@ -26,8 +26,8 @@ export component PanelWindow inherits Window {
     background: transparent;
     default-font-family: Theme.font-sans;
     width: Theme.size-panel-width;
-    // M6b: timer views size the window to their content (capped; long bodies scroll).
-    height: TimerUi.view == "" ? 420px : min(content.preferred-height, 760px);
+    // M6b: timer views size the window to their content (capped; long lists scroll).
+    height: TimerUi.view == "" ? 420px : min(content.preferred-height, 800px);
     forward-focus: keys;
 
     keys := FocusScope {

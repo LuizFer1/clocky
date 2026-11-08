@@ -14,7 +14,9 @@ pub const COMPACT_H: f64 = 60.0;
 pub const HUB_OPEN_OFFSET: f64 = 105.0;
 /// Floating panel (handoff SPEC 2): 380 wide, 30 from the edge, 28 below the area top.
 pub const PANEL_W: f64 = 380.0;
-pub const PANEL_H: f64 = 420.0;
+// M6b: the timer panels size to their content up to 800 (`panel-window.slint`); the panel is
+// placed so that the tallest one still fits on the monitor.
+pub const PANEL_H: f64 = 800.0;
 pub const PANEL_EDGE_GAP: f64 = 30.0;
 pub const PANEL_TOP_GAP: f64 = 28.0;
 
@@ -398,16 +400,20 @@ mod tests {
 
     #[test]
     fn panel_sits_30px_from_the_edge_and_28px_below_the_area_top() {
-        let right = Anchor::new(&main_monitor(), Edge::Right, 540);
-        assert_eq!(right.panel_origin(), Point { x: 1510, y: 388 });
-        let left = Anchor::new(&main_monitor(), Edge::Left, 540);
-        assert_eq!(left.panel_origin(), Point { x: 30, y: 388 });
+        // High on the screen: 28 px below the top of the 360 px menu area.
+        let right = Anchor::new(&main_monitor(), Edge::Right, 300);
+        assert_eq!(right.panel_origin(), Point { x: 1510, y: 148 });
+        let left = Anchor::new(&main_monitor(), Edge::Left, 300);
+        assert_eq!(left.panel_origin(), Point { x: 30, y: 148 });
     }
 
     #[test]
     fn panel_stays_inside_the_monitor_at_the_bottom() {
         let low = Anchor::new(&main_monitor(), Edge::Right, 5000);
-        assert_eq!(low.panel_origin().y, 1080 - 420);
+        assert_eq!(low.panel_origin().y, 1080 - 800);
+        // Centred on a 1080p monitor, the tallest panel (800) still ends on screen.
+        let centred = Anchor::new(&main_monitor(), Edge::Right, 540);
+        assert!(centred.panel_origin().y + 800 <= 1080);
     }
 
     #[test]

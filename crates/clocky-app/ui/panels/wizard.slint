@@ -112,7 +112,8 @@ component NameField inherits Rectangle {
 export component WizardView inherits VerticalLayout {
     VerticalLayout {
         padding: Theme.space-5;
-        spacing: Theme.space-5;
+        // The last step has the name and the task too: tighter, so it fits the panel.
+        spacing: TimerUi.wz-step == 3 ? Theme.space-4 : Theme.space-5;
 
         HorizontalLayout {
             spacing: Theme.space-1;
@@ -161,7 +162,7 @@ export component WizardView inherits VerticalLayout {
         }
 
         Rectangle {
-            height: 100px;
+            height: TimerUi.wz-step == 3 ? 84px : 100px;
             border-radius: Theme.radius-panel;
             background: Theme.field;
 
