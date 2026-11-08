@@ -94,7 +94,7 @@ const STEPS: &[Step] = &[
         }
     }),
     step("dialog-delete-session", |app, _| {
-        app.manage.ask_delete_session()
+        app.manage.ask_delete_session();
     }),
     step("settings", |app, _| {
         cancel_dialog(app);
