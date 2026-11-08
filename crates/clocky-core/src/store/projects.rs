@@ -104,13 +104,14 @@ impl Store {
         ensure_found(changed, "project", id.0)
     }
 
-    /// Archives a project: it leaves the lists, and its history stays in the reports.
+    /// Archives a project: it leaves the lists, and its history stays in the reports. If it is
+    /// already archived, the original time is kept.
     ///
     /// # Errors
     /// [`StoreError::NotFound`] if it does not exist.
     pub fn archive_project(&mut self, id: ProjectId, now: Timestamp) -> Result<(), StoreError> {
         let changed = self.conn.execute(
-            "UPDATE projects SET archived_at_ms = ?1 WHERE id = ?2",
+            "UPDATE projects SET archived_at_ms = COALESCE(archived_at_ms, ?1) WHERE id = ?2",
             params![now.as_millis(), id.0],
         )?;
         ensure_found(changed, "project", id.0)
@@ -200,6 +201,15 @@ mod tests {
 
         store.unarchive_project(work).unwrap();
         assert_eq!(store.projects(false).unwrap().len(), 2);
+    }
+
+    #[test]
+    fn archiving_again_keeps_the_first_time() {
+        let mut store = Store::open_in_memory().unwrap();
+        let id = store.create_project("work", "#000000", at(0)).unwrap();
+        store.archive_project(id, at(5)).unwrap();
+        store.archive_project(id, at(9)).unwrap();
+        assert_eq!(store.project(id).unwrap().archived_at, Some(at(5)));
     }
 
     #[test]

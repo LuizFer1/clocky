@@ -84,12 +84,13 @@ impl Store {
         self.update_task(id, "UPDATE tasks SET name = ?2 WHERE id = ?1", name)
     }
 
-    /// Marks a task as completed (completing its subtasks is up to the user).
+    /// Marks a task as completed (completing its subtasks is up to the user). If it is already
+    /// completed, the original time is kept.
     ///
     /// # Errors
     /// [`StoreError::NotFound`] if it does not exist.
     pub fn complete_task(&mut self, id: TaskId, now: Timestamp) -> Result<(), StoreError> {
-        let sql = "UPDATE tasks SET completed_at_ms = ?2 WHERE id = ?1";
+        let sql = "UPDATE tasks SET completed_at_ms = COALESCE(completed_at_ms, ?2) WHERE id = ?1";
         self.update_task(id, sql, now.as_millis())
     }
 
@@ -103,12 +104,13 @@ impl Store {
         ensure_found(changed, "task", id.0)
     }
 
-    /// Archives a task: it leaves the lists, and its history stays in the reports.
+    /// Archives a task: it leaves the lists, and its history stays in the reports. If it is
+    /// already archived, the original time is kept.
     ///
     /// # Errors
     /// [`StoreError::NotFound`] if it does not exist.
     pub fn archive_task(&mut self, id: TaskId, now: Timestamp) -> Result<(), StoreError> {
-        let sql = "UPDATE tasks SET archived_at_ms = ?2 WHERE id = ?1";
+        let sql = "UPDATE tasks SET archived_at_ms = COALESCE(archived_at_ms, ?2) WHERE id = ?1";
         self.update_task(id, sql, now.as_millis())
     }
 
@@ -289,6 +291,19 @@ mod tests {
         ));
         assert_eq!(store.task(a).unwrap().position, 1);
         assert_eq!(store.task(a).unwrap().project, Some(work));
+    }
+
+    #[test]
+    fn completing_or_archiving_again_keeps_the_first_time() {
+        let mut store = Store::open_in_memory().unwrap();
+        let id = store.create_task(None, "report", at(0)).unwrap();
+        store.complete_task(id, at(10)).unwrap();
+        store.complete_task(id, at(20)).unwrap();
+        store.archive_task(id, at(30)).unwrap();
+        store.archive_task(id, at(40)).unwrap();
+        let task = store.task(id).unwrap();
+        assert_eq!(task.completed_at, Some(at(10)));
+        assert_eq!(task.archived_at, Some(at(30)));
     }
 
     #[test]
