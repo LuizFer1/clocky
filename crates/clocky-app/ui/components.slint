@@ -1,0 +1,102 @@
+// Small building blocks shared by the windows.
+import { Theme } from "theme.slint";
+
+// Icon centered vertically in its layout cell (a bare Image in a layout sticks to the top).
+export component Icon inherits Rectangle {
+    in property <image> source;
+    in property <brush> tint: Theme.text;
+    in property <length> size: Theme.size-icon;
+
+    width: self.size;
+
+    Image {
+        width: root.size;
+        height: root.size;
+        source: root.source;
+        colorize: root.tint;
+    }
+}
+
+// Round fab-style badge with an icon (hub look): brand mark and panel header.
+export component FabIcon inherits Rectangle {
+    in property <image> source;
+    in property <length> diameter: 40px;
+
+    width: self.diameter;
+
+    Rectangle {
+        width: root.diameter;
+        height: root.diameter;
+        border-radius: root.diameter / 2;
+        background: Theme.fab;
+        border-width: 1px;
+        border-color: Theme.fab-border;
+
+        Image {
+            width: Theme.size-icon;
+            height: Theme.size-icon;
+            source: root.source;
+            colorize: Theme.fab-text;
+        }
+    }
+}
+
+// Icon button without a background (back button, sidebar footer, section "+").
+export component GhostIcon inherits Rectangle {
+    in property <image> icon;
+    callback clicked();
+
+    width: Theme.size-control;
+    height: Theme.size-control;
+    border-radius: Theme.radius-lg;
+    background: touch.has-hover ? Theme.accent-soft : transparent;
+
+    Image {
+        width: Theme.size-icon;
+        height: Theme.size-icon;
+        source: root.icon;
+        colorize: Theme.muted;
+    }
+
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+// Primary button: accent background, optional leading icon.
+export component PrimaryButton inherits Rectangle {
+    in property <string> text;
+    in property <image> icon;
+    in property <bool> has-icon: true;
+    callback clicked();
+
+    height: Theme.size-control;
+    width: label.preferred-width + 2 * Theme.space-5 + (root.has-icon ? Theme.size-icon + Theme.space-2 : 0px);
+    border-radius: Theme.radius-lg;
+    background: touch.pressed ? Theme.muted : Theme.accent;
+
+    HorizontalLayout {
+        padding-left: Theme.space-5;
+        padding-right: Theme.space-5;
+        spacing: Theme.space-2;
+
+        if root.has-icon: Icon {
+            source: root.icon;
+            tint: Theme.on-accent;
+        }
+
+        label := Text {
+            vertical-alignment: center;
+            text: root.text;
+            color: Theme.on-accent;
+            font-size: Theme.fs-base;
+            font-weight: Theme.fw-medium;
+        }
+    }
+
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}

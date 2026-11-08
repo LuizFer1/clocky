@@ -31,6 +31,14 @@ just setup          # enables the project's git hooks (once after cloning)
 cargo run -p clocky-app
 ```
 
+### Running the app
+
+- **Linux build dependencies:** `sudo apt-get install libasound2-dev libfontconfig1-dev` (ALSA for sound, fontconfig for Slint).
+- **Linux display server:** the floating icon must be placed at a screen edge, which Wayland does not allow. Clocky therefore runs through X11 whenever `DISPLAY` is set (XWayland on Wayland desktops).
+- **Files:** settings in `settings.json` in the user config dir (`%APPDATA%\Clocky\config` on Windows) and the log in `clocky.log` in the user data dir (`%LOCALAPPDATA%\Clocky\data\logs` on Windows).
+- **Single instance:** launching Clocky again brings the running one to the front. Debug commands go through the same channel: `clocky --send notify-test`, `clocky --send sound-test` and `clocky --send quit`.
+- **Screenshots:** `CLOCKY_SCREENSHOT_DIR=<dir> clocky` renders each window to `<dir>/<window>-<theme>.png`, in the dark and light themes, and exits. It only renders Clocky's own windows, never the desktop.
+
 ### Project structure
 
 | Crate | Role |
@@ -138,3 +146,5 @@ The version in `Cargo.toml` stays at `0.0.0` in the repository. The pipeline wri
 ## License
 
 [GPLv3](LICENSE). Clocky uses [Slint](https://slint.dev) under the GPLv3 license.
+
+Embedded assets: the [Geist](https://github.com/vercel/geist-font) fonts are under the SIL Open Font License 1.1 (`crates/clocky-app/fonts/OFL.txt`), and the icons are covered by `crates/clocky-app/icons/LICENSE.md`.

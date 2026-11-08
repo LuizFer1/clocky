@@ -1,0 +1,324 @@
+// Manage window (handoff SPEC 3, screens 70-74). M5 ships the shell with static content:
+// the "Todos os projetos" view and its empty state. M6 fills projects, tasks and subtasks.
+import { Theme } from "theme.slint";
+import { FabIcon, GhostIcon, Icon, PrimaryButton } from "components.slint";
+
+// Search field. M5 only shows it; filtering arrives with the project list in M6.
+component SearchField inherits Rectangle {
+    height: Theme.size-control;
+    border-radius: Theme.radius-lg;
+    background: Theme.field;
+    border-width: 1px;
+    border-color: input.has-focus ? Theme.accent : Theme.line-2;
+
+    HorizontalLayout {
+        padding-left: Theme.space-3-5;
+        padding-right: Theme.space-3-5;
+        spacing: Theme.space-2-5;
+
+        Icon {
+            source: @image-url("../icons/search.svg");
+            tint: Theme.muted;
+        }
+
+        Rectangle {
+            horizontal-stretch: 1;
+
+            input := TextInput {
+                width: 100%;
+                height: 100%;
+                vertical-alignment: center;
+                color: Theme.text;
+                font-size: Theme.fs-base;
+                single-line: true;
+            }
+
+            if input.text == "": Text {
+                width: 100%;
+                height: 100%;
+                vertical-alignment: center;
+                text: "Buscar";
+                color: Theme.muted;
+                font-size: Theme.fs-base;
+            }
+        }
+    }
+}
+
+component Sidebar inherits Rectangle {
+    callback open-menu();
+
+    background: Theme.side;
+
+    VerticalLayout {
+        padding: Theme.space-3;
+        spacing: Theme.space-2;
+
+        // Brand: hub-style clock, "Clocky" and the "Menu" link (opens the radial menu).
+        HorizontalLayout {
+            height: 56px;
+            padding-left: Theme.space-1;
+            padding-right: Theme.space-2;
+            spacing: Theme.space-3;
+
+            FabIcon {
+                source: @image-url("../icons/clock.svg");
+            }
+
+            Text {
+                horizontal-stretch: 1;
+                vertical-alignment: center;
+                text: "Clocky";
+                color: Theme.text;
+                font-size: Theme.fs-lg;
+                font-weight: Theme.fw-semibold;
+            }
+
+            Rectangle {
+                width: menu-label.preferred-width;
+
+                menu-label := Text {
+                    vertical-alignment: center;
+                    text: "Menu";
+                    color: Theme.accent-text;
+                    font-size: Theme.fs-md;
+                    font-weight: Theme.fw-medium;
+                }
+
+                Rectangle {
+                    y: (parent.height + menu-label.preferred-height) / 2;
+                    height: 1px;
+                    background: Theme.accent-text;
+                }
+
+                TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { root.open-menu(); }
+                }
+            }
+        }
+
+        SearchField { }
+
+        // "Todos os projetos", selected (it is the only view in M5).
+        Rectangle {
+            height: Theme.size-control;
+            border-radius: Theme.radius-lg;
+            background: Theme.panel-2;
+
+            HorizontalLayout {
+                padding-left: Theme.space-3;
+                padding-right: Theme.space-3;
+                spacing: Theme.space-3;
+
+                Icon {
+                    source: @image-url("../icons/manage.svg");
+                }
+
+                Text {
+                    horizontal-stretch: 1;
+                    vertical-alignment: center;
+                    text: "Todos os projetos";
+                    color: Theme.text;
+                    font-size: Theme.fs-base;
+                    font-weight: Theme.fw-medium;
+                }
+            }
+        }
+
+        // PROJETOS section header with the "+" button (the form arrives in M6).
+        HorizontalLayout {
+            height: Theme.size-control;
+            padding-left: Theme.space-3;
+
+            Text {
+                horizontal-stretch: 1;
+                vertical-alignment: center;
+                text: "PROJETOS";
+                color: Theme.muted;
+                font-size: Theme.fs-xs;
+                font-weight: Theme.fw-medium;
+                letter-spacing: 1px;
+            }
+
+            GhostIcon {
+                icon: @image-url("../icons/plus.svg");
+            }
+        }
+
+        HorizontalLayout {
+            padding-left: Theme.space-3;
+
+            Text {
+                text: "Nenhum projeto ainda.";
+                color: Theme.muted;
+                font-size: Theme.fs-sm;
+            }
+        }
+
+        Rectangle {
+            vertical-stretch: 1;
+            min-height: Theme.space-4;
+        }
+
+        // Settings and reports (screens designed in M7).
+        HorizontalLayout {
+            alignment: start;
+            spacing: Theme.space-1;
+
+            GhostIcon {
+                icon: @image-url("../icons/settings.svg");
+            }
+
+            GhostIcon {
+                icon: @image-url("../icons/chart.svg");
+            }
+        }
+    }
+}
+
+component Content inherits Rectangle {
+    callback new-project();
+
+    background: Theme.app;
+
+    VerticalLayout {
+        // Top bar with the breadcrumb.
+        Rectangle {
+            height: Theme.size-control;
+
+            HorizontalLayout {
+                padding-left: Theme.space-8;
+                spacing: Theme.space-2;
+
+                Text {
+                    vertical-alignment: center;
+                    text: "Clocky";
+                    color: Theme.muted;
+                    font-size: Theme.fs-md;
+                }
+
+                Text {
+                    vertical-alignment: center;
+                    text: "/";
+                    color: Theme.muted;
+                    font-size: Theme.fs-md;
+                }
+
+                Text {
+                    horizontal-stretch: 1;
+                    vertical-alignment: center;
+                    text: "Projetos";
+                    color: Theme.text;
+                    font-size: Theme.fs-md;
+                    font-weight: Theme.fw-medium;
+                }
+            }
+
+            Rectangle {
+                y: parent.height - 1px;
+                height: 1px;
+                background: Theme.line;
+            }
+        }
+
+        VerticalLayout {
+            padding: Theme.space-8;
+            spacing: Theme.space-6;
+
+            // Header: title, subtitle and the contextual button (top right).
+            HorizontalLayout {
+                spacing: Theme.space-4;
+
+                VerticalLayout {
+                    horizontal-stretch: 1;
+                    spacing: Theme.space-1;
+
+                    Text {
+                        text: "Todos os projetos";
+                        color: Theme.text;
+                        font-size: Theme.fs-xl;
+                        font-weight: Theme.fw-medium;
+                    }
+
+                    Text {
+                        text: "0 projetos";
+                        color: Theme.muted;
+                        font-size: Theme.fs-md;
+                    }
+                }
+
+                VerticalLayout {
+                    alignment: start;
+
+                    PrimaryButton {
+                        text: "Novo projeto";
+                        icon: @image-url("../icons/plus.svg");
+                        clicked => { root.new-project(); }
+                    }
+                }
+            }
+
+            Text {
+                text: "Nenhum projeto ainda. Crie o primeiro com “Novo projeto”.";
+                color: Theme.muted;
+                font-size: Theme.fs-md;
+                wrap: word-wrap;
+            }
+
+            Rectangle {
+                vertical-stretch: 1;
+            }
+        }
+    }
+}
+
+export component ManageWindow inherits Window {
+    callback open-menu();
+    callback new-project();
+
+    // Below ~800px the sidebar moves to the top (screen 74).
+    out property <bool> narrow: self.width < 800px;
+
+    title: "Clocky";
+    icon: @image-url("../icons/tray.svg");
+    preferred-width: 960px;
+    preferred-height: 640px;
+    min-width: 480px;
+    min-height: 560px;
+    background: Theme.app;
+    default-font-family: Theme.font-sans;
+
+    if !root.narrow: HorizontalLayout {
+        Sidebar {
+            width: 240px;
+            open-menu => { root.open-menu(); }
+        }
+
+        Rectangle {
+            width: 1px;
+            background: Theme.line;
+        }
+
+        Content {
+            horizontal-stretch: 1;
+            new-project => { root.new-project(); }
+        }
+    }
+
+    if root.narrow: VerticalLayout {
+        Sidebar {
+            open-menu => { root.open-menu(); }
+        }
+
+        Rectangle {
+            height: 1px;
+            background: Theme.line;
+        }
+
+        Content {
+            vertical-stretch: 1;
+            new-project => { root.new-project(); }
+        }
+    }
+}

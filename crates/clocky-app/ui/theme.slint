@@ -1,0 +1,118 @@
+// Clocky design tokens for Slint, generated from the handoff's tokens/*.tokens.json.
+// Usage: import { Theme } from "theme.slint"; set `Theme.dark = false` for the light theme.
+
+export global Theme {
+    // Dark by default (spec, decision 10). Globals are per window: Rust sets it on every window.
+    in-out property <bool> dark: true;
+
+    // Desktop backdrop behind the panels
+    out property <color> bg: root.dark ? #000000 : #f2f2f2;
+    // Manage window background
+    out property <color> app: root.dark ? #000000 : #ffffff;
+    // Sidebar
+    out property <color> side: root.dark ? #0a0a0a : #fafafa;
+    // Floating panel surface
+    out property <color> panel: root.dark ? #0d0d0d : #ffffff;
+    // Raised surface / strong selected item / open hub
+    out property <color> panel-2: root.dark ? #1a1a1a : #f2f2f2;
+    // Fields, cards and timer blocks
+    out property <color> field: root.dark ? #141414 : #f7f7f7;
+    // Borders and dividers
+    out property <color> line: root.dark ? #ffffff12 : #00000014;
+    // Field and secondary button borders, progress track
+    out property <color> line-2: root.dark ? #ffffff21 : #00000024;
+    // Primary text
+    out property <color> text: root.dark ? #ededed : #0a0a0a;
+    // Secondary text, labels, inactive icons
+    out property <color> muted: root.dark ? #8c8c8c : #666666;
+    // Primary button, focus, selection
+    out property <color> accent: root.dark ? #ededed : #0a0a0a;
+    // Content on top of accent
+    out property <color> on-accent: root.dark ? #0a0a0a : #ffffff;
+    // Selection background / active chip
+    out property <color> accent-soft: root.dark ? #ffffff12 : #0000000d;
+    // Links and text actions
+    out property <color> accent-text: root.dark ? #ffffff : #0a0a0a;
+    // Floating icon and radial menu options
+    out property <color> fab: root.dark ? #161616 : #ffffff;
+    // Icons and labels on the fab
+    out property <color> fab-text: root.dark ? #ededed : #0a0a0a;
+    // 1px ring around the fab
+    out property <color> fab-border: root.dark ? #ffffff1c : #00000017;
+    // Break phase, ringing timer, active badge
+    out property <color> pause: root.dark ? #e5a03c : #d97706;
+    // Break / ringing background
+    out property <color> pause-soft: root.dark ? #e5a03c1f : #d977061a;
+    // Amber text
+    out property <color> pause-text: root.dark ? #f0b75e : #9a5806;
+    // Subtask progress
+    out property <color> ok: root.dark ? #4ade80 : #16a34a;
+    // Destructive actions (delete session)
+    out property <color> danger: root.dark ? #f87171 : #dc2626;
+    // Prototype only: screen bezel
+    out property <color> bezel: root.dark ? #363636 : #a3a3a3;
+
+    out property <color> project-azul: #3d8fd6;
+    out property <color> project-turquesa: #2fb3a6;
+    out property <color> project-verde: #3fae6a;
+    out property <color> project-lima: #a3b83a;
+    out property <color> project-amarelo: #d9b23a;
+    out property <color> project-laranja: #e08a3b;
+    out property <color> project-vermelho: #e05f5a;
+    out property <color> project-rosa: #e06a9a;
+    out property <color> project-roxo: #9b7be0;
+    out property <color> project-ardosia: #8a94a6;
+
+    out property <length> space-1: 4px;
+    out property <length> space-1-5: 6px;
+    out property <length> space-2: 8px;
+    out property <length> space-2-5: 10px;
+    out property <length> space-3: 12px;
+    out property <length> space-3-5: 14px;
+    out property <length> space-4: 16px;
+    out property <length> space-5: 20px;
+    out property <length> space-6: 24px;
+    out property <length> space-8: 32px;
+    out property <length> space-12: 48px;
+    out property <length> radius-sm: 8px;
+    out property <length> radius-md: 10px;
+    out property <length> radius-lg: 12px;
+    out property <length> radius-xl: 14px;
+    out property <length> radius-panel: 16px;
+    out property <length> radius-full: 999px;
+    out property <length> size-hub: 56px;
+    out property <length> size-radial-item: 52px;
+    out property <length> size-radial-radius: 86px;
+    out property <length> size-hub-edge-offset-open: 105px;
+    out property <length> size-panel-width: 380px;
+    out property <length> size-control: 44px;
+    out property <length> size-button: 48px;
+    out property <length> size-button-lg: 52px;
+    out property <length> size-icon: 20px;
+    out property <length> size-icon-fab: 26px;
+    out property <length> size-day-chip: 44px;
+
+    out property <string> font-sans: "Geist";
+    out property <string> font-mono: "Geist Mono";
+    out property <length> fs-caption: 11px;
+    out property <length> fs-xs: 12px;
+    out property <length> fs-sm: 13px;
+    out property <length> fs-md: 14px;
+    out property <length> fs-base: 15px;
+    out property <length> fs-lg: 16px;
+    out property <length> fs-xl: 20px;
+    out property <length> fs-timer-sm: 22px;
+    out property <length> fs-timer-md: 48px;
+    out property <length> fs-timer-ring: 52px;
+    out property <length> fs-timer-lg: 56px;
+    out property <length> fs-timer-xl: 64px;
+    out property <int> fw-regular: 400;
+    out property <int> fw-medium: 500;
+    out property <int> fw-semibold: 600;
+
+    out property <duration> dur-pill-expand: 220ms; // ease
+    out property <duration> dur-radial-open: 260ms; // cubic-bezier(0.2,0.8,0.2,1)
+    out property <duration> dur-fade: 180ms; // ease
+    out property <duration> dur-radial-stagger: 25ms; // linear
+    out property <duration> dur-progress: 1000ms; // linear
+}
