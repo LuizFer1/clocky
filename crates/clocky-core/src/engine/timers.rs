@@ -7,7 +7,7 @@ use super::error::EngineError;
 use super::pomodoro::{Phase, Pomodoro, PomodoroEvent};
 use super::session::CompletedSession;
 use super::stopwatch::Stopwatch;
-use crate::domain::{TaskId, TimerId};
+use crate::domain::{PresetRef, TaskId, TimerId};
 use crate::time::Timestamp;
 
 /// A timer of any kind.
@@ -21,6 +21,33 @@ pub enum Timer {
     Countdown(Countdown),
 }
 
+impl Timer {
+    /// Pauses the timer.
+    ///
+    /// # Errors
+    /// [`EngineError::NotRunning`] if it is already paused (or is a waiting pomodoro phase).
+    pub fn pause(&mut self, now: Timestamp) -> Result<(), EngineError> {
+        match self {
+            Self::Pomodoro(p) => p.pause(now),
+            Self::Stopwatch(sw) => sw.pause(now),
+            Self::Countdown(cd) => cd.pause(now),
+        }
+    }
+
+    /// Resumes the timer.
+    ///
+    /// # Errors
+    /// [`EngineError::AlreadyRunning`] if it is running; [`EngineError::NotRunning`] if it is a
+    /// waiting pomodoro phase (use [`Timers::start_phase`]).
+    pub fn resume(&mut self, now: Timestamp) -> Result<(), EngineError> {
+        match self {
+            Self::Pomodoro(p) => p.resume(now),
+            Self::Stopwatch(sw) => sw.resume(now),
+            Self::Countdown(cd) => cd.resume(now),
+        }
+    }
+}
+
 /// Active timer with its linked task.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ActiveTimer {
@@ -28,11 +55,24 @@ pub struct ActiveTimer {
     id: TimerId,
     /// Linked task (can be changed while the timer is running).
     pub task: Option<TaskId>,
+    /// Preset the timer was started from, if any.
+    pub preset: Option<PresetRef>,
     /// The timer.
     pub timer: Timer,
 }
 
 impl ActiveTimer {
+    /// Rebuilds an active timer with a known identifier, to restore it with [`Timers::restore`].
+    #[must_use]
+    pub fn new(id: TimerId, task: Option<TaskId>, preset: Option<PresetRef>, timer: Timer) -> Self {
+        Self {
+            id,
+            task,
+            preset,
+            timer,
+        }
+    }
+
     /// Identifier of the timer.
     #[must_use]
     pub fn id(&self) -> TimerId {
@@ -75,7 +115,7 @@ pub enum TimersEvent {
 }
 
 /// Set of active timers.
-#[derive(Debug, Default)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Timers {
     next_id: u64,
     active: BTreeMap<TimerId, ActiveTimer>,
@@ -92,8 +132,74 @@ impl Timers {
     pub fn add(&mut self, task: Option<TaskId>, timer: Timer) -> TimerId {
         self.next_id += 1;
         let id = TimerId(self.next_id);
-        self.active.insert(id, ActiveTimer { id, task, timer });
+        self.active
+            .insert(id, ActiveTimer::new(id, task, None, timer));
         id
+    }
+
+    /// Restores a set of timers; `next_id` is the identifier the next [`Timers::add`] assigns.
+    ///
+    /// # Errors
+    /// [`EngineError::InvalidTimerId`] if two timers share an identifier or one is not below
+    /// `next_id`.
+    pub fn restore(next_id: u64, timers: Vec<ActiveTimer>) -> Result<Self, EngineError> {
+        let mut active = BTreeMap::new();
+        for timer in timers {
+            let id = timer.id;
+            if id.0 >= next_id || active.insert(id, timer).is_some() {
+                return Err(EngineError::InvalidTimerId(id));
+            }
+        }
+        Ok(Self {
+            next_id: next_id.saturating_sub(1),
+            active,
+        })
+    }
+
+    /// Removes a timer without recording anything ("Discard" in the forgotten dialog).
+    ///
+    /// # Errors
+    /// [`EngineError::TimerNotFound`] if the timer does not exist.
+    pub fn discard(&mut self, id: TimerId) -> Result<ActiveTimer, EngineError> {
+        self.active
+            .remove(&id)
+            .ok_or(EngineError::TimerNotFound(id))
+    }
+
+    /// Pauses a timer.
+    ///
+    /// # Errors
+    /// [`EngineError::TimerNotFound`] if the timer does not exist; otherwise as [`Timer::pause`].
+    pub fn pause(&mut self, id: TimerId, now: Timestamp) -> Result<(), EngineError> {
+        self.timer_mut(id)?.pause(now)
+    }
+
+    /// Resumes a timer.
+    ///
+    /// # Errors
+    /// [`EngineError::TimerNotFound`] if the timer does not exist; otherwise as
+    /// [`Timer::resume`].
+    pub fn resume(&mut self, id: TimerId, now: Timestamp) -> Result<(), EngineError> {
+        self.timer_mut(id)?.resume(now)
+    }
+
+    /// Starts the waiting phase of a pomodoro.
+    ///
+    /// # Errors
+    /// [`EngineError::TimerNotFound`] if the timer does not exist; [`EngineError::NotPomodoro`]
+    /// if it is not a pomodoro; [`EngineError::AlreadyRunning`] if the phase has started.
+    pub fn start_phase(&mut self, id: TimerId, now: Timestamp) -> Result<(), EngineError> {
+        match self.timer_mut(id)? {
+            Timer::Pomodoro(p) => p.start_phase(now),
+            _ => Err(EngineError::NotPomodoro(id)),
+        }
+    }
+
+    fn timer_mut(&mut self, id: TimerId) -> Result<&mut Timer, EngineError> {
+        self.active
+            .get_mut(&id)
+            .map(|active| &mut active.timer)
+            .ok_or(EngineError::TimerNotFound(id))
     }
 
     /// Active timer with this identifier.
@@ -494,6 +600,76 @@ mod tests {
                 ..
             }
         ));
+    }
+
+    #[test]
+    fn restore_keeps_ids_and_continues_after_next_id() {
+        let mut timers = Timers::new();
+        let a = timers.add(Some(TaskId(1)), stopwatch());
+        let b = timers.add(None, Timer::Countdown(Countdown::start(at(0), secs(60))));
+        let parts: Vec<ActiveTimer> = timers.iter().cloned().collect();
+        let mut restored = Timers::restore(10, parts).unwrap();
+        assert_eq!(restored.get(a), timers.get(a));
+        assert_eq!(restored.get(b), timers.get(b));
+        assert_eq!(restored.add(None, stopwatch()), TimerId(10));
+        assert_eq!(Timers::restore(0, vec![]).unwrap(), Timers::new());
+    }
+
+    #[test]
+    fn restore_rejects_duplicated_or_stale_ids() {
+        let timer = |id| ActiveTimer::new(TimerId(id), None, None, stopwatch());
+        assert_eq!(
+            Timers::restore(5, vec![timer(1), timer(1)]),
+            Err(EngineError::InvalidTimerId(TimerId(1)))
+        );
+        assert_eq!(
+            Timers::restore(5, vec![timer(5)]),
+            Err(EngineError::InvalidTimerId(TimerId(5)))
+        );
+        assert_eq!(
+            EngineError::InvalidTimerId(TimerId(5)).to_string(),
+            "timer #5 is duplicated or not below the next timer id"
+        );
+    }
+
+    #[test]
+    fn discard_removes_without_a_session() {
+        let mut timers = Timers::new();
+        let id = timers.add(Some(TaskId(1)), stopwatch());
+        let removed = timers.discard(id).unwrap();
+        assert_eq!(removed.id(), id);
+        assert!(timers.get(id).is_none());
+        assert_eq!(timers.discard(id), Err(EngineError::TimerNotFound(id)));
+    }
+
+    #[test]
+    fn pause_resume_and_start_phase_by_id() {
+        let mut timers = Timers::new();
+        let config = PomodoroConfig::new(secs(10), secs(10), secs(10), 2, false).unwrap();
+        let pomo = timers.add(None, Timer::Pomodoro(Pomodoro::start(config, at(0))));
+        let cd = timers.add(None, Timer::Countdown(Countdown::start(at(0), secs(60))));
+        let sw = timers.add(None, stopwatch());
+        for id in [pomo, cd, sw] {
+            timers.pause(id, at(5)).unwrap();
+            assert_eq!(timers.pause(id, at(6)), Err(EngineError::NotRunning));
+            timers.resume(id, at(7)).unwrap();
+            assert_eq!(timers.resume(id, at(8)), Err(EngineError::AlreadyRunning));
+        }
+        let _events = timers.tick(at(12)); // focus done: the short break waits
+        timers.start_phase(pomo, at(12)).unwrap();
+        assert_eq!(
+            timers.start_phase(pomo, at(13)),
+            Err(EngineError::AlreadyRunning)
+        );
+        assert_eq!(
+            timers.start_phase(sw, at(13)),
+            Err(EngineError::NotPomodoro(sw))
+        );
+        let missing = TimerId(99);
+        assert_eq!(
+            timers.pause(missing, at(1)),
+            Err(EngineError::TimerNotFound(missing))
+        );
     }
 
     #[test]

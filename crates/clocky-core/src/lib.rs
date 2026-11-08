@@ -9,6 +9,7 @@ pub mod domain;
 pub mod engine;
 pub mod store;
 pub mod time;
+pub mod tracker;
 
 #[cfg(test)]
 mod test_util;

@@ -225,3 +225,34 @@ fn search_sorts_by_folded_name() {
     let a = store.create_task(None, "a", at(0)).unwrap();
     assert_eq!(ids(&store.search_tasks("").unwrap()), vec![accented, a, b]);
 }
+
+#[test]
+fn links_and_summaries_include_active_timers() {
+    use crate::engine::stopwatch::Stopwatch;
+    use crate::engine::timers::{ActiveTimer, Timer};
+    use crate::store::ActiveTimerLink;
+
+    let mut store = Store::open_in_memory().unwrap();
+    let task = store.create_task(None, "report", at(0)).unwrap();
+    let other = store.create_task(None, "other", at(0)).unwrap();
+    let running = |id, task| {
+        ActiveTimer::new(
+            TimerId(id),
+            Some(task),
+            None,
+            Timer::Stopwatch(Stopwatch::start(at(0))),
+        )
+    };
+    store.save_active(&running(1, task)).unwrap();
+    store.save_active(&running(2, other)).unwrap();
+
+    let expected = vec![ActiveTimerLink {
+        timer: TimerId(1),
+        kind: TimerKind::Stopwatch,
+    }];
+    assert_eq!(store.task_links(task).unwrap().active_timers, expected);
+    let summaries = store.task_summaries(None, false).unwrap();
+    assert_eq!(summaries[0].links.active_timers, expected);
+    store.delete_active(TimerId(1)).unwrap();
+    assert_eq!(store.task_links(task).unwrap().active_timers.len(), 0);
+}

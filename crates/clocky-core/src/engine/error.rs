@@ -22,4 +22,13 @@ pub enum EngineError {
     /// The timer is not a pomodoro.
     #[error("timer {0} is not a pomodoro")]
     NotPomodoro(TimerId),
+    /// The parts of a run being restored are inconsistent.
+    #[error("invalid run: segments must be ordered, non-overlapping and not inverted")]
+    InvalidRun,
+    /// The state of a pomodoro being restored is inconsistent with its configuration.
+    #[error("invalid pomodoro state: round, focus index and phase do not match the configuration")]
+    InvalidPomodoroState,
+    /// A restored timer repeats an identifier or is not below the next identifier.
+    #[error("timer {0} is duplicated or not below the next timer id")]
+    InvalidTimerId(TimerId),
 }

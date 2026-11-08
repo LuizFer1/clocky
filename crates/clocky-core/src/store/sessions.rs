@@ -2,7 +2,7 @@
 
 use std::time::Duration;
 
-use rusqlite::{Connection, Row, params};
+use rusqlite::{Connection, Row, Transaction, params};
 
 use super::convert::{
     duration_from_ms, duration_to_ms, timer_id_from_sql, timer_id_to_sql, u32_from_sql,
@@ -138,44 +138,59 @@ impl Store {
         round: Option<u32>,
         session: &CompletedSession,
     ) -> Result<SessionId, StoreError> {
-        let run_id = timer_id_to_sql(run)?;
-        let segments: Vec<Segment> = session
-            .segments()
-            .iter()
-            .copied()
-            .filter(|segment| segment.end > segment.start)
-            .collect();
-        let (Some(first), Some(last)) = (segments.first(), segments.last()) else {
-            return Err(StoreError::EmptySession);
-        };
-        let (started, ended) = (first.start.as_millis(), last.end.as_millis());
-        let effective: Duration = segments.iter().map(Segment::duration).sum();
-        let effective = duration_to_ms(effective, "session duration")?;
         let tx = self.conn.transaction()?;
-        tx.execute(
-            "INSERT INTO sessions (kind, task_id, run_id, round, started_at_ms, ended_at_ms,
-                 effective_ms) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-            params![
-                kind_to_sql(session.kind()),
-                task.map(|t| t.0),
-                run_id,
-                round,
-                started,
-                ended,
-                effective
-            ],
-        )?;
-        let id = tx.last_insert_rowid();
-        insert_segments(&tx, id, &segments)?;
-        tx.execute(
-            "UPDATE subtask_events SET session_id = ?1
-             WHERE run_id = ?2 AND session_id IS NULL AND at_ms BETWEEN ?3 AND ?4",
-            params![id, run_id, started, ended],
-        )?;
+        let id = record_session_tx(&tx, task, run, round, session)?;
         tx.commit()?;
-        Ok(SessionId(id))
+        Ok(id)
     }
+}
 
+/// [`Store::record_session`] inside the caller's transaction (the tracker also updates
+/// `active_timers` in it).
+pub(crate) fn record_session_tx(
+    tx: &Transaction<'_>,
+    task: Option<TaskId>,
+    run: TimerId,
+    round: Option<u32>,
+    session: &CompletedSession,
+) -> Result<SessionId, StoreError> {
+    let run_id = timer_id_to_sql(run)?;
+    let segments: Vec<Segment> = session
+        .segments()
+        .iter()
+        .copied()
+        .filter(|segment| segment.end > segment.start)
+        .collect();
+    let (Some(first), Some(last)) = (segments.first(), segments.last()) else {
+        return Err(StoreError::EmptySession);
+    };
+    let (started, ended) = (first.start.as_millis(), last.end.as_millis());
+    let effective: Duration = segments.iter().map(Segment::duration).sum();
+    let effective = duration_to_ms(effective, "session duration")?;
+    tx.execute(
+        "INSERT INTO sessions (kind, task_id, run_id, round, started_at_ms, ended_at_ms,
+             effective_ms) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        params![
+            kind_to_sql(session.kind()),
+            task.map(|t| t.0),
+            run_id,
+            round,
+            started,
+            ended,
+            effective
+        ],
+    )?;
+    let id = tx.last_insert_rowid();
+    insert_segments(tx, id, &segments)?;
+    tx.execute(
+        "UPDATE subtask_events SET session_id = ?1
+         WHERE run_id = ?2 AND session_id IS NULL AND at_ms BETWEEN ?3 AND ?4",
+        params![id, run_id, started, ended],
+    )?;
+    Ok(SessionId(id))
+}
+
+impl Store {
     /// The session with its segments and linked subtask events.
     ///
     /// # Errors

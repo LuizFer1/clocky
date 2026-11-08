@@ -149,6 +149,49 @@ impl Pomodoro {
         }
     }
 
+    /// Restores a pomodoro from its parts. `run` is `None` while the phase waits for the user.
+    ///
+    /// # Errors
+    /// [`EngineError::InvalidPomodoroState`] if `round` is zero, `focus_index` is outside
+    /// `1..=focus_per_round`, or the phase cannot happen at that focus index (the long break
+    /// only after the last focus of the round, the short break only before it).
+    pub fn from_parts(
+        config: PomodoroConfig,
+        phase: Phase,
+        focus_index: u32,
+        round: u32,
+        run: Option<Run>,
+    ) -> Result<Self, EngineError> {
+        let last = config.focus_per_round;
+        let phase_fits = match phase {
+            Phase::Focus => true,
+            Phase::ShortBreak => focus_index < last,
+            Phase::LongBreak => focus_index == last,
+        };
+        if round == 0 || focus_index == 0 || focus_index > last || !phase_fits {
+            return Err(EngineError::InvalidPomodoroState);
+        }
+        Ok(Self {
+            config,
+            phase,
+            focus_index,
+            round,
+            run,
+        })
+    }
+
+    /// Configuration copied when it started.
+    #[must_use]
+    pub fn config(&self) -> &PomodoroConfig {
+        &self.config
+    }
+
+    /// Run of the current phase; `None` while it waits for the user.
+    #[must_use]
+    pub fn run(&self) -> Option<&Run> {
+        self.run.as_ref()
+    }
+
     /// Current phase.
     #[must_use]
     pub fn phase(&self) -> Phase {
@@ -673,6 +716,52 @@ mod tests {
         let _events = late.tick(at(1500 + 61));
         assert_eq!(late.phase(), Phase::ShortBreak);
         assert!(late.is_waiting());
+    }
+
+    #[test]
+    fn from_parts_restores_every_field() {
+        let mut p = Pomodoro::start(cfg(false), at(0));
+        let _events = p.tick(at(1500)); // short break waiting
+        let restored = Pomodoro::from_parts(
+            p.config().clone(),
+            p.phase(),
+            p.focus_index(),
+            p.round(),
+            p.run().cloned(),
+        )
+        .unwrap();
+        assert_eq!(restored, p);
+        assert!(restored.is_waiting());
+        let running = Pomodoro::start(cfg(true), at(0));
+        let restored = Pomodoro::from_parts(cfg(true), Phase::Focus, 1, 1, running.run().cloned());
+        assert_eq!(restored.unwrap(), running);
+    }
+
+    #[test]
+    fn from_parts_rejects_impossible_states() {
+        let invalid = Err(EngineError::InvalidPomodoroState);
+        assert_eq!(
+            Pomodoro::from_parts(cfg(false), Phase::Focus, 1, 0, None),
+            invalid
+        );
+        assert_eq!(
+            Pomodoro::from_parts(cfg(false), Phase::Focus, 0, 1, None),
+            invalid
+        );
+        assert_eq!(
+            Pomodoro::from_parts(cfg(false), Phase::Focus, 3, 1, None),
+            invalid
+        );
+        assert_eq!(
+            Pomodoro::from_parts(cfg(false), Phase::ShortBreak, 2, 1, None),
+            invalid
+        );
+        assert_eq!(
+            Pomodoro::from_parts(cfg(false), Phase::LongBreak, 1, 1, None),
+            invalid
+        );
+        assert!(Pomodoro::from_parts(cfg(false), Phase::LongBreak, 2, 3, None).is_ok());
+        assert!(Pomodoro::from_parts(cfg(false), Phase::ShortBreak, 1, 1, None).is_ok());
     }
 
     #[test]
