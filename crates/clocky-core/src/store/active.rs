@@ -174,11 +174,9 @@ pub(super) fn delete_active_tx(tx: &Transaction<'_>, id: TimerId) -> Result<usiz
 
 impl Store {
     /// Deletes every active timer without recording anything: the way out when a saved timer
-    /// is corrupt and the tracker cannot open (history is kept).
-    ///
-    /// # Errors
-    /// [`StoreError::Sqlite`] if SQLite fails.
-    pub fn clear_active_timers(&mut self) -> Result<(), StoreError> {
+    /// is corrupt and the tracker cannot open (history is kept). Reached only through
+    /// `TrackerOpenError::discard_active_timers`, so it can never run behind an open tracker.
+    pub(crate) fn clear_active_timers(&mut self) -> Result<(), StoreError> {
         self.conn.execute("DELETE FROM active_timers", [])?;
         Ok(())
     }

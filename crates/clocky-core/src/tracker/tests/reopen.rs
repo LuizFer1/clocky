@@ -190,9 +190,8 @@ fn corrupted_active_timer_gives_the_store_back_for_recovery() {
     assert!(failed.to_string().starts_with("invalid pomodoro phase"));
     assert!(std::error::Error::source(&failed).is_some());
     // History is still there, and discarding the active timers lets the tracker open.
-    let mut store = *failed.store;
-    assert_eq!(store.task_time(task).unwrap(), secs(60));
-    store.clear_active_timers().unwrap();
+    assert_eq!(failed.store.task_time(task).unwrap(), secs(60));
+    let store = failed.discard_active_timers().unwrap();
     let (tracker, events) = Tracker::open(store, at(200)).unwrap();
     assert_eq!(events, vec![]);
     assert_eq!(tracker.timers().iter().count(), 0);

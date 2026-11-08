@@ -16,7 +16,7 @@ pub enum TrackerError {
 
 /// [`crate::tracker::Tracker::open`] failed. The store is handed back, so the app can still
 /// show the history and offer to discard the active timers
-/// ([`Store::clear_active_timers`]) before opening again.
+/// ([`TrackerOpenError::discard_active_timers`]) before opening again.
 #[derive(Debug, thiserror::Error)]
 #[error("{error}")]
 pub struct TrackerOpenError {
@@ -25,4 +25,17 @@ pub struct TrackerOpenError {
     /// Why the timers could not be restored.
     #[source]
     pub error: TrackerError,
+}
+
+impl TrackerOpenError {
+    /// Deletes every active timer without recording anything (history is kept) and returns the
+    /// store, ready for [`crate::tracker::Tracker::open`] again.
+    ///
+    /// # Errors
+    /// [`StoreError::Sqlite`] if SQLite fails.
+    pub fn discard_active_timers(self) -> Result<Store, StoreError> {
+        let mut store = *self.store;
+        store.clear_active_timers()?;
+        Ok(store)
+    }
 }
