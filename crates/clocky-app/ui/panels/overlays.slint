@@ -1,135 +1,8 @@
-// Drawn over the panel body: the temporary task chooser and the "Cronômetro esquecido?" dialog
-// (not in the handoff screens; built from its tokens, spec decision 6).
+// Drawn over the panel body: the "Cronômetro esquecido?" dialog (not in the handoff screens;
+// built from its tokens, spec decision 6). The task picker is the panel window's own.
 import { Theme } from "../theme.slint";
-import { TimerUi, ChooserRow } from "timer-ui.slint";
-import { Button, Dot } from "common.slint";
-
-component ChooserItem inherits Rectangle {
-    in property <string> text;
-    in property <string> project;
-    in property <color> tint;
-    in property <bool> linked;
-    in property <bool> selected;
-    callback picked();
-
-    height: 44px;
-    border-radius: Theme.radius-lg;
-    background: root.selected ? Theme.accent-soft : (touch.has-hover ? Theme.panel-2 : transparent);
-
-    touch := TouchArea {
-        mouse-cursor: pointer;
-        clicked => { root.picked(); }
-    }
-
-    HorizontalLayout {
-        padding-left: Theme.space-3;
-        padding-right: Theme.space-3;
-        spacing: Theme.space-2-5;
-
-        VerticalLayout {
-            alignment: center;
-
-            Dot {
-                size: 9px;
-                tint: root.linked ? root.tint : Theme.line-2;
-            }
-        }
-
-        if root.linked: Text {
-            vertical-alignment: center;
-            text: root.project + " ›";
-            color: Theme.muted;
-            font-size: Theme.fs-base;
-        }
-
-        Text {
-            horizontal-stretch: 1;
-            vertical-alignment: center;
-            text: root.text;
-            color: Theme.text;
-            font-size: Theme.fs-base;
-            overflow: elide;
-        }
-
-        if root.selected: VerticalLayout {
-            alignment: center;
-
-            Image {
-                width: 18px;
-                height: 18px;
-                source: @image-url("../../icons/check.svg");
-                colorize: Theme.text;
-            }
-        }
-    }
-}
-
-// Temporary chooser: "Sem tarefa" plus every open task. M6a's TaskPicker replaces it.
-component Chooser inherits Rectangle {
-    background: Theme.panel;
-
-    // Swallows clicks so nothing under the chooser reacts.
-    TouchArea { }
-
-    HorizontalLayout {
-        x: Theme.space-5;
-        y: Theme.space-4;
-        width: parent.width - 2 * Theme.space-5;
-        height: 28px;
-
-        Text {
-            horizontal-stretch: 1;
-            vertical-alignment: center;
-            text: "Vincular tarefa";
-            color: Theme.text;
-            font-size: Theme.fs-lg;
-            font-weight: Theme.fw-medium;
-        }
-
-        Text {
-            vertical-alignment: center;
-            text: "Cancelar";
-            color: Theme.accent-text;
-            font-size: Theme.fs-md;
-            font-weight: Theme.fw-medium;
-
-            TouchArea {
-                mouse-cursor: pointer;
-                clicked => { TimerUi.chooser-cancel(); }
-            }
-        }
-    }
-
-    // The list fills the rest of the body and scrolls.
-    Flickable {
-        x: Theme.space-3;
-        y: Theme.space-4 + 28px + Theme.space-3;
-        width: parent.width - 2 * Theme.space-3;
-        height: parent.height - self.y - Theme.space-3;
-        content-height: rows.preferred-height;
-
-        rows := VerticalLayout {
-            alignment: start;
-            spacing: 2px;
-
-            ChooserItem {
-                text: "Sem tarefa";
-                linked: false;
-                selected: TimerUi.chooser-none-selected;
-                picked => { TimerUi.chooser-pick(-1); }
-            }
-
-            for row in TimerUi.chooser-rows: ChooserItem {
-                text: row.task;
-                project: row.project;
-                tint: row.color;
-                linked: true;
-                selected: row.selected;
-                picked => { TimerUi.chooser-pick(row.id); }
-            }
-        }
-    }
-}
+import { TimerUi } from "timer-ui.slint";
+import { Button } from "common.slint";
 
 component ForgottenDialog inherits Rectangle {
     background: Theme.dark ? #000000b3 : #00000059;
@@ -189,11 +62,6 @@ component ForgottenDialog inherits Rectangle {
 
 export component TimerOverlays inherits Rectangle {
     if TimerUi.forgotten-visible: ForgottenDialog {
-        width: root.width;
-        height: root.height;
-    }
-
-    if TimerUi.chooser-visible: Chooser {
         width: root.width;
         height: root.height;
     }

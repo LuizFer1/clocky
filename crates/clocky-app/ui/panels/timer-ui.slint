@@ -51,14 +51,6 @@ export struct ActiveCard {
     task: TaskLine,
 }
 
-export struct ChooserRow {
-    id: int,
-    project: string,
-    task: string,
-    color: color,
-    selected: bool,
-}
-
 export global TimerUi {
     // "" = the placeholder body (Alarme until M7); otherwise "stopwatch", "countdown-config",
     // "countdown-run", "pomodoro-list", "pomodoro-timer", "wizard" or "overview".
@@ -170,11 +162,4 @@ export global TimerUi {
     in property <string> forgotten-text;
     callback forgotten-record();
     callback forgotten-discard();
-
-    // Temporary task chooser (M6a's picker replaces it). -1 = "Sem tarefa".
-    in property <bool> chooser-visible;
-    in property <[ChooserRow]> chooser-rows;
-    in property <bool> chooser-none-selected;
-    callback chooser-pick(int);
-    callback chooser-cancel();
 }

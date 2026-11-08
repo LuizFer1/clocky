@@ -60,7 +60,12 @@ impl App {
         } else {
             Box::new(timers::SystemAlerts)
         };
-        let timers = TimerPanels::new(&panel.ui, core.clone(), reopened, alerts, !screenshot_mode);
+        let hooks = timers::Hooks {
+            chooser: Box::new(timers::PanelChooser::new(Rc::downgrade(&panel))),
+            alerts,
+            interactive: !screenshot_mode,
+        };
+        let timers = TimerPanels::new(&panel.ui, core.clone(), reopened, hooks);
         let app = Rc::new(Self {
             dock: Dock::new()?,
             panel,
@@ -169,7 +174,7 @@ impl App {
         let outcome = self.timers.tick();
         self.dock.ui.set_active_count(outcome.active_count);
         if let Some(kind) = outcome.open {
-            self.panel.open(kind, self.dock.anchor(), false);
+            self.open_panel(kind, false);
         }
     }
 
@@ -197,11 +202,17 @@ impl App {
             return;
         }
         if let Some(kind) = PanelKind::from_id(id) {
-            self.timers.show(kind); // M6b
-            self.panel.open(kind, self.dock.anchor(), true);
+            self.open_panel(kind, true);
         } else {
             tracing::warn!("unknown radial option: {id}");
         }
+    }
+
+    /// Shows `kind`'s panel next to the dock with its view set. `focus` for user clicks only
+    /// (see [`Panel::open`]).
+    pub fn open_panel(&self, kind: PanelKind, focus: bool) {
+        self.timers.show(kind);
+        self.panel.open(kind, self.dock.anchor(), focus);
     }
 
     fn back_to_menu(&self) {
@@ -258,7 +269,7 @@ impl App {
             }),
             open_panel: Box::new(move |kind| {
                 if let Some(app) = weak_open.upgrade() {
-                    app.panel.open(kind, app.dock.anchor(), false);
+                    app.open_panel(kind, false);
                 }
             }),
             done: Box::new(quit),

@@ -41,7 +41,7 @@ pub use alerts::{Alerts, SilentAlerts, SystemAlerts};
 use alerts::{TimerInfo, alert_for};
 use apply::Models;
 use cards::{Kind, Ringing};
-use chooser::{ListChooser, TaskChooser};
+pub use chooser::{PanelChooser, TaskChooser};
 use names::Names;
 use state::{PomodoroPick, State, View};
 
@@ -72,15 +72,28 @@ pub struct TimerPanels {
     weak: Weak<Self>,
 }
 
+/// How the panels reach the rest of the app.
+pub struct Hooks {
+    /// Opens the task picker for a timer.
+    pub chooser: Box<dyn TaskChooser>,
+    /// Sound and notification when a timer ends.
+    pub alerts: Box<dyn Alerts>,
+    /// `false` in screenshot runs: the tick never opens a panel by itself.
+    pub interactive: bool,
+}
+
 impl TimerPanels {
     pub fn new(
         window: &ui::PanelWindow,
         core: Rc<RefCell<AppCore>>,
         reopened: &Reopened,
-        alerts: Box<dyn Alerts>,
-        interactive: bool,
+        hooks: Hooks,
     ) -> Rc<Self> {
-        let chooser = Box::new(ListChooser::new(window, core.clone()));
+        let Hooks {
+            chooser,
+            alerts,
+            interactive,
+        } = hooks;
         let models = Models::install(&window.global::<ui::TimerUi>());
         let panels = Rc::new_cyclic(|weak| Self {
             ui: window.as_weak(),
@@ -113,6 +126,11 @@ impl TimerPanels {
     /// The tracker, for the demo seeding of the screenshot hook.
     pub fn core(&self) -> &Rc<RefCell<AppCore>> {
         &self.core
+    }
+
+    /// Closes the task picker if a panel opened it (its choice is dropped).
+    pub fn cancel_chooser(&self) {
+        self.chooser.cancel();
     }
 
     /// A radial option was chosen: shows the right view of its panel.

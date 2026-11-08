@@ -56,8 +56,7 @@ const STEPS: &[Step] = &[
         name: "panel",
         shot: Shot::Panel,
         prepare: |app, _| {
-            app.panel
-                .open(PanelKind::Overview, app.dock.anchor(), false);
+            app.open_panel(PanelKind::Overview, false);
         },
     },
     Step {
@@ -109,8 +108,7 @@ const STEPS: &[Step] = &[
         shot: Shot::Panel,
         prepare: |app, t| {
             resize(app, WIDE);
-            app.panel
-                .open(PanelKind::Stopwatch, app.dock.anchor(), false);
+            app.open_panel(PanelKind::Stopwatch, false);
             app.panel.pick_task(t.task, |choice| {
                 tracing::info!("screenshot picker returned {:?}", choice.map(|t| t.0));
             });

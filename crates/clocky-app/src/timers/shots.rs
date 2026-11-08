@@ -28,7 +28,7 @@ enum Scene {
     WizardStep1,
     PomodoroTimer,
     Overview,
-    /// The temporary task chooser over the stopwatch.
+    /// The task picker, opened by the stopwatch's "Vincular tarefa".
     Chooser,
     Forgotten,
     // The ones below go through the `TimerUi` callbacks, as the buttons do.
@@ -180,7 +180,7 @@ fn show(run: &Run, scene: Scene) {
         return;
     };
     let global = window.global::<ui::TimerUi>();
-    global.invoke_chooser_cancel();
+    run.ctx.panels.cancel_chooser();
     if !click(run, &global, scene) {
         open(run, scene);
     }
