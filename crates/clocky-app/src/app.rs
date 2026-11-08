@@ -44,6 +44,8 @@ pub struct App {
     timers: Rc<TimerPanels>,
     /// M7a: the alarms (Alarme panel, Ativos cards, ringing overlay).
     alarms: Rc<crate::alarms::Alarms>,
+    /// 0.2: automatic updates (Configurações > Atualizações).
+    updater: Rc<crate::update::Updater>,
 }
 
 impl App {
@@ -83,6 +85,7 @@ impl App {
             alarms: alarms.clone(),
         };
         let timers = TimerPanels::new(&panel.ui, core.clone(), reopened, hooks);
+        let updater = crate::update::Updater::new(core.clone(), !screenshot_mode);
         let app = Rc::new(Self {
             dock: Dock::new()?,
             panel,
@@ -95,9 +98,11 @@ impl App {
             tick_timer: slint::Timer::default(),
             timers,
             alarms,
+            updater,
         });
         app.connect();
         app.connect_settings();
+        app.connect_updates();
         APP.with(|cell| *cell.borrow_mut() = Some(app.clone()));
         Ok(app)
     }
@@ -332,10 +337,16 @@ impl App {
         if !self.screenshot_mode
             && let Some(backend) = crate::autostart::system()
         {
-            // An entry left by an exe that moved points at this one again.
-            match std::env::current_exe()
-                .map(|exe| crate::autostart::repair(backend.as_ref(), &exe))
-            {
+            // An entry left by an exe that moved points at this one again; never for a
+            // development build (`0.0.0`), which would steal the installed app's entry.
+            let release_build = self.updater.current().is_release();
+            match std::env::current_exe().map(|exe| {
+                if release_build {
+                    crate::autostart::repair(backend.as_ref(), &exe)
+                } else {
+                    Ok(false)
+                }
+            }) {
                 Ok(Ok(true)) => tracing::info!("autostart entry pointed at the running exe"),
                 Ok(Ok(false)) => {}
                 Ok(Err(e)) | Err(e) => tracing::warn!("cannot check the autostart entry: {e}"),
@@ -419,5 +430,51 @@ pub fn shutdown(app: Rc<App>) {
 pub fn quit() {
     if let Err(e) = slint::quit_event_loop() {
         tracing::error!("failed to quit the event loop: {e}");
+    }
+}
+
+/// 0.2: Configurações > Atualizações.
+impl App {
+    fn connect_updates(self: &Rc<Self>) {
+        let s = self.manage.ui.global::<ui::SettingsState>();
+        s.set_version(self.updater.current().to_string().into());
+        s.set_auto_update(self.updater.auto());
+        let weak = Rc::downgrade(self);
+        s.on_update_act(move || {
+            if let Some(app) = weak.upgrade() {
+                app.updater.act();
+            }
+        });
+        let weak = Rc::downgrade(self);
+        s.on_set_auto_update(move |on| {
+            if let Some(app) = weak.upgrade() {
+                app.updater.set_auto(on);
+                app.manage
+                    .ui
+                    .global::<ui::SettingsState>()
+                    .set_auto_update(on);
+            }
+        });
+        let weak = Rc::downgrade(self);
+        self.updater.set_on_view(move |view| {
+            let Some(app) = weak.upgrade() else { return };
+            let s = app.manage.ui.global::<ui::SettingsState>();
+            s.set_update_status(view.status.as_str().into());
+            s.set_update_action(view.action.as_str().into());
+            s.set_update_busy(view.busy);
+        });
+        let weak = Rc::downgrade(self);
+        self.updater
+            .set_idle_check(move || weak.upgrade().is_some_and(|app| app.is_idle()));
+        self.updater.start();
+    }
+
+    /// A good moment to restart for an update: no window open and nothing running or ringing
+    /// (the dock badge counts both).
+    fn is_idle(&self) -> bool {
+        !self.panel.ui.window().is_visible()
+            && !self.manage.ui.window().is_visible()
+            && self.dock.ui.get_active_count() == 0
+            && !self.dock.ui.get_open()
     }
 }

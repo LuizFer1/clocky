@@ -34,11 +34,14 @@ mod reports_view;
 mod screenshot;
 mod settings;
 mod settings_view;
+// 0.2: installer, uninstaller and automatic updates.
+mod setup;
 mod sound;
 mod startup;
 mod tour;
 mod tour_manage;
 mod tray;
+mod update;
 // M6b: the timer panels.
 mod timers;
 // M7a: alarms (Alarme panel, Ativos cards, ringing overlay).
@@ -56,6 +59,17 @@ fn main() {
 
 fn run() -> anyhow::Result<()> {
     let args: Vec<String> = std::env::args().skip(1).collect();
+    // The installer, the uninstaller and the update hand-over never touch the single-instance
+    // name: they are not the app.
+    let exe = std::env::current_exe().unwrap_or_default();
+    if let Some(mode) = setup::mode(&args, &exe) {
+        start_logging();
+        tracing::info!("launch mode: {mode:?}");
+        if !matches!(mode, setup::Mode::Update(_)) {
+            select_backend()?;
+        }
+        return setup::run(&mode);
+    }
     let launch = command::parse_args(&args)?;
     let screenshot_dir = screenshot::dir_from_env();
     // Screenshot runs are independent of a running Clocky.

@@ -1,0 +1,129 @@
+// Clocky's installer and uninstaller (Windows): one small window, driven by `src/setup`.
+import { Theme } from "theme.slint";
+import { CheckBox, AccentButton, SecondaryButton } from "widgets.slint";
+
+export component SetupWindow inherits Window {
+    in property <bool> uninstall: false;
+    in property <string> version;
+    // Where Clocky goes (or is).
+    in property <string> folder;
+    in-out property <bool> autostart: true;
+    // Progress, the result or the error.
+    in property <string> status;
+    in property <bool> busy: false;
+    in property <bool> done: false;
+    in property <bool> failed: false;
+    callback confirm();
+    callback cancel();
+
+    title: root.uninstall ? "Desinstalar o Clocky" : "Instalar o Clocky";
+    icon: @image-url("../icons/tray.svg");
+    width: 480px;
+    height: 300px;
+    background: Theme.app;
+    default-font-family: Theme.font-sans;
+
+    VerticalLayout {
+        padding: Theme.space-6;
+        spacing: Theme.space-4;
+
+        HorizontalLayout {
+            spacing: Theme.space-3-5;
+
+            Rectangle {
+                width: 48px;
+                height: 48px;
+                border-radius: 24px;
+                background: Theme.fab;
+                border-width: 1px;
+                border-color: Theme.fab-border;
+
+                Image {
+                    width: 26px;
+                    height: 26px;
+                    source: @image-url("../icons/clock.svg");
+                    colorize: Theme.fab-text;
+                }
+            }
+
+            VerticalLayout {
+                alignment: center;
+                spacing: 2px;
+
+                Text {
+                    text: root.uninstall ? "Desinstalar o Clocky" : "Instalar o Clocky " + root.version;
+                    color: Theme.text;
+                    font-size: Theme.fs-lg;
+                    font-weight: Theme.fw-semibold;
+                }
+
+                Text {
+                    text: root.uninstall ? "Seus projetos, tarefas e sessões continuam guardados no computador." : "Para este usuário, sem precisar de administrador.";
+                    color: Theme.muted;
+                    font-size: Theme.fs-sm;
+                    wrap: word-wrap;
+                }
+            }
+        }
+
+        Text {
+            text: (root.uninstall ? "Remove o Clocky de " : "Pasta: ") + root.folder;
+            color: Theme.muted;
+            font-size: Theme.fs-sm;
+            wrap: word-wrap;
+        }
+
+        if !root.uninstall && !root.done: HorizontalLayout {
+            spacing: Theme.space-2-5;
+
+            CheckBox {
+                checked: root.autostart;
+                toggled => { root.autostart = !root.autostart; }
+            }
+
+            Text {
+                vertical-alignment: center;
+                text: "Iniciar com o Windows";
+                color: Theme.text;
+                font-size: Theme.fs-md;
+
+                TouchArea {
+                    clicked => { root.autostart = !root.autostart; }
+                }
+            }
+        }
+
+        Text {
+            text: root.status;
+            color: root.failed ? Theme.danger : Theme.muted;
+            font-size: Theme.fs-sm;
+            wrap: word-wrap;
+        }
+
+        Rectangle {
+            vertical-stretch: 1;
+        }
+
+        HorizontalLayout {
+            alignment: end;
+            spacing: Theme.space-2;
+
+            if !root.done: SecondaryButton {
+                text: "Cancelar";
+                clicked => { root.cancel(); }
+            }
+
+            AccentButton {
+                enabled: !root.busy;
+                text: root.done ? "Fechar" : (root.uninstall ? "Desinstalar" : "Instalar");
+                clicked => {
+                    if (root.done) {
+                        root.cancel();
+                    } else {
+                        root.confirm();
+                    }
+                }
+            }
+        }
+    }
+}
