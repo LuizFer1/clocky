@@ -1,0 +1,165 @@
+// State of the Relatórios page (spec, section 6): Geral, Semanal, Diário and Sessão. Rust
+// (`src/reports_view/**`) turns the core reports into these rows; every size is a 0..1
+// fraction computed there, so the Slint side only lays them out.
+
+// Geral: a project (bold, with its share) or one of its tasks (indented).
+export struct ReportRow {
+    is-task: bool,
+    name: string,
+    color: color,
+    // "Sem projeto" / "Sem tarefa": drawn with the muted color.
+    none: bool,
+    archived: bool,
+    // "3h 40min"
+    total: string,
+    // "42%" (projects only)
+    share: string,
+    // Bar length, relative to the largest project of the period.
+    bar: float,
+}
+
+// One project's slice of a day column (Semanal).
+export struct StackPart {
+    color: color,
+    none: bool,
+    // Share of the column.
+    size: float,
+}
+
+// A day of the week (Semanal): stacked bars, top to bottom.
+export struct DayColumn {
+    // "seg"
+    weekday: string,
+    // "2"
+    day: string,
+    // "2h 10min", or empty for a day without time.
+    total: string,
+    // Column height relative to the chart scale.
+    height: float,
+    parts: [StackPart],
+    today: bool,
+}
+
+// A horizontal slice of a timeline: a running segment of a session.
+export struct TimelinePart {
+    start: float,
+    size: float,
+}
+
+// A session on the day's timeline (Diário).
+export struct TimelineBlock {
+    id: int,
+    lane: int,
+    start: float,
+    size: float,
+    color: color,
+    none: bool,
+    // Running segments, relative to the block (the gaps are pauses).
+    parts: [TimelinePart],
+}
+
+// A subtask checked (or unchecked) on a timeline.
+export struct TimelineMarker {
+    at: float,
+    name: string,
+    // "14:20"
+    time: string,
+    done: bool,
+}
+
+// An hour label under the timeline.
+export struct HourTick {
+    at: float,
+    label: string,
+}
+
+// A session in the list under the timeline (Diário).
+export struct DailyRow {
+    id: int,
+    // "14:02 – 14:27"
+    range: string,
+    task: string,
+    project: string,
+    color: color,
+    none: bool,
+    // "Pomodoro · foco 2"
+    kind: string,
+    duration: string,
+    // "✓ Endpoint de login às 14:20", or empty.
+    markers: string,
+}
+
+// A line of the Sessão detail: start, pause, milestone or end.
+export enum SessionEventKind { edge, pause, done, reopened }
+
+export struct SessionEvent {
+    kind: SessionEventKind,
+    // "14:20" or "14:10 – 14:13"
+    time: string,
+    text: string,
+    // "aos 18min", "3min"
+    detail: string,
+}
+
+export global ReportsState {
+    // 0 = Geral, 1 = Semanal, 2 = Diário (`reports_view::Tab`).
+    in property <int> tab: 1;
+    // Range of Geral: 0 = dia, 1 = semana, 2 = mês (`reports_view::Range`).
+    in property <int> range: 1;
+    // "2 a 8 de novembro"
+    in property <string> period-label;
+    // "Hoje" / "Esta semana" / "Este mês"
+    in property <string> current-label: "Esta semana";
+    // The period holds today: "›" and the current button are off.
+    in property <bool> at-current: true;
+    // "14h 20min" in the period.
+    in property <string> total;
+    in property <bool> empty;
+    in property <string> empty-title;
+    in property <string> empty-text;
+
+    // Geral.
+    in property <[ReportRow]> rows;
+
+    // Semanal.
+    in property <[DayColumn]> days;
+    // Chart scale labels ("4h", "2h").
+    in property <string> scale-top;
+    in property <string> scale-mid;
+    in property <[ReportRow]> week-projects;
+
+    // Diário.
+    in property <[TimelineBlock]> blocks;
+    in property <int> lanes: 1;
+    in property <[TimelineMarker]> markers;
+    in property <[HourTick]> ticks;
+    in property <[DailyRow]> sessions;
+
+    // Sessão (over the tabs while open).
+    in property <bool> session-open;
+    in property <string> session-back: "Diário";
+    in property <string> session-task;
+    in property <string> session-project;
+    in property <color> session-color;
+    in property <bool> session-none;
+    in property <string> session-kind;
+    in property <string> session-when;
+    in property <string> session-effective;
+    // "10min" and "2 pausas"
+    in property <string> session-pause-total;
+    in property <string> session-pause-count;
+    in property <string> session-wall;
+    in property <[TimelinePart]> session-parts;
+    in property <[TimelineMarker]> session-marks;
+    in property <[HourTick]> session-ticks;
+    in property <[SessionEvent]> session-events;
+
+    callback select-tab(int);
+    callback select-range(int);
+    callback previous();
+    callback next();
+    callback current();
+    callback open-session(int);
+    callback close-session();
+    callback delete-session();
+}

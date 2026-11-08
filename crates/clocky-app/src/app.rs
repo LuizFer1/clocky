@@ -19,6 +19,8 @@ use crate::{notify, sound};
 use crate::{tray, ui};
 // M6b: timer panels.
 use crate::timers::{self, TimerPanels};
+// M7b: Configurações.
+use crate::settings_view::Applied;
 
 thread_local! {
     /// The running app, for commands that arrive from other threads (single instance).
@@ -32,9 +34,7 @@ pub struct App {
     /// The core, shared with the windows that read and change data.
     pub core: Rc<RefCell<AppCore>>,
     settings: RefCell<Settings>,
-    /// `None` when settings must not be written (no config dir, or screenshot mode).
-    settings_path: Option<PathBuf>,
-    /// Screenshot mode: no tray and no settings writes.
+    /// Screenshot mode: no tray, and the settings never come from the user's files.
     screenshot_mode: bool,
     /// Keeps the tray icon alive (dropping it removes the icon).
     tray: RefCell<Option<ui::ClockyTray>>,
@@ -53,8 +53,10 @@ impl App {
         reopened: &Reopened,
         screenshot_mode: bool,
     ) -> anyhow::Result<Rc<Self>> {
-        let path = settings::default_path();
-        let settings = path.as_deref().map(Settings::load).unwrap_or_default();
+        // The old `settings.json` is imported once; screenshot runs never read it.
+        let legacy = settings::default_path().filter(|_| !screenshot_mode);
+        let mut core = core;
+        let settings = settings::load(&mut core, legacy.as_deref());
         let core = Rc::new(RefCell::new(core));
         let panel = Panel::new(core.clone())?;
         let alerts: Box<dyn timers::Alerts> = if screenshot_mode {
@@ -87,7 +89,6 @@ impl App {
             manage: Manage::new(core.clone())?,
             core,
             settings: RefCell::new(settings),
-            settings_path: path.filter(|_| !screenshot_mode),
             screenshot_mode,
             tray: RefCell::new(None),
             bridge: Bridge::new(SystemClock),
@@ -96,6 +97,7 @@ impl App {
             alarms,
         });
         app.connect();
+        app.connect_settings();
         APP.with(|cell| *cell.borrow_mut() = Some(app.clone()));
         Ok(app)
     }
@@ -261,14 +263,10 @@ impl App {
     }
 
     fn save_dock(&self, placement: DockPlacement) {
-        let mut settings = self.settings.borrow_mut();
-        settings.dock = Some(placement);
-        let Some(path) = &self.settings_path else {
-            return;
-        };
-        if let Err(e) = settings.save(path) {
-            tracing::warn!("failed to save {}: {e:#}", path.display());
+        if let Err(e) = settings::save_dock(&mut self.core.borrow_mut(), &placement) {
+            tracing::warn!("failed to save the dock position: {e:#}");
         }
+        self.settings.borrow_mut().dock = Some(placement);
     }
 
     /// Screenshot mode: the tour of `tour.rs` (dark, then light), then quit.
@@ -290,6 +288,8 @@ impl App {
 impl App {
     fn schedule_timer_shots(self: &Rc<Self>, dir: PathBuf) {
         let (weak_set, weak_open) = (Rc::downgrade(self), Rc::downgrade(self));
+        // M7a, then M7b: the alarm captures follow, then the Relatórios / Configurações tour,
+        // then the app quits.
         let (weak_done, dir_done) = (Rc::downgrade(self), dir.clone());
         timers::shots::start(timers::shots::ShotContext {
             panels: self.timers.clone(),
@@ -305,12 +305,36 @@ impl App {
                     app.open_panel(kind, false);
                 }
             }),
-            // M7a: the alarm captures follow, then quit.
+            // M7a: the alarm captures follow (then the M7b tour).
             done: Box::new(move || {
                 if let Some(app) = weak_done.upgrade() {
                     app.schedule_alarm_shots(dir_done.clone());
                 }
             }),
+        });
+    }
+}
+
+/// M7b: Configurações. The theme and the wizard defaults apply right away; the real autostart
+/// entry is only used by interactive runs (screenshot runs keep the in-memory one).
+impl App {
+    fn connect_settings(self: &Rc<Self>) {
+        if !self.screenshot_mode
+            && let Some(backend) = crate::autostart::system()
+        {
+            self.manage.set_autostart_backend(backend);
+        }
+        let weak = Rc::downgrade(self);
+        self.manage.set_on_settings(move |applied| {
+            let Some(app) = weak.upgrade() else { return };
+            match applied {
+                Applied::Theme(dark) => {
+                    app.settings.borrow_mut().dark_theme = dark;
+                    app.set_dark(dark);
+                }
+                Applied::Wizard => app.timers.reload_wizard_defaults(),
+                Applied::Stored => {}
+            }
         });
     }
 }
@@ -346,7 +370,10 @@ impl App {
     }
 
     fn schedule_alarm_shots(self: &Rc<Self>, dir: PathBuf) {
-        crate::alarms::shots::start(self, self.alarms.clone(), self.timers.clone(), dir, quit);
+        // M7b: the Relatórios / Configurações tour runs after the alarm captures.
+        let (weak, manage_dir) = (Rc::downgrade(self), dir.clone());
+        let then = Box::new(move || crate::tour_manage::run(&weak, manage_dir.clone()));
+        crate::alarms::shots::start(self, self.alarms.clone(), self.timers.clone(), dir, then);
     }
 }
 

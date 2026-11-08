@@ -318,6 +318,12 @@ export component TrackedCard inherits SideCard {
     for session in ManageState.sessions: Rectangle {
         height: 32px;
 
+        // M7b: a session opens its Sessão detail (Relatórios).
+        session-touch := TouchArea {
+            mouse-cursor: pointer;
+            clicked => { ManageState.open-session(session.id); }
+        }
+
         Rectangle {
             y: 0;
             height: 1px;

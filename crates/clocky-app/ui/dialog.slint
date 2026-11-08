@@ -1,0 +1,81 @@
+// Confirmation dialogs (not in the handoff, spec decision 12): a scrim over the window and a
+// panel card with a round tone badge, the title, the explanation and the buttons at the end.
+// Used by "Apagar …" and "Arquivar …" in Gerenciar and by "Cronômetro esquecido?" in the panel.
+import { Theme } from "theme.slint";
+
+// Badge color: red for what cannot be undone, neutral for archiving, amber for timers.
+export enum DialogTone { danger, neutral, pause }
+
+// Dimmed backdrop that swallows the clicks behind the dialog.
+export component Scrim inherits Rectangle {
+    background: Theme.dark ? #000000b3 : #0000004d;
+
+    TouchArea { }
+
+    @children
+}
+
+// The card: badge, title and text; the buttons go in as children (footer row).
+export component DialogCard inherits Rectangle {
+    in property <string> title;
+    in property <string> text;
+    in property <image> icon;
+    in property <DialogTone> tone: DialogTone.danger;
+
+    border-radius: Theme.radius-panel;
+    background: Theme.panel;
+    border-width: 1px;
+    border-color: Theme.line-2;
+    drop-shadow-blur: 40px;
+    drop-shadow-offset-y: 16px;
+    drop-shadow-color: Theme.dark ? #000000cc : #00000033;
+
+    VerticalLayout {
+        padding: Theme.space-6;
+        spacing: Theme.space-5;
+
+        HorizontalLayout {
+            spacing: Theme.space-3-5;
+
+            VerticalLayout {
+                alignment: start;
+
+                Rectangle {
+                    width: 40px;
+                    height: 40px;
+                    border-radius: 20px;
+                    background: root.tone == DialogTone.danger ? Theme.danger.with-alpha(0.14) : (root.tone == DialogTone.pause ? Theme.pause-soft : Theme.accent-soft);
+
+                    Image {
+                        width: 20px;
+                        height: 20px;
+                        source: root.icon;
+                        colorize: root.tone == DialogTone.danger ? Theme.danger : (root.tone == DialogTone.pause ? Theme.pause-text : Theme.text);
+                    }
+                }
+            }
+
+            VerticalLayout {
+                horizontal-stretch: 1;
+                spacing: Theme.space-1-5;
+
+                Text {
+                    text: root.title;
+                    color: Theme.text;
+                    font-size: Theme.fs-lg;
+                    font-weight: Theme.fw-medium;
+                    wrap: word-wrap;
+                }
+
+                Text {
+                    text: root.text;
+                    color: Theme.muted;
+                    font-size: Theme.fs-md;
+                    wrap: word-wrap;
+                }
+            }
+        }
+
+        @children
+    }
+}

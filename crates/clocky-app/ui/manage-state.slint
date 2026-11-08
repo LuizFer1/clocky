@@ -4,7 +4,8 @@
 import { ChipRow, ProjectItem, TaskRow, SubtaskRow, LinkRow, SessionRow } from "models.slint";
 
 export global ManageState {
-    // 0 = all projects, 1 = project, 2 = task, 3 = search results (`manage_view::Page`).
+    // 0 = all projects, 1 = project, 2 = task, 3 = search results (`manage_view::Page`),
+    // 4 = Relatórios, 5 = Configurações (`manage::Section`).
     in property <int> page;
     in property <[ProjectItem]> projects;
     in property <string> crumb: "Projetos";
@@ -97,4 +98,11 @@ export global ManageState {
     // Confirmation dialog.
     callback confirm-accepted();
     callback confirm-cancelled();
+
+    // M7b: Relatórios (page 4) and Configurações (page 5) from the sidebar footer; a session
+    // of "Tempo registrado" opens its Sessão detail. Archiving asks with a neutral dialog.
+    in property <bool> confirm-archive;
+    callback open-reports();
+    callback open-settings();
+    callback open-session(int);
 }

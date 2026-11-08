@@ -1,0 +1,37 @@
+// The confirmation dialog of the manage window ("Apagar …", "Arquivar …"), driven by
+// `ManageState.confirm-*`: red for what cannot be undone, neutral for archiving.
+import { Theme } from "theme.slint";
+import { AccentButton, DangerButton, SecondaryButton } from "widgets.slint";
+import { ManageState } from "manage-state.slint";
+import { DialogCard, DialogTone, Scrim } from "dialog.slint";
+
+export component ConfirmDialog inherits Scrim {
+    DialogCard {
+        width: min(420px, root.width - 2 * Theme.space-4);
+        height: self.preferred-height;
+        title: ManageState.confirm-title;
+        text: ManageState.confirm-text;
+        icon: ManageState.confirm-archive ? @image-url("../icons/archive.svg") : @image-url("../icons/trash.svg");
+        tone: ManageState.confirm-archive ? DialogTone.neutral : DialogTone.danger;
+
+        HorizontalLayout {
+            alignment: end;
+            spacing: Theme.space-2;
+
+            SecondaryButton {
+                text: "Cancelar";
+                clicked => { ManageState.confirm-cancelled(); }
+            }
+
+            if ManageState.confirm-archive: AccentButton {
+                text: ManageState.confirm-action;
+                clicked => { ManageState.confirm-accepted(); }
+            }
+
+            if !ManageState.confirm-archive: DangerButton {
+                text: ManageState.confirm-action;
+                clicked => { ManageState.confirm-accepted(); }
+            }
+        }
+    }
+}

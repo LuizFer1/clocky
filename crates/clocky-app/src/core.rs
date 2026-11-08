@@ -385,6 +385,9 @@ impl AppCore {
     }
 }
 
+// M7b: reports, the settings table and session deletion.
+mod reports;
+
 #[cfg(test)]
 mod tests {
     use clocky_core::clock::FakeClock;

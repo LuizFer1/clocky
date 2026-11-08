@@ -3,17 +3,23 @@
 //! after it (no polling).
 
 mod actions;
+// M7b: Relatórios, Configurações and the archive confirmations.
+mod archive;
+mod reports;
+mod settings;
 
 use std::cell::{Cell, RefCell};
 use std::rc::{Rc, Weak};
 
-use clocky_core::domain::{ProjectId, TaskId};
+use clocky_core::domain::{ProjectId, SessionId, TaskId};
 use slint::winit_030::WinitWindowAccessor;
 use slint::{ComponentHandle, ModelRc, SharedString, VecModel};
 
 use crate::core::{AppCore, CoreResult};
 use crate::manage_view::{self, ManageView, Nav, Page};
-use crate::{chips, palette, ui};
+use crate::reports_view::ReportNav;
+use crate::settings_view::Applied;
+use crate::{autostart, chips, palette, ui};
 
 /// Width used to wrap the "Mover para" chips (fits the 480px layout).
 const MOVE_CHIPS_WIDTH: f32 = 380.0;
@@ -30,9 +36,21 @@ pub enum TimerStart {
 enum Pending {
     DeleteProject(ProjectId),
     DeleteTask(TaskId),
+    ArchiveProject(ProjectId),
+    ArchiveTask(TaskId),
+    DeleteSession(SessionId),
+}
+
+/// The pages of the sidebar footer, over the project pages of [`Nav`] (M7b).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Section {
+    Projects,
+    Reports,
+    Settings,
 }
 
 type StartHook = Box<dyn Fn(TimerStart, TaskId)>;
+type SettingsHook = Box<dyn Fn(Applied)>;
 
 pub struct Manage {
     pub ui: ui::ManageWindow,
@@ -41,6 +59,11 @@ pub struct Manage {
     pending: Cell<Option<Pending>>,
     on_start_timer: RefCell<Option<StartHook>>,
     weak: Weak<Manage>,
+    section: Cell<Section>,
+    /// Relatórios, once opened.
+    reports: RefCell<Option<ReportNav>>,
+    autostart: RefCell<Box<dyn autostart::Autostart>>,
+    on_settings: RefCell<Option<SettingsHook>>,
 }
 
 impl Manage {
@@ -55,6 +78,10 @@ impl Manage {
             pending: Cell::new(None),
             on_start_timer: RefCell::new(None),
             weak: weak.clone(),
+            section: Cell::new(Section::Projects),
+            reports: RefCell::new(None),
+            autostart: RefCell::new(Box::new(autostart::Fake::default())),
+            on_settings: RefCell::new(None),
         });
         let colors: Vec<slint::Color> = palette::COLORS
             .iter()
@@ -108,6 +135,7 @@ impl Manage {
 
     /// Moves to `nav` (screenshot hook and navigation callbacks) and rebuilds the view.
     pub fn navigate(&self, nav: Nav) {
+        self.section.set(Section::Projects);
         *self.nav.borrow_mut() = nav;
         let state = self.state();
         state.set_adding_task(false);
@@ -165,6 +193,24 @@ impl Manage {
         state.set_show_completed(show_completed);
         if let Some(task) = &view.task {
             self.apply_task(task, view);
+        }
+        let section = self.section.get();
+        if section != Section::Projects {
+            // No project row stays selected over Relatórios and Configurações.
+            let items: Vec<ui::ProjectItem> = view
+                .projects
+                .iter()
+                .map(|p| ui::ProjectItem {
+                    selected: false,
+                    ..p.clone()
+                })
+                .collect();
+            state.set_projects(model(items));
+        }
+        match section {
+            Section::Projects => {}
+            Section::Reports => self.apply_reports(),
+            Section::Settings => self.apply_settings(),
         }
     }
 

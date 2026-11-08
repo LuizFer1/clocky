@@ -46,8 +46,11 @@ use alerts::{TimerInfo, alert_for};
 use apply::Models;
 use cards::{Kind, Ringing};
 pub use chooser::{PanelChooser, TaskChooser};
+// M7b: Configurações writes the wizard defaults.
+pub use actions_pomodoro::DEFAULT_KEYS as WIZARD_KEYS;
 use names::Names;
 use state::{PomodoroPick, State, View};
+pub use wizard::{Defaults as WizardDefaults, STEP_INFO};
 
 use crate::core::{AppCore, Reopened};
 use crate::format;
@@ -414,6 +417,17 @@ impl TimerPanels {
             tracing::info!("dropping deleted tasks from the timer drafts: {missing:?}");
             state::forget_missing_tasks(&mut self.state.borrow_mut(), |t| !missing.contains(&t));
         }
+    }
+}
+
+/// M7b: the wizard defaults changed in Configurações.
+impl TimerPanels {
+    /// Reads the wizard defaults again. An open "Novo pomodoro" draft keeps its values; the
+    /// next one starts from the new defaults.
+    pub fn reload_wizard_defaults(&self) {
+        let draft = self.state.borrow().wizard.clone();
+        self.load_wizard_defaults();
+        self.state.borrow_mut().wizard = draft;
     }
 }
 

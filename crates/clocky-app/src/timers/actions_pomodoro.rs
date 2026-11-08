@@ -9,7 +9,7 @@ use super::state::{PomodoroPick, View};
 use super::wizard::{Defaults, Wizard};
 
 /// Store keys of the wizard defaults (decision 13: the settings only seed the wizard).
-const DEFAULT_KEYS: [&str; 5] = [
+pub const DEFAULT_KEYS: [&str; 5] = [
     "pomodoro_focus_min",
     "pomodoro_short_min",
     "pomodoro_long_min",

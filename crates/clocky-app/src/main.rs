@@ -11,6 +11,7 @@ mod ui {
 }
 
 mod app;
+mod autostart;
 mod bridge;
 mod chips;
 mod command;
@@ -29,11 +30,14 @@ mod panel;
 mod paths;
 mod picker;
 mod picker_ui;
+mod reports_view;
 mod screenshot;
 mod settings;
+mod settings_view;
 mod sound;
 mod startup;
 mod tour;
+mod tour_manage;
 mod tray;
 // M6b: the timer panels.
 mod timers;

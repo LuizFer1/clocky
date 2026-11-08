@@ -56,12 +56,18 @@ struct Run {
     alarms: Rc<Alarms>,
     timers: Rc<TimerPanels>,
     dir: PathBuf,
-    done: fn(),
+    done: Box<dyn Fn()>,
     steps: Vec<(bool, usize)>,
 }
 
 /// Starts the capture chain; `done` runs after the last capture.
-pub fn start(app: &Rc<App>, alarms: Rc<Alarms>, timers: Rc<TimerPanels>, dir: PathBuf, done: fn()) {
+pub fn start(
+    app: &Rc<App>,
+    alarms: Rc<Alarms>,
+    timers: Rc<TimerPanels>,
+    dir: PathBuf,
+    done: Box<dyn Fn()>,
+) {
     let steps = [true, false]
         .into_iter()
         .flat_map(|dark| (0..SCENES.len()).map(move |i| (dark, i)))
