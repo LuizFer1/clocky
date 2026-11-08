@@ -80,6 +80,7 @@ impl TimerPanels {
             handle,
             events,
             before,
+            discarded,
         } = opened;
         let handle = Rc::new(RefCell::new(handle));
         let chooser = Box::new(ListChooser::new(window, handle.clone()));
@@ -97,6 +98,11 @@ impl TimerPanels {
         });
         panels.load_wizard_defaults();
         panels.reopened(&events, &before);
+        if let Some(why) = discarded {
+            panels.state.borrow_mut().notice = format!(
+                "Os timers ativos não puderam ser restaurados e foram descartados ({why})."
+            );
+        }
         connect::connect(&panels);
         panels
     }

@@ -34,6 +34,8 @@ pub struct Opened {
     /// The saved timers before that tick: a countdown that came due leaves the set, and the
     /// app still needs its name and task to say so.
     pub before: Vec<ActiveTimer>,
+    /// The saved timers could not be restored and were discarded (history is kept): why.
+    pub discarded: Option<String>,
 }
 
 impl TrackerHandle {
@@ -53,13 +55,32 @@ impl TrackerHandle {
         Self::with_store(store, clock)
     }
 
+    /// Opens the tracker on `store`. If the saved timers cannot be restored, they are
+    /// discarded (the history stays) and the tracker opens again; `Opened::discarded` says why.
+    ///
+    /// Merge note (M6a): the startup error window should offer this discard as a choice.
     pub fn with_store(store: Store, clock: Box<dyn Clock>) -> anyhow::Result<Opened> {
-        let (_, before) = store.load_active()?;
-        let (tracker, events) = Tracker::open(store, clock.now())?;
+        // A corrupt timer makes this fail too; the tracker reports it right below.
+        let before = store
+            .load_active()
+            .map(|(_, saved)| saved)
+            .unwrap_or_default();
+        let (tracker, events, discarded) = match Tracker::open(store, clock.now()) {
+            Ok((tracker, events)) => (tracker, events, None),
+            Err(failure) => {
+                let why = failure.error.to_string();
+                tracing::error!("cannot restore the active timers ({why}); discarding them");
+                let store = failure.discard_active_timers()?;
+                let (tracker, events) = Tracker::open(store, clock.now())
+                    .map_err(|e| anyhow::anyhow!("{}", e.error))?;
+                (tracker, events, Some(why))
+            }
+        };
         Ok(Opened {
             handle: Self { tracker, clock },
             events,
             before,
+            discarded,
         })
     }
 
