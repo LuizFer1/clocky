@@ -145,6 +145,7 @@ fn markers_include_events_with_and_without_a_session() {
     let marker = &daily.markers[0];
     assert_eq!(marker.name, "Outline");
     assert_eq!((marker.task.id, marker.task.name.as_str()), (api, "API"));
+    assert!(!marker.task.archived);
     assert_eq!(marker.project.as_ref().unwrap().id, work);
 }
 

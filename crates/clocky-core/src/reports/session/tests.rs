@@ -189,3 +189,15 @@ fn touching_segments_make_no_pause() {
     assert_eq!(running_time_until(&segments, wed(8, 0)), Duration::ZERO);
     assert_eq!(running_time_until(&segments, wed(10, 0)), min(20));
 }
+
+#[test]
+fn archived_task_and_project_are_flagged() {
+    let (mut store, work, api, _) = fixture();
+    let id = record(&mut store, Some(api), &[(wed(9, 0), wed(9, 25))]);
+    store.archive_task(api, wed(20, 0)).unwrap();
+    store.archive_project(work, wed(20, 0)).unwrap();
+
+    let report = session_report(&store, id).unwrap();
+    assert!(report.task.unwrap().archived);
+    assert!(report.project.unwrap().archived);
+}
