@@ -58,6 +58,8 @@ pub struct State {
     pub wizard_defaults: Defaults,
     pub ringing: Vec<Ringing>,
     pub notice: String,
+    /// The notice was on screen: the next panel opened from the menu clears it.
+    pub notice_seen: bool,
     /// The forgotten dialog on screen, and the stopwatches already asked about.
     pub forgotten: Option<TimerId>,
     pub forgotten_asked: BTreeSet<TimerId>,
@@ -80,6 +82,7 @@ impl State {
             wizard_defaults: Defaults::default(),
             ringing: Vec::new(),
             notice: String::new(),
+            notice_seen: false,
             forgotten: None,
             forgotten_asked: BTreeSet::new(),
             tick_failing: false,

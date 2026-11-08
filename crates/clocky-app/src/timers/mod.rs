@@ -6,6 +6,8 @@
 //! are short and never held while Slint is called: a frame is built first, then applied.
 
 mod actions;
+mod actions_overview;
+mod actions_pomodoro;
 mod alerts;
 mod apply;
 mod cards;
@@ -129,6 +131,9 @@ impl TimerPanels {
             let handle = self.handle.borrow();
             let timers = handle.tracker().timers();
             let mut state = self.state.borrow_mut();
+            if std::mem::take(&mut state.notice_seen) {
+                state.notice.clear();
+            }
             state.view = match kind {
                 PanelKind::Alarm => View::Hidden,
                 PanelKind::Stopwatch => View::Stopwatch,
@@ -328,6 +333,10 @@ impl TimerPanels {
             })
         };
         apply::apply(&window, &self.models, frame);
+        if window.window().is_visible() {
+            let mut state = self.state.borrow_mut();
+            state.notice_seen = !state.notice.is_empty();
+        }
     }
 }
 

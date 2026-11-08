@@ -6,7 +6,7 @@ use std::rc::{Rc, Weak};
 use slint::ComponentHandle;
 
 use super::TimerPanels;
-use super::actions::TaskTarget;
+use super::actions_overview::TaskTarget;
 use super::convert::timer_from_ui;
 use crate::ui;
 

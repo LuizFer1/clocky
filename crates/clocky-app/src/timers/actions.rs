@@ -1,44 +1,23 @@
 //! What the panel buttons do. Each action takes short borrows, runs one tracker command and
 //! re-renders; nothing here holds a borrow while Slint runs.
 
-use clocky_core::domain::{PomodoroPresetId, SubtaskId, TaskId, TimerId, TimerPresetId};
+use clocky_core::domain::{SubtaskId, TaskId, TimerId, TimerPresetId};
 use clocky_core::engine::timers::{Timer, TimersEvent};
 use clocky_core::time::Timestamp;
 use clocky_core::tracker::{Tracker, TrackerError, TrackerEvent};
 
 use super::cards::Kind;
-use super::frame_pomodoro::preset_config;
 use super::hms::Field;
 use super::state::{PomodoroPick, View, pick, pick_countdown};
-use super::wizard::{Defaults, Wizard};
-use super::{TimerPanels, format, kind_of};
+use super::{TimerPanels, format};
 
 /// Shown when a command fails (the details go to the log).
 const FAILED: &str = "Não deu para concluir a ação. Os detalhes estão no log.";
 
-/// Store keys of the wizard defaults (decision 13: the settings only seed the wizard).
-const DEFAULT_KEYS: [&str; 5] = [
-    "pomodoro_focus_min",
-    "pomodoro_short_min",
-    "pomodoro_long_min",
-    "pomodoro_rounds",
-    "pomodoro_auto_start",
-];
-
-/// Whose task the chooser changes.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TaskTarget {
-    Stopwatch,
-    Countdown,
-    CountdownRun,
-    Pomodoro,
-    Wizard,
-}
-
 /// Commands.
 impl TimerPanels {
     /// Runs a tracker command at the current instant. A failure is logged and noticed.
-    fn command<T>(
+    pub(super) fn command<T>(
         &self,
         what: &str,
         f: impl FnOnce(&mut Tracker, Timestamp) -> Result<T, TrackerError>,
@@ -58,7 +37,7 @@ impl TimerPanels {
         }
     }
 
-    fn picked(&self, kind: Kind) -> Option<TimerId> {
+    pub(super) fn picked(&self, kind: Kind) -> Option<TimerId> {
         let handle = self.handle.borrow();
         let state = self.state.borrow();
         let selected = match kind {
@@ -322,257 +301,6 @@ impl TimerPanels {
             });
             if let Some(target) = target {
                 state.ringing.retain(|r| r.timer != target);
-            }
-        }
-        self.render();
-    }
-}
-
-/// Pomodoro.
-impl TimerPanels {
-    pub(super) fn pomodoro_open_preset(&self, id: i32) {
-        let Some(id) = super::convert::row_from_ui(id).map(PomodoroPresetId) else {
-            return;
-        };
-        let task = {
-            let handle = self.handle.borrow();
-            let presets = handle
-                .tracker()
-                .store()
-                .pomodoro_presets()
-                .unwrap_or_default();
-            presets
-                .into_iter()
-                .find(|p| p.id == id)
-                .and_then(|p| p.task)
-        };
-        self.open_draft(id, task);
-    }
-
-    fn open_draft(&self, id: PomodoroPresetId, task: Option<TaskId>) {
-        {
-            let mut state = self.state.borrow_mut();
-            state.pomodoro = PomodoroPick::Draft(id);
-            state.pomodoro_task = task;
-            state.view = View::PomodoroTimer;
-        }
-        self.render();
-    }
-
-    pub(super) fn pomodoro_primary(&self) {
-        let pick = self.state.borrow().pomodoro;
-        match pick {
-            PomodoroPick::Draft(id) => self.pomodoro_start(id),
-            PomodoroPick::Active(_) => {
-                if let Some(id) = self.picked(Kind::Pomodoro) {
-                    self.toggle(id);
-                }
-            }
-        }
-    }
-
-    fn pomodoro_start(&self, id: PomodoroPresetId) {
-        let config = {
-            let handle = self.handle.borrow();
-            let presets = handle
-                .tracker()
-                .store()
-                .pomodoro_presets()
-                .unwrap_or_default();
-            presets.iter().find(|p| p.id == id).and_then(preset_config)
-        };
-        let Some(config) = config else {
-            return;
-        };
-        let task = self.state.borrow().pomodoro_task;
-        let started = self.command("start pomodoro", |t, now| {
-            t.start_pomodoro(task, config, Some(id), now)
-        });
-        if let Some(timer) = started {
-            self.state.borrow_mut().pomodoro = PomodoroPick::Active(Some(timer));
-        }
-        self.render();
-    }
-
-    pub(super) fn pomodoro_stop(&self) {
-        if let Some(id) = self.picked(Kind::Pomodoro) {
-            self.stop(id);
-        }
-    }
-
-    pub(super) fn pomodoro_skip(&self) {
-        if let Some(id) = self.picked(Kind::Pomodoro) {
-            self.command("skip phase", |t, now| t.skip(id, now));
-            self.render();
-        }
-    }
-}
-
-/// Novo pomodoro.
-impl TimerPanels {
-    /// Reads the wizard defaults from the store settings (constants when unset or invalid).
-    pub(super) fn load_wizard_defaults(&self) {
-        let values: Vec<Option<String>> = {
-            let handle = self.handle.borrow();
-            let store = handle.tracker().store();
-            DEFAULT_KEYS
-                .iter()
-                .map(|key| store.setting(key).ok().flatten())
-                .collect()
-        };
-        let base = Defaults::default();
-        let num = |i: usize, fallback: u32| {
-            values[i]
-                .as_deref()
-                .and_then(|v| v.trim().parse().ok())
-                .unwrap_or(fallback)
-        };
-        let defaults = Defaults {
-            focus: num(0, base.focus),
-            short: num(1, base.short),
-            long: num(2, base.long),
-            rounds: num(3, base.rounds),
-            auto_start: values[4]
-                .as_deref()
-                .map_or(base.auto_start, |v| v == "true" || v == "1"),
-        };
-        let mut state = self.state.borrow_mut();
-        state.wizard = Wizard::new(defaults);
-        state.wizard_defaults = defaults;
-    }
-
-    pub(super) fn wizard_open(&self) {
-        {
-            let mut state = self.state.borrow_mut();
-            state.wizard = Wizard::new(state.wizard_defaults);
-            state.view = View::Wizard;
-        }
-        self.render();
-    }
-
-    pub(super) fn wizard_edit(&self, edit: impl FnOnce(&mut Wizard)) {
-        edit(&mut self.state.borrow_mut().wizard);
-        self.render();
-    }
-
-    pub(super) fn wizard_back(&self) {
-        let moved = self.state.borrow_mut().wizard.back();
-        if moved {
-            self.render();
-        } else {
-            self.set_view(View::PomodoroList);
-        }
-    }
-
-    /// "Próximo", or "Criar pomodoro" on the last step: saves the preset and opens its timer.
-    pub(super) fn wizard_next(&self) {
-        let moved = self.state.borrow_mut().wizard.next();
-        if moved {
-            self.render();
-            return;
-        }
-        let wizard = self.state.borrow().wizard.clone();
-        let name = wizard.final_name();
-        let created = self.command("create pomodoro preset", |t, _| {
-            Ok(t.store_mut()
-                .create_pomodoro_preset(&wizard.preset(&name))?)
-        });
-        match created {
-            Some(id) => self.open_draft(id, wizard.task),
-            None => self.render(),
-        }
-    }
-}
-
-/// Ativos, the forgotten dialog and the task chooser.
-impl TimerPanels {
-    /// A card click opens that timer's panel.
-    pub(super) fn open_card(&self, id: TimerId) {
-        let kind = kind_of(&self.handle.borrow(), id);
-        {
-            let mut state = self.state.borrow_mut();
-            let ringing = state.ringing(id).is_some();
-            match (kind, ringing) {
-                (_, true) | (Some(Kind::Countdown), _) => {
-                    state.countdown = Some(id);
-                    state.view = View::CountdownRun;
-                }
-                (Some(Kind::Stopwatch), _) => {
-                    state.stopwatch = Some(id);
-                    state.view = View::Stopwatch;
-                }
-                (Some(Kind::Pomodoro), _) => {
-                    state.pomodoro = PomodoroPick::Active(Some(id));
-                    state.view = View::PomodoroTimer;
-                }
-                (None, false) => {}
-            }
-        }
-        self.render();
-    }
-
-    pub(super) fn forgotten_answer(&self, record: bool) {
-        let Some(id) = self.state.borrow_mut().forgotten.take() else {
-            return;
-        };
-        if record {
-            self.stop(id);
-        } else {
-            self.command("discard stopwatch", |t, _| t.discard(id));
-            "Sessão descartada".clone_into(&mut self.state.borrow_mut().notice);
-            self.render();
-        }
-    }
-
-    pub(super) fn choose_task(&self, target: TaskTarget) {
-        let current = self.current_task(target);
-        let weak = self.weak.clone();
-        self.chooser.choose(
-            current,
-            Box::new(move |task| {
-                if let Some(panels) = weak.upgrade() {
-                    panels.set_task(target, task);
-                }
-            }),
-        );
-    }
-
-    fn current_task(&self, target: TaskTarget) -> Option<TaskId> {
-        let timer = self.target_timer(target);
-        let handle = self.handle.borrow();
-        if let Some(active) = timer.and_then(|id| handle.tracker().timers().get(id)) {
-            return active.task;
-        }
-        let state = self.state.borrow();
-        match target {
-            TaskTarget::Stopwatch => state.stopwatch_task,
-            TaskTarget::Countdown | TaskTarget::CountdownRun => state.countdown_task,
-            TaskTarget::Pomodoro => state.pomodoro_task,
-            TaskTarget::Wizard => state.wizard.task,
-        }
-    }
-
-    /// The active timer a target changes; `None` = a draft.
-    fn target_timer(&self, target: TaskTarget) -> Option<TimerId> {
-        match target {
-            TaskTarget::Stopwatch => self.picked(Kind::Stopwatch),
-            TaskTarget::CountdownRun => self.picked(Kind::Countdown),
-            TaskTarget::Pomodoro => self.picked(Kind::Pomodoro),
-            TaskTarget::Countdown | TaskTarget::Wizard => None,
-        }
-    }
-
-    /// Applies a chosen task: to the whole session of a running timer, else to the draft.
-    fn set_task(&self, target: TaskTarget, task: Option<TaskId>) {
-        if let Some(id) = self.target_timer(target) {
-            self.command("set task", |t, _| t.set_task(id, task));
-        } else {
-            let mut state = self.state.borrow_mut();
-            match target {
-                TaskTarget::Stopwatch => state.stopwatch_task = task,
-                TaskTarget::Countdown | TaskTarget::CountdownRun => state.countdown_task = task,
-                TaskTarget::Pomodoro => state.pomodoro_task = task,
-                TaskTarget::Wizard => state.wizard.task = task,
             }
         }
         self.render();
