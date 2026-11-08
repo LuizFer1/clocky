@@ -29,9 +29,7 @@ thread_local! {
 pub struct App {
     pub dock: Rc<Dock>,
     pub panel: Rc<Panel>,
-    pub manage: Manage,
-    /// The core, shared with the windows that read and change data.
-    core: Rc<RefCell<AppCore>>,
+    pub manage: Rc<Manage>,
     settings: RefCell<Settings>,
     /// `None` when settings must not be written (no config dir, or screenshot mode).
     settings_path: Option<PathBuf>,
@@ -48,11 +46,11 @@ impl App {
     pub fn new(core: AppCore, screenshot_mode: bool) -> anyhow::Result<Rc<Self>> {
         let path = settings::default_path();
         let settings = path.as_deref().map(Settings::load).unwrap_or_default();
+        let core = Rc::new(RefCell::new(core));
         let app = Rc::new(Self {
             dock: Dock::new()?,
-            panel: Panel::new()?,
-            manage: Manage::new()?,
-            core: Rc::new(RefCell::new(core)),
+            panel: Panel::new(core.clone())?,
+            manage: Manage::new(core)?,
             settings: RefCell::new(settings),
             settings_path: path.filter(|_| !screenshot_mode),
             screenshot_mode,
@@ -78,12 +76,22 @@ impl App {
                 app.option_selected(&id);
             }
         });
-        let weak = Rc::downgrade(self);
-        self.manage.ui.on_open_menu(move || {
-            if let Some(app) = weak.upgrade() {
-                app.dock.reopen_menu();
-            }
+        // Timer panels arrive in M6b: until then the task page buttons are only logged.
+        self.manage.set_on_start_timer(|kind, task| {
+            tracing::info!(
+                "start {kind:?} for task {} requested (timer panels: M6b)",
+                task.0
+            );
         });
+        let weak = Rc::downgrade(self);
+        self.manage
+            .ui
+            .global::<ui::ManageState>()
+            .on_open_menu(move || {
+                if let Some(app) = weak.upgrade() {
+                    app.dock.reopen_menu();
+                }
+            });
         // The panel's back button and its "Abrir menu" action both return to the ring.
         let weak = Rc::downgrade(self);
         self.panel.ui.on_back(move || {
@@ -103,10 +111,6 @@ impl App {
     /// created right after the loop starts (required on macOS).
     pub fn start(self: &Rc<Self>) -> anyhow::Result<()> {
         let settings = self.settings.borrow().clone();
-        match self.core.borrow().projects() {
-            Ok(projects) => tracing::info!("database open: {} projects", projects.len()),
-            Err(e) => tracing::warn!("failed to read the projects: {e}"),
-        }
         self.set_dark(settings.dark_theme);
         self.dock.show_at(settings.dock)?;
         let weak = Rc::downgrade(self);

@@ -15,6 +15,12 @@ export struct ProjectItem {
     selected: bool,
 }
 
+// One row of wrapped project chips (Rust estimates the widths; Slint has no flex-wrap).
+// A chip with id -1 is "Sem projeto".
+export struct ChipRow {
+    chips: [ProjectItem],
+}
+
 // A task in the project list (and in the search results, with its project).
 export struct TaskRow {
     id: int,

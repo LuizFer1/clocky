@@ -1,0 +1,370 @@
+// Form controls of the manage window and the task picker (handoff SPEC 2 and 3).
+import { Theme } from "theme.slint";
+
+// Round color dot (project color).
+export component Dot inherits Rectangle {
+    in property <color> dot-color;
+    in property <length> size: 10px;
+
+    width: self.size;
+    height: self.size;
+    border-radius: self.size / 2;
+    background: root.dot-color;
+}
+
+// A dot centered vertically in its layout cell.
+export component DotCell inherits Rectangle {
+    in property <color> dot-color;
+    in property <length> size: 10px;
+    // Ring only ("Sem tarefa").
+    in property <bool> hollow: false;
+
+    width: self.size;
+
+    Rectangle {
+        width: root.size;
+        height: root.size;
+        border-radius: root.size / 2;
+        background: root.hollow ? transparent : root.dot-color;
+        border-width: root.hollow ? 1.5px : 0px;
+        border-color: root.dot-color;
+    }
+}
+
+// 18px checkbox. Unchecked: light box with a border; checked: accent box with a check.
+export component CheckBox inherits Rectangle {
+    in property <bool> checked;
+    callback toggled(bool);
+
+    width: 18px;
+
+    box := Rectangle {
+        width: 18px;
+        height: 18px;
+        border-radius: 4px;
+        background: root.checked ? Theme.accent : (Theme.dark ? Theme.text : Theme.app);
+        border-width: root.checked ? 0px : 1.5px;
+        border-color: Theme.dark ? Theme.text : Theme.muted;
+
+        if root.checked: Image {
+            width: 14px;
+            height: 14px;
+            source: @image-url("../icons/check.svg");
+            colorize: Theme.on-accent;
+        }
+    }
+
+    TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.toggled(!root.checked); }
+    }
+}
+
+// Outlined button (secondary): transparent with a line-2 border.
+export component SecondaryButton inherits Rectangle {
+    in property <string> text;
+    in property <image> icon;
+    in property <bool> has-icon: false;
+    in property <length> icon-size: 16px;
+    callback clicked();
+
+    height: 40px;
+    width: label.preferred-width + 2 * Theme.space-3-5 + (root.has-icon ? root.icon-size + Theme.space-2 : 0px);
+    border-radius: Theme.radius-md;
+    border-width: 1px;
+    border-color: Theme.line-2;
+    background: touch.has-hover ? Theme.accent-soft : transparent;
+
+    HorizontalLayout {
+        padding-left: Theme.space-3-5;
+        padding-right: Theme.space-3-5;
+        spacing: Theme.space-2;
+        alignment: center;
+
+        if root.has-icon: VerticalLayout {
+            alignment: center;
+
+            Image {
+                width: root.icon-size;
+                height: root.icon-size;
+                source: root.icon;
+                colorize: Theme.text;
+            }
+        }
+
+        label := Text {
+            vertical-alignment: center;
+            text: root.text;
+            color: Theme.text;
+            font-size: Theme.fs-md;
+            font-weight: Theme.fw-medium;
+        }
+    }
+
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+// Small accent button (forms): 40 high, radius 10, 14 medium.
+export component AccentButton inherits Rectangle {
+    in property <string> text;
+    in property <bool> enabled: true;
+    callback clicked();
+
+    height: 40px;
+    width: label.preferred-width + 2 * Theme.space-4;
+    border-radius: Theme.radius-md;
+    background: Theme.accent;
+    opacity: root.enabled ? 1 : 0.4;
+
+    label := Text {
+        text: root.text;
+        color: Theme.on-accent;
+        font-size: Theme.fs-md;
+        font-weight: Theme.fw-medium;
+    }
+
+    TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+// Danger button of the confirmation dialog.
+export component DangerButton inherits Rectangle {
+    in property <string> text;
+    callback clicked();
+
+    height: 40px;
+    width: label.preferred-width + 2 * Theme.space-4;
+    border-radius: Theme.radius-md;
+    background: Theme.danger;
+
+    label := Text {
+        text: root.text;
+        color: #ffffff;
+        font-size: Theme.fs-md;
+        font-weight: Theme.fw-medium;
+    }
+
+    TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+// Pill toggle of the task filter: [Abertas · Mostrar concluídas].
+export component FilterChip inherits Rectangle {
+    in property <string> text;
+    in property <bool> active;
+    callback clicked();
+
+    height: 32px;
+    width: label.preferred-width + 2 * Theme.space-3;
+    border-radius: 16px;
+    border-width: 1px;
+    border-color: root.active ? Theme.accent : Theme.line-2;
+    background: root.active ? Theme.accent-soft : transparent;
+
+    label := Text {
+        text: root.text;
+        color: Theme.text;
+        font-size: Theme.fs-sm;
+        font-weight: Theme.fw-medium;
+    }
+
+    TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+// Project chip with its dot (picker create card, "Mover para").
+export component ProjectChip inherits Rectangle {
+    in property <string> text;
+    in property <color> chip-color;
+    // "Sem projeto": the dot uses the line color.
+    in property <bool> no-project;
+    in property <bool> active;
+    callback clicked();
+
+    height: 30px;
+    width: label.preferred-width + 8px + Theme.space-1-5 + 2 * Theme.space-2-5;
+    border-radius: 15px;
+    border-width: 1px;
+    border-color: root.active ? Theme.accent : Theme.line-2;
+    background: root.active ? Theme.accent-soft : transparent;
+
+    HorizontalLayout {
+        padding-left: Theme.space-2-5;
+        padding-right: Theme.space-2-5;
+        spacing: Theme.space-1-5;
+
+        DotCell {
+            size: 8px;
+            dot-color: root.no-project ? Theme.line-2 : root.chip-color;
+        }
+
+        label := Text {
+            vertical-alignment: center;
+            text: root.text;
+            color: Theme.text;
+            font-size: Theme.fs-xs;
+            font-weight: Theme.fw-medium;
+        }
+    }
+
+    TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+// Single-line text field with a placeholder. Enter fires `accepted`, Esc fires `cancelled`.
+export component TextField inherits Rectangle {
+    in-out property <string> text;
+    in property <string> placeholder;
+    in property <length> font-size: Theme.fs-base;
+    // Draws the field box (off for the inline typing rows).
+    in property <bool> boxed: true;
+    out property <bool> has-focus: input.has-focus;
+    callback edited(string);
+    callback accepted(string);
+    callback cancelled();
+
+    height: Theme.size-control;
+    border-radius: Theme.radius-lg;
+    background: root.boxed ? Theme.field : transparent;
+    border-width: root.boxed ? 1px : 0px;
+    border-color: input.has-focus ? Theme.accent : Theme.line-2;
+
+    HorizontalLayout {
+        padding-left: root.boxed ? Theme.space-3-5 : 0px;
+        padding-right: root.boxed ? Theme.space-3-5 : 0px;
+
+        Rectangle {
+            input := TextInput {
+                width: 100%;
+                height: 100%;
+                vertical-alignment: center;
+                text <=> root.text;
+                color: Theme.text;
+                font-size: root.font-size;
+                single-line: true;
+                edited => { root.edited(self.text); }
+                accepted => { root.accepted(self.text); }
+                key-pressed(event) => {
+                    if (event.text == Key.Escape) {
+                        root.cancelled();
+                        return accept;
+                    }
+                    reject
+                }
+            }
+
+            if root.text == "": Text {
+                width: 100%;
+                height: 100%;
+                vertical-alignment: center;
+                text: root.placeholder;
+                color: Theme.muted;
+                font-size: root.font-size;
+            }
+        }
+    }
+
+    public function focus-input() {
+        input.focus();
+    }
+}
+
+// Thin progress bar (cards: project color; checklist: ok).
+export component ProgressBar inherits Rectangle {
+    in property <float> progress;
+    in property <color> bar-color: Theme.ok;
+
+    height: 4px;
+    border-radius: 2px;
+    background: Theme.line-2;
+    clip: true;
+
+    Rectangle {
+        x: 0;
+        width: parent.width * clamp(root.progress, 0, 1);
+        height: parent.height;
+        border-radius: 2px;
+        background: root.bar-color;
+    }
+}
+
+// 26px round badge with a 14px icon (what a task is linked to).
+export component LinkBadge inherits Rectangle {
+    in property <image> icon;
+
+    width: 26px;
+    height: 26px;
+    border-radius: 13px;
+    background: Theme.accent-soft;
+
+    Image {
+        width: 14px;
+        height: 14px;
+        source: root.icon;
+        colorize: Theme.accent-text;
+    }
+}
+
+// Text action in the accent text color ("+ Vincular", "Trocar").
+export component TextAction inherits Rectangle {
+    in property <string> text;
+    in property <length> font-size: Theme.fs-sm;
+    callback clicked();
+
+    width: label.preferred-width + 2 * Theme.space-2;
+    height: 30px;
+    border-radius: Theme.radius-sm;
+    background: touch.has-hover ? Theme.accent-soft : transparent;
+
+    label := Text {
+        text: root.text;
+        color: Theme.accent-text;
+        font-size: root.font-size;
+        font-weight: Theme.fw-medium;
+    }
+
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+// Item of an actions menu (PopupWindow).
+export component MenuEntry inherits Rectangle {
+    in property <string> text;
+    in property <bool> danger;
+    callback clicked();
+
+    height: 36px;
+    border-radius: Theme.radius-sm;
+    background: touch.has-hover ? Theme.accent-soft : transparent;
+
+    HorizontalLayout {
+        padding-left: Theme.space-3;
+        padding-right: Theme.space-3;
+
+        Text {
+            vertical-alignment: center;
+            text: root.text;
+            color: root.danger ? Theme.danger : Theme.text;
+            font-size: Theme.fs-md;
+        }
+    }
+
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}

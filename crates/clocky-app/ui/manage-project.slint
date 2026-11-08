@@ -1,0 +1,407 @@
+// "Todos os projetos" (cards + project form) and the project page (filter + task list),
+// handoff screens 70-72.
+import { Theme } from "theme.slint";
+import { TaskRow } from "models.slint";
+import { AccentButton, CheckBox, DotCell, FilterChip, LinkBadge, ProgressBar, SecondaryButton, TextField } from "widgets.slint";
+import { ManageState } from "manage-state.slint";
+
+// Name + palette of 10 colors. New project (all projects page) or edit (project page).
+export component ProjectForm inherits Rectangle {
+    border-radius: Theme.radius-panel;
+    border-width: 1px;
+    border-color: Theme.accent;
+    background: Theme.field;
+
+    init => { name.focus-input(); }
+
+    VerticalLayout {
+        padding: 18px;
+        spacing: Theme.space-3-5;
+
+        VerticalLayout {
+            spacing: Theme.space-2;
+
+            Text {
+                text: "Nome do projeto";
+                color: Theme.muted;
+                font-size: Theme.fs-sm;
+                font-weight: Theme.fw-medium;
+            }
+
+            name := TextField {
+                background: Theme.panel;
+                placeholder: "Ex.: freelas";
+                text <=> ManageState.project-form-name;
+                accepted(text) => { ManageState.save-project(text, ManageState.project-form-color); }
+                cancelled => { ManageState.project-form-open = false; }
+            }
+        }
+
+        VerticalLayout {
+            spacing: Theme.space-2;
+
+            Text {
+                text: "Cor";
+                color: Theme.muted;
+                font-size: Theme.fs-sm;
+                font-weight: Theme.fw-medium;
+            }
+
+            HorizontalLayout {
+                alignment: start;
+                spacing: Theme.space-2;
+
+                for swatch[index] in ManageState.palette: Rectangle {
+                    width: 32px;
+                    height: 32px;
+                    border-radius: 16px;
+                    background: swatch;
+                    border-width: index == ManageState.project-form-color ? 3px : 0px;
+                    border-color: Theme.text;
+
+                    TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => { ManageState.project-form-color = index; }
+                    }
+                }
+            }
+        }
+
+        HorizontalLayout {
+            alignment: start;
+            spacing: Theme.space-2;
+
+            AccentButton {
+                text: ManageState.project-form-editing ? "Salvar" : "Criar projeto";
+                enabled: ManageState.project-form-name != "";
+                clicked => { ManageState.save-project(ManageState.project-form-name, ManageState.project-form-color); }
+            }
+
+            SecondaryButton {
+                text: "Cancelar";
+                clicked => { ManageState.project-form-open = false; }
+            }
+        }
+    }
+}
+
+// Project card: name with dot, counts and the completed bar in the project color.
+component ProjectCard inherits Rectangle {
+    in property <string> name;
+    in property <color> card-color;
+    in property <string> counts;
+    in property <float> progress;
+    callback clicked();
+
+    border-radius: Theme.radius-panel;
+    border-width: 1px;
+    border-color: touch.has-hover ? Theme.line-2 : Theme.line;
+    background: Theme.field;
+
+    VerticalLayout {
+        padding: 18px;
+        spacing: Theme.space-3-5;
+
+        HorizontalLayout {
+            spacing: Theme.space-2-5;
+
+            DotCell {
+                size: 12px;
+                dot-color: root.card-color;
+            }
+
+            Text {
+                horizontal-stretch: 1;
+                text: root.name;
+                color: Theme.text;
+                font-size: Theme.fs-lg;
+                font-weight: Theme.fw-medium;
+                overflow: elide;
+            }
+        }
+
+        Text {
+            text: root.counts;
+            color: Theme.muted;
+            font-size: Theme.fs-sm;
+        }
+
+        ProgressBar {
+            progress: root.progress;
+            bar-color: root.card-color;
+        }
+    }
+
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+export component AllProjectsPage inherits VerticalLayout {
+    property <length> gap: Theme.space-3;
+    property <int> columns: max(1, floor((self.width + self.gap) / (220px + self.gap)));
+    property <length> card-width: (self.width - (self.columns - 1) * self.gap) / self.columns;
+    property <length> card-height: 104px;
+    property <int> rows: ceil(ManageState.projects.length / self.columns);
+
+    spacing: Theme.space-5;
+
+    if ManageState.project-form-open && !ManageState.project-form-editing: HorizontalLayout {
+        alignment: start;
+
+        ProjectForm {
+            width: min(520px, parent.width);
+        }
+    }
+
+    if ManageState.projects.length > 0: Rectangle {
+        height: root.rows * root.card-height + max(0, root.rows - 1) * root.gap;
+
+        for project[index] in ManageState.projects: ProjectCard {
+            x: mod(index, root.columns) * (root.card-width + root.gap);
+            y: floor(index / root.columns) * (root.card-height + root.gap);
+            width: root.card-width;
+            height: root.card-height;
+            name: project.name;
+            card-color: project.color;
+            counts: project.counts;
+            progress: project.progress;
+            clicked => { ManageState.select-project(project.id); }
+        }
+    }
+
+    Text {
+        text: ManageState.projects.length == 0 ? "Nenhum projeto ainda. Crie o primeiro com “Novo projeto”." : "Selecione um projeto para ver e criar tarefas.";
+        color: Theme.muted;
+        font-size: Theme.fs-md;
+        wrap: word-wrap;
+    }
+}
+
+// Text with a strike-through line when `struck` (completed tasks and subtasks).
+export component StrikeText inherits Rectangle {
+    in property <string> text;
+    in property <bool> struck;
+    in property <length> font-size: Theme.fs-base;
+    in property <int> font-weight: Theme.fw-regular;
+
+    height: label.preferred-height;
+
+    label := Text {
+        width: 100%;
+        text: root.text;
+        color: root.struck ? Theme.muted : Theme.text;
+        font-size: root.font-size;
+        font-weight: root.font-weight;
+        overflow: elide;
+    }
+
+    if root.struck: Rectangle {
+        x: 0;
+        y: root.height / 2 + 1px;
+        width: min(label.preferred-width, root.width);
+        height: 1px;
+        background: Theme.muted;
+    }
+}
+
+// One task of the list: checkbox, name (+ subtasks or project), link icons, time, chevron.
+component TaskLine inherits Rectangle {
+    in property <TaskRow> task;
+    in property <bool> first;
+
+    min-height: 56px;
+
+    if !root.first: Rectangle {
+        y: 0;
+        height: 1px;
+        background: Theme.line;
+    }
+
+    HorizontalLayout {
+        padding-left: Theme.space-4;
+        padding-right: Theme.space-3;
+        spacing: Theme.space-3;
+
+        CheckBox {
+            checked: root.task.done;
+            toggled(done) => { ManageState.set-task-done(root.task.id, done); }
+        }
+
+        Rectangle {
+            horizontal-stretch: 1;
+
+            touch := TouchArea {
+                mouse-cursor: pointer;
+                clicked => { ManageState.open-task(root.task.id); }
+            }
+
+            HorizontalLayout {
+                spacing: Theme.space-3;
+
+                VerticalLayout {
+                    horizontal-stretch: 1;
+                    alignment: center;
+                    spacing: 3px;
+
+                    StrikeText {
+                        text: root.task.name;
+                        struck: root.task.done;
+                        font-weight: Theme.fw-medium;
+                    }
+
+                    if root.task.subtasks != "" || root.task.project != "": HorizontalLayout {
+                        spacing: Theme.space-1-5;
+
+                        if root.task.project != "": DotCell {
+                            size: 8px;
+                            dot-color: root.task.project == "Sem projeto" ? Theme.line-2 : root.task.project-color;
+                        }
+
+                        Text {
+                            text: root.task.project != "" && root.task.subtasks != "" ? root.task.project + " · " + root.task.subtasks : root.task.project + root.task.subtasks;
+                            color: Theme.muted;
+                            font-size: Theme.fs-xs;
+                        }
+                    }
+                }
+
+                HorizontalLayout {
+                    alignment: center;
+                    spacing: Theme.space-1;
+
+                    if root.task.has-pomodoro: VerticalLayout {
+                        alignment: center;
+
+                        LinkBadge {
+                            icon: @image-url("../icons/pomodoro.svg");
+                        }
+                    }
+
+                    if root.task.has-timer: VerticalLayout {
+                        alignment: center;
+
+                        LinkBadge {
+                            icon: @image-url("../icons/hourglass.svg");
+                        }
+                    }
+                }
+
+                Text {
+                    width: 72px;
+                    vertical-alignment: center;
+                    horizontal-alignment: right;
+                    text: root.task.time;
+                    color: Theme.muted;
+                    font-size: Theme.fs-sm;
+                }
+
+                VerticalLayout {
+                    alignment: center;
+
+                    Image {
+                        width: 16px;
+                        height: 16px;
+                        source: @image-url("../icons/chevron-right.svg");
+                        colorize: Theme.muted;
+                    }
+                }
+            }
+        }
+    }
+}
+
+// "Nova tarefa": typing row at the top of the list (Enter creates, Esc cancels).
+component TypingRow inherits Rectangle {
+    background: Theme.accent-soft;
+    height: 56px;
+
+    init => { field.focus-input(); }
+
+    HorizontalLayout {
+        padding-left: Theme.space-4;
+        padding-right: Theme.space-4;
+        spacing: Theme.space-3;
+
+        VerticalLayout {
+            alignment: center;
+
+            Rectangle {
+                width: 18px;
+                height: 18px;
+                border-radius: 5px;
+                border-width: 2px;
+                border-color: Theme.line-2;
+            }
+        }
+
+        field := TextField {
+            horizontal-stretch: 1;
+            height: 36px;
+            boxed: false;
+            placeholder: "Nome da tarefa e Enter";
+            text <=> ManageState.task-draft;
+            accepted(text) => { ManageState.create-task(text); }
+            cancelled => {
+                ManageState.adding-task = false;
+                ManageState.task-draft = "";
+            }
+        }
+    }
+}
+
+// Project page and search results: filter chips and the task list.
+export component TaskListPage inherits VerticalLayout {
+    spacing: Theme.space-3;
+
+    if ManageState.project-form-open && ManageState.project-form-editing: HorizontalLayout {
+        alignment: start;
+        padding-bottom: Theme.space-2;
+
+        ProjectForm {
+            width: min(520px, parent.width);
+        }
+    }
+
+    HorizontalLayout {
+        alignment: start;
+        spacing: Theme.space-1-5;
+
+        FilterChip {
+            text: "Abertas";
+            active: !ManageState.show-completed;
+            clicked => { ManageState.set-show-completed(false); }
+        }
+
+        FilterChip {
+            text: "Mostrar concluídas";
+            active: ManageState.show-completed;
+            clicked => { ManageState.set-show-completed(true); }
+        }
+    }
+
+    if ManageState.tasks.length > 0 || ManageState.adding-task: Rectangle {
+        border-radius: Theme.radius-panel;
+        border-width: 1px;
+        border-color: Theme.line;
+        clip: true;
+
+        VerticalLayout {
+            if ManageState.adding-task && ManageState.page == 1: TypingRow { }
+
+            for task[index] in ManageState.tasks: TaskLine {
+                task: task;
+                first: index == 0 && !ManageState.adding-task;
+            }
+        }
+    }
+
+    if ManageState.tasks.length == 0 && !ManageState.adding-task: Text {
+        horizontal-alignment: center;
+        text: ManageState.page == 3 ? "Nenhuma tarefa encontrada." : (ManageState.show-completed ? "Nenhuma tarefa neste projeto. Crie a primeira com “Nova tarefa”." : "Nenhuma tarefa aberta. Crie a primeira com “Nova tarefa”.");
+        color: Theme.muted;
+        font-size: Theme.fs-md;
+        wrap: word-wrap;
+    }
+}

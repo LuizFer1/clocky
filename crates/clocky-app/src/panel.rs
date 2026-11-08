@@ -1,16 +1,23 @@
 //! Floating panel opened by a radial option, anchored next to the dock. One window is reused
-//! for every option. M5 shows a placeholder body; M6 fills the contents.
+//! for every option. M5 shows a placeholder body; M6b fills the contents. The task picker
+//! ("Vincular tarefa") opens inside it: see [`Panel::pick_task`].
 
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::rc::{Rc, Weak};
 use std::time::Duration;
 
+use clocky_core::domain::TaskId;
 use slint::winit_030::{EventResult, WinitWindowAccessor, winit};
 use slint::{ComponentHandle, PhysicalPosition};
 
+use crate::core::AppCore;
 use crate::dock::hide_from_taskbar;
-use crate::geometry::Anchor;
-use crate::ui;
+use crate::geometry::{Anchor, PANEL_H};
+use crate::picker_ui::TaskPicker;
+use crate::{palette, picker, ui};
+
+/// Height of the panel while it shows the task picker (logical px).
+pub const PICKER_H: f64 = 680.0;
 
 /// Radial options that open a panel ("Gerenciar" opens the manage window instead).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -31,6 +38,8 @@ pub struct PanelContent {
     pub empty_text: &'static str,
     pub action_label: &'static str,
     pub has_footer: bool,
+    /// The task line of the timer panels (SPEC 2).
+    pub has_task_line: bool,
 }
 
 const COMING_SOON: &str = "Em breve";
@@ -57,12 +66,17 @@ impl PanelKind {
             empty_text: COMING_SOON_TEXT,
             action_label: "",
             has_footer: true,
+            has_task_line: false,
+        };
+        let timer = |title| PanelContent {
+            has_task_line: true,
+            ..placeholder(title)
         };
         match self {
             Self::Alarm => placeholder("Alarme"),
-            Self::Countdown => placeholder("Temporizador"),
-            Self::Stopwatch => placeholder("Cronômetro"),
-            Self::Pomodoro => placeholder("Pomodoro"),
+            Self::Countdown => timer("Temporizador"),
+            Self::Stopwatch => timer("Cronômetro"),
+            Self::Pomodoro => timer("Pomodoro"),
             // Screen 50, empty state: nothing runs until M6.
             Self::Overview => PanelContent {
                 title: "Ativos",
@@ -71,6 +85,7 @@ impl PanelKind {
                 empty_text: "Inicie um timer pelo menu.",
                 action_label: "Abrir menu",
                 has_footer: false,
+                has_task_line: false,
             },
         }
     }
@@ -92,18 +107,41 @@ impl PanelKind {
 
 pub struct Panel {
     pub ui: ui::PanelWindow,
+    pub picker: Rc<TaskPicker>,
+    core: Rc<RefCell<AppCore>>,
+    /// Where the panel was last placed (the picker re-places it with its own height).
+    anchor: Cell<Option<Anchor>>,
+    /// Task of the placeholder's task line. M6b moves this into each timer.
+    linked: Cell<Option<TaskId>>,
     /// Taskbar and focus-out handling are set once, when the winit window first exists.
     prepared: Cell<bool>,
     weak: Weak<Panel>,
 }
 
 impl Panel {
-    pub fn new() -> anyhow::Result<Rc<Self>> {
+    pub fn new(core: Rc<RefCell<AppCore>>) -> anyhow::Result<Rc<Self>> {
         let ui = ui::PanelWindow::new()?;
+        let picker = TaskPicker::new(core.clone(), &ui);
         let panel = Rc::new_cyclic(|weak| Self {
             ui,
+            picker,
+            core,
+            anchor: Cell::new(None),
+            linked: Cell::new(None),
             prepared: Cell::new(false),
             weak: weak.clone(),
+        });
+        let weak = panel.weak.clone();
+        panel.picker.set_on_close(move || {
+            if let Some(p) = weak.upgrade() {
+                p.place(PANEL_H);
+            }
+        });
+        let weak = panel.weak.clone();
+        panel.ui.on_link_task(move || {
+            if let Some(p) = weak.upgrade() {
+                p.link_placeholder_task();
+            }
         });
         let weak = panel.weak.clone();
         panel.ui.on_dismiss(move || {
@@ -121,13 +159,12 @@ impl Panel {
     /// Shows the panel of `kind` next to the dock. `focus` brings it to the front (user clicks
     /// only: on Windows `focus_window` simulates an Alt key press).
     pub fn open(&self, kind: PanelKind, anchor: Option<Anchor>, focus: bool) {
-        self.fill(kind);
-        if let Some(anchor) = anchor {
-            let origin = anchor.panel_origin();
-            self.ui
-                .window()
-                .set_position(PhysicalPosition::new(origin.x, origin.y));
+        if self.picker.is_open() {
+            self.picker.finish(false);
         }
+        self.fill(kind);
+        self.anchor.set(anchor);
+        self.place(PANEL_H);
         if let Err(e) = self.ui.show() {
             tracing::warn!("failed to show the {kind:?} panel: {e}");
             return;
@@ -146,6 +183,52 @@ impl Panel {
         }
     }
 
+    /// Sizes the window to `height` logical px and places it next to the dock.
+    fn place(&self, height: f64) {
+        #[expect(clippy::cast_possible_truncation, reason = "a few hundred px")]
+        self.ui.set_panel_height(height as f32);
+        if let Some(anchor) = self.anchor.get() {
+            let origin = anchor.panel_origin_for(height);
+            self.ui
+                .window()
+                .set_position(PhysicalPosition::new(origin.x, origin.y));
+        }
+    }
+
+    /// Opens the task picker in this panel with `current` selected. `on_done` runs with the
+    /// choice on "Vincular" (`None` = "Sem tarefa"); cancelling does not call it. This is the
+    /// entry point the M6b timer panels use for their task line.
+    pub fn pick_task(
+        &self,
+        current: Option<TaskId>,
+        on_done: impl FnOnce(Option<TaskId>) + 'static,
+    ) {
+        self.place(PICKER_H);
+        self.picker.open(current, on_done);
+    }
+
+    /// The placeholder's "Vincular tarefa" / "Trocar" (M6a stand-in for the timer panels).
+    fn link_placeholder_task(&self) {
+        let weak = self.weak.clone();
+        self.pick_task(self.linked.get(), move |choice| {
+            tracing::info!("task picker returned {:?}", choice.map(|t| t.0));
+            if let Some(p) = weak.upgrade() {
+                p.linked.set(choice);
+                p.show_linked_task();
+            }
+        });
+    }
+
+    fn show_linked_task(&self) {
+        let linked = self.linked.get();
+        let (label, color) = picker::selection(&self.core.borrow(), linked);
+        self.ui.set_task_linked(linked.is_some());
+        self.ui.set_task_label(label.into());
+        self.ui.set_task_has_project(color.is_some());
+        self.ui
+            .set_task_color(color.as_deref().map(palette::color).unwrap_or_default());
+    }
+
     fn fill(&self, kind: PanelKind) {
         let content = kind.content();
         self.ui.set_panel_title(content.title.into());
@@ -154,6 +237,8 @@ impl Panel {
         self.ui.set_empty_text(content.empty_text.into());
         self.ui.set_action_label(content.action_label.into());
         self.ui.set_has_footer(content.has_footer);
+        self.ui.set_has_task_line(content.has_task_line);
+        self.show_linked_task();
         match kind.icon() {
             Ok(icon) => self.ui.set_panel_icon(icon),
             Err(e) => tracing::warn!("invalid icon for the {kind:?} panel: {e}"),
@@ -185,6 +270,9 @@ impl Panel {
     }
 
     pub fn hide(&self) {
+        if self.picker.is_open() {
+            self.picker.finish(false);
+        }
         if let Err(e) = self.ui.hide() {
             tracing::warn!("failed to hide the panel: {e}");
         }
