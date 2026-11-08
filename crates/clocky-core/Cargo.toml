@@ -13,6 +13,7 @@ workspace = true
 
 [dependencies]
 chrono = { version = "0.4.45", default-features = false, features = ["std"] }
+rusqlite = { version = "0.41.1", features = ["bundled", "backup"] }
 thiserror = "2.0.21"
 
 [dev-dependencies]
