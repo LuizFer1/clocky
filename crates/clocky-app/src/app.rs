@@ -14,7 +14,7 @@ use crate::core::{AppCore, Reopened};
 use crate::dock::Dock;
 use crate::manage::Manage;
 use crate::panel::{Panel, PanelKind};
-use crate::settings::{self, DockPlacement, Settings};
+use crate::settings::{self, DockPlacement, Settings, ThemeMode};
 use crate::{notify, sound};
 use crate::{tray, ui};
 // M6b: timer panels.
@@ -170,7 +170,7 @@ impl App {
     /// created right after the loop starts (required on macOS).
     pub fn start(self: &Rc<Self>) -> anyhow::Result<()> {
         let settings = self.settings.borrow().clone();
-        self.set_dark(settings.dark_theme);
+        self.set_theme(settings.theme);
         self.dock.show_at(settings.dock)?;
         let weak = Rc::downgrade(self);
         self.tick_timer
@@ -259,12 +259,17 @@ impl App {
         self.dock.reopen_menu();
     }
 
-    /// Switches every window between the dark and the light theme (Slint globals are per window).
+    /// Applies the theme mode to every window (Slint globals are per window).
+    pub fn set_theme(&self, mode: ThemeMode) {
+        self.dock.set_theme(mode);
+        self.panel.set_theme(mode);
+        self.manage.set_theme(mode);
+        self.alarms.set_theme(mode);
+    }
+
+    /// The dark or the light theme (screenshot passes).
     pub fn set_dark(&self, dark: bool) {
-        self.dock.set_dark(dark);
-        self.panel.set_dark(dark);
-        self.manage.set_dark(dark);
-        self.alarms.set_dark(dark);
+        self.set_theme(ThemeMode::from_dark(dark));
     }
 
     fn save_dock(&self, placement: DockPlacement) {
@@ -341,9 +346,9 @@ impl App {
         self.manage.set_on_settings(move |applied| {
             let Some(app) = weak.upgrade() else { return };
             match applied {
-                Applied::Theme(dark) => {
-                    app.settings.borrow_mut().dark_theme = dark;
-                    app.set_dark(dark);
+                Applied::Theme(mode) => {
+                    app.settings.borrow_mut().theme = mode;
+                    app.set_theme(mode);
                 }
                 Applied::Wizard => app.timers.reload_wizard_defaults(),
                 Applied::Stored => {}

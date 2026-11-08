@@ -129,8 +129,8 @@ impl Manage {
         });
     }
 
-    pub fn set_dark(&self, dark: bool) {
-        self.ui.global::<ui::Theme>().set_dark(dark);
+    pub fn set_theme(&self, mode: crate::settings::ThemeMode) {
+        mode.apply(&self.ui.global::<ui::Theme>());
     }
 
     /// Moves to `nav` (screenshot hook and navigation callbacks) and rebuilds the view.

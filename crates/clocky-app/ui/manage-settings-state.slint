@@ -2,7 +2,8 @@
 // table and saves every change right away.
 
 export global SettingsState {
-    in property <bool> dark: true;
+    // Escuro, Claro, Sistema.
+    in property <int> theme: 0;
     // "8h"
     in property <string> forgotten: "8h";
     in property <bool> forgotten-at-min;
@@ -23,7 +24,7 @@ export global SettingsState {
     in property <string> autostart-help;
     in-out property <string> alarm-sound;
 
-    callback set-theme(bool);
+    callback set-theme(int);
     callback step-forgotten(int);
     callback step-wizard(int, int);
     callback set-autostart(bool);

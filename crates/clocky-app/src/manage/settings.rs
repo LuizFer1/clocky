@@ -10,6 +10,7 @@ use slint::{ComponentHandle, ModelRc, SharedString, VecModel};
 
 use super::{Manage, Section};
 use crate::core::AppCore;
+use crate::settings::ThemeMode;
 use crate::settings_view::{self, Applied, FORGOTTEN_MAX, FORGOTTEN_MIN, SettingsForm};
 use crate::timers::STEP_INFO;
 use crate::{autostart, format, ui};
@@ -26,8 +27,9 @@ const AUTOSTART_HELP: &str = if cfg!(windows) {
 impl Manage {
     pub(super) fn connect_settings(&self) {
         let settings = self.settings_state();
-        settings.on_set_theme(self.handler1(|m, dark| {
-            m.change_setting("save the theme", |c| settings_view::set_theme(c, dark));
+        settings.on_set_theme(self.handler1(|m, index| {
+            let mode = ThemeMode::from_index(index);
+            m.change_setting("save the theme", |c| settings_view::set_theme(c, mode));
         }));
         settings.on_step_forgotten(self.handler1(|m, direction| {
             m.change_setting("save the forgotten limit", |c| {
@@ -109,7 +111,7 @@ impl Manage {
     pub(super) fn apply_settings(&self) {
         let form = SettingsForm::load(&self.core.borrow());
         let s = self.settings_state();
-        s.set_dark(form.dark);
+        s.set_theme(form.theme.index());
         s.set_forgotten(form.forgotten_label().into());
         s.set_forgotten_at_min(form.forgotten_minutes <= FORGOTTEN_MIN);
         s.set_forgotten_at_max(form.forgotten_minutes >= FORGOTTEN_MAX);
