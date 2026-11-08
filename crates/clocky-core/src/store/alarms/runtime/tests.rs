@@ -1,5 +1,5 @@
 use super::super::test_support::{at_time, brt, daily, nov, time};
-use super::super::{AlarmId, NewAlarm, Store, StoreError};
+use super::super::{AlarmId, NewAlarm, PendingAlarm, Store, StoreError};
 use crate::alarms::{Firing, Weekdays};
 use crate::test_util::{TempDb, mins};
 use crate::time::Timestamp;
@@ -7,6 +7,16 @@ use crate::time::Timestamp;
 /// Marks the occurrence due at `due` as handled, noticed right on time.
 fn fire(store: &mut Store, id: AlarmId, due: Timestamp) {
     store.mark_alarm_fired(id, due, due).unwrap();
+}
+
+/// The pending occurrences at `now` in BRT, as `(alarm, due, firing)`.
+fn pending_at(store: &Store, now: Timestamp) -> Vec<(AlarmId, Timestamp, Firing)> {
+    store
+        .pending_alarms(now, &brt())
+        .unwrap()
+        .into_iter()
+        .map(|p| (p.alarm.id, p.due, p.firing))
+        .collect()
 }
 
 #[test]
@@ -20,7 +30,7 @@ fn pending_alarms_are_sorted_and_firing_handles_them() {
     store.set_alarm_enabled(off, false, nov(2, 7, 0)).unwrap();
 
     let now = nov(2, 10, 0);
-    let pending = store.pending_alarms(now, &brt()).unwrap();
+    let pending = pending_at(&store, now);
     assert_eq!(
         pending,
         vec![
@@ -36,7 +46,7 @@ fn pending_alarms_are_sorted_and_firing_handles_them() {
         assert_eq!(alarm.last_fired_at, Some(due));
         assert!(alarm.enabled, "a repeating alarm stays enabled");
     }
-    assert_eq!(store.pending_alarms(now, &brt()).unwrap(), vec![]);
+    assert_eq!(pending_at(&store, now), vec![]);
 }
 
 #[test]
@@ -47,12 +57,12 @@ fn once_alarm_is_disabled_after_firing_and_rings_again_when_rearmed() {
         ..at_time("once", 10, 0)
     };
     let id = store.create_alarm(&once, nov(2, 6, 0)).unwrap();
-    let pending = store.pending_alarms(nov(2, 10, 0), &brt()).unwrap();
+    let pending = pending_at(&store, nov(2, 10, 0));
     assert_eq!(pending, vec![(id, nov(2, 10, 0), Firing::OnTime)]);
 
     fire(&mut store, id, nov(2, 10, 0));
     assert!(!store.alarm(id).unwrap().enabled);
-    assert_eq!(store.pending_alarms(nov(3, 10, 0), &brt()).unwrap(), vec![]);
+    assert_eq!(pending_at(&store, nov(3, 10, 0)), vec![]);
     assert_eq!(store.next_alarm(nov(2, 10, 1), &brt()).unwrap(), None);
 
     let moved = NewAlarm {
@@ -61,7 +71,7 @@ fn once_alarm_is_disabled_after_firing_and_rings_again_when_rearmed() {
     };
     store.update_alarm(id, &moved, nov(2, 10, 20)).unwrap();
     store.set_alarm_enabled(id, true, nov(2, 10, 30)).unwrap();
-    let pending = store.pending_alarms(nov(2, 11, 0), &brt()).unwrap();
+    let pending = pending_at(&store, nov(2, 11, 0));
     assert_eq!(pending, vec![(id, nov(2, 11, 0), Firing::OnTime)]);
 }
 
@@ -77,12 +87,12 @@ fn snooze_survives_reopening_the_file() {
 
     let mut store = Store::open(db.path()).unwrap();
     assert_eq!(store.alarm(id).unwrap().snoozed_until, Some(nov(2, 10, 6)));
-    assert_eq!(store.pending_alarms(nov(2, 10, 3), &brt()).unwrap(), vec![]);
+    assert_eq!(pending_at(&store, nov(2, 10, 3)), vec![]);
     assert_eq!(
         store.next_alarm(nov(2, 10, 3), &brt()).unwrap(),
         Some((id, nov(2, 10, 6)))
     );
-    let pending = store.pending_alarms(nov(2, 10, 6), &brt()).unwrap();
+    let pending = pending_at(&store, nov(2, 10, 6));
     assert_eq!(pending, vec![(id, nov(2, 10, 6), Firing::OnTime)]);
 
     fire(&mut store, id, nov(2, 10, 6));
@@ -177,8 +187,8 @@ fn snoozing_a_disabled_repeating_alarm_does_nothing() {
     assert_eq!(alarm.snoozed_until, None);
 
     store.set_alarm_enabled(id, true, nov(3, 9, 0)).unwrap();
-    assert_eq!(store.pending_alarms(nov(3, 9, 0), &brt()).unwrap(), vec![]);
-    let pending = store.pending_alarms(nov(3, 10, 0), &brt()).unwrap();
+    assert_eq!(pending_at(&store, nov(3, 9, 0)), vec![]);
+    let pending = pending_at(&store, nov(3, 10, 0));
     assert_eq!(pending, vec![(id, nov(3, 10, 0), Firing::OnTime)]);
 }
 
@@ -197,7 +207,7 @@ fn reenabling_clears_a_leftover_snooze() {
 
     store.set_alarm_enabled(id, true, nov(3, 9, 0)).unwrap();
     assert_eq!(store.alarm(id).unwrap().snoozed_until, None);
-    assert_eq!(store.pending_alarms(nov(3, 9, 0), &brt()).unwrap(), vec![]);
+    assert_eq!(pending_at(&store, nov(3, 9, 0)), vec![]);
     assert_eq!(
         store.next_alarm(nov(3, 9, 0), &brt()).unwrap(),
         Some((id, nov(3, 10, 0)))
@@ -223,7 +233,7 @@ fn editing_a_snoozed_once_alarm_does_not_ring_again() {
     let alarm = store.alarm(id).unwrap();
     assert!(!alarm.enabled);
     assert_eq!(alarm.snoozed_until, None);
-    assert_eq!(store.pending_alarms(nov(3, 10, 0), &brt()).unwrap(), vec![]);
+    assert_eq!(pending_at(&store, nov(3, 10, 0)), vec![]);
     assert_eq!(store.next_alarm(nov(2, 10, 2), &brt()).unwrap(), None);
 }
 
@@ -238,10 +248,7 @@ fn editing_after_firing_today_does_not_fire_again() {
     };
     store.update_alarm(id, &earlier, nov(2, 10, 20)).unwrap();
     assert!(store.alarm(id).unwrap().enabled);
-    assert_eq!(
-        store.pending_alarms(nov(2, 10, 30), &brt()).unwrap(),
-        vec![]
-    );
+    assert_eq!(pending_at(&store, nov(2, 10, 30)), vec![]);
     assert_eq!(
         store.next_alarm(nov(2, 10, 30), &brt()).unwrap(),
         Some((id, nov(3, 10, 10)))
@@ -258,7 +265,7 @@ fn a_stale_mark_keeps_the_snooze() {
         .mark_alarm_fired(id, nov(2, 10, 0), nov(2, 10, 2))
         .unwrap();
     assert_eq!(store.alarm(id).unwrap().snoozed_until, Some(nov(2, 10, 6)));
-    let pending = store.pending_alarms(nov(2, 10, 6), &brt()).unwrap();
+    let pending = pending_at(&store, nov(2, 10, 6));
     assert_eq!(pending, vec![(id, nov(2, 10, 6), Firing::OnTime)]);
 }
 
@@ -271,7 +278,7 @@ fn an_out_of_order_mark_keeps_the_later_fire() {
         .mark_alarm_fired(id, nov(2, 10, 0), nov(3, 10, 1))
         .unwrap();
     assert_eq!(store.alarm(id).unwrap().last_fired_at, Some(nov(3, 10, 0)));
-    assert_eq!(store.pending_alarms(nov(3, 10, 5), &brt()).unwrap(), vec![]);
+    assert_eq!(pending_at(&store, nov(3, 10, 5)), vec![]);
 }
 
 #[test]
@@ -283,9 +290,24 @@ fn a_mark_after_the_clock_moved_back_is_kept() {
     // The clock moves back a day: the fire on the 3rd is in the future, so the 10:00 of the
     // 2nd rings again, and marking it must stop it from ringing on every tick.
     let now = nov(2, 10, 0);
-    let pending = store.pending_alarms(now, &brt()).unwrap();
+    let pending = pending_at(&store, now);
     assert_eq!(pending, vec![(id, nov(2, 10, 0), Firing::OnTime)]);
     store.mark_alarm_fired(id, nov(2, 10, 0), now).unwrap();
     assert_eq!(store.alarm(id).unwrap().last_fired_at, Some(nov(2, 10, 0)));
-    assert_eq!(store.pending_alarms(nov(2, 10, 1), &brt()).unwrap(), vec![]);
+    assert_eq!(pending_at(&store, nov(2, 10, 1)), vec![]);
+}
+
+#[test]
+fn pending_alarms_carry_the_whole_alarm() {
+    let mut store = Store::open_in_memory().unwrap();
+    let id = daily(&mut store, 10, 0);
+    let found = store.pending_alarms(nov(2, 10, 0), &brt()).unwrap();
+    assert_eq!(
+        found,
+        vec![PendingAlarm {
+            alarm: store.alarm(id).unwrap(),
+            due: nov(2, 10, 0),
+            firing: Firing::OnTime,
+        }]
+    );
 }

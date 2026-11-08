@@ -8,9 +8,21 @@ use crate::alarms::{AlarmSchedule, Firing};
 use crate::domain::AlarmId;
 use crate::time::Timestamp;
 
+/// An alarm occurrence that came due and was not handled yet.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PendingAlarm {
+    /// The alarm, as stored (name, message, sound... for the overlay).
+    pub alarm: Alarm,
+    /// When the occurrence came due: pass it to [`Store::mark_alarm_fired`].
+    pub due: Timestamp,
+    /// How to present it: on time, late or missed.
+    pub firing: Firing,
+}
+
 impl Store {
-    /// Every alarm with an occurrence that came due by `now` and was not handled yet, with how
-    /// to present it (see [`AlarmSchedule::pending`]), by due instant and then by identifier.
+    /// Every alarm with an occurrence that came due by `now` and was not handled yet, with the
+    /// alarm itself and how to present it (see [`AlarmSchedule::pending`]), by due instant and
+    /// then by identifier, so the tick needs no other lookup.
     ///
     /// `tz` is the local time zone (the app passes `&chrono::Local`). Handle each one with
     /// [`Store::mark_alarm_fired`], missed ones too, or it stays pending.
@@ -21,16 +33,16 @@ impl Store {
         &self,
         now: Timestamp,
         tz: &Tz,
-    ) -> Result<Vec<(AlarmId, Timestamp, Firing)>, StoreError> {
+    ) -> Result<Vec<PendingAlarm>, StoreError> {
         let mut pending: Vec<_> = self
             .alarms()?
-            .iter()
+            .into_iter()
             .filter_map(|alarm| {
                 let (due, firing) = alarm.schedule().pending(now, tz)?;
-                Some((alarm.id, due, firing))
+                Some(PendingAlarm { alarm, due, firing })
             })
             .collect();
-        pending.sort_by_key(|&(id, due, _)| (due, id));
+        pending.sort_by_key(|p| (p.due, p.alarm.id));
         Ok(pending)
     }
 

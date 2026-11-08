@@ -14,6 +14,8 @@ use crate::time::Timestamp;
 
 mod runtime;
 
+pub use runtime::PendingAlarm;
+
 /// Fields of an alarm to create or update.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct NewAlarm<'a> {
