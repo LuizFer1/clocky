@@ -124,10 +124,11 @@ impl AlarmSchedule {
             |after| next_fire(self.time, self.repeat, after, tz).filter(|due| *due <= now);
         if self.repeat.is_once() {
             // A once-alarm has one occurrence, however long ago it was, and none left once
-            // it fired (unless re-armed later, which resets `created_at`).
+            // it fired (unless re-armed later, which resets `created_at`). A fire later than
+            // `now` is unknown history after the clock moved back, so it does not count.
             let used_up = self
                 .last_fired_at
-                .is_some_and(|fired| fired >= self.created_at);
+                .is_some_and(|fired| fired >= self.created_at && fired <= now);
             return if used_up { None } else { due_after(handled) };
         }
         let window_start = millis_before(now, LOOKBACK_MILLIS);

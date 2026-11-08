@@ -380,3 +380,21 @@ fn a_re_armed_once_alarm_rings_again() {
         Some((nov(&tz, 3, 7, 0), Firing::OnTime))
     );
 }
+
+#[test]
+fn a_re_armed_once_alarm_rings_after_the_clock_moves_back() {
+    let tz = brt();
+    // Rang while the clock was a day fast (Tuesday the 3rd), the clock was corrected to
+    // Monday the 2nd, and the alarm was re-armed for 09:00 at 08:00.
+    let fired = once().after_fired(nov(&tz, 3, 7, 0));
+    let re_armed = AlarmSchedule {
+        time: time(9, 0),
+        enabled: true,
+        created_at: nov(&tz, 2, 8, 0),
+        ..fired
+    };
+    assert_eq!(
+        re_armed.pending(nov(&tz, 2, 9, 0), &tz),
+        Some((nov(&tz, 2, 9, 0), Firing::OnTime))
+    );
+}
