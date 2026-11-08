@@ -38,23 +38,27 @@ impl Store {
     /// Opens (or creates) the database file at `path` and applies the pending migrations.
     ///
     /// If the file already existed and a migration is pending, it is first copied to
-    /// [`backup_path`]. A failed migration is rolled back, so the file is never left half
-    /// migrated.
+    /// [`backup_path`]. A failed migration is rolled back, and WAL is switched on only after the
+    /// migrations succeed, so a failed open leaves the file byte-identical.
     ///
     /// # Errors
     /// [`StoreError::UnsupportedSchema`] if the file comes from a newer Clocky (the file is left
     /// untouched); [`StoreError::Sqlite`] if SQLite cannot open, back up or migrate it.
     pub fn open(path: impl AsRef<Path>) -> Result<Self, StoreError> {
-        let path = path.as_ref();
+        Self::open_with(path.as_ref(), migrations::MIGRATIONS)
+    }
+
+    /// [`Store::open`] with the given migration scripts.
+    fn open_with(path: &Path, scripts: &[&str]) -> Result<Self, StoreError> {
         let existed = path.exists();
         let mut conn = Connection::open(path)?;
         conn.pragma_update(None, "foreign_keys", true)?;
-        let current = migrations::check(&conn, migrations::MIGRATIONS)?;
-        if existed && current < migrations::latest(migrations::MIGRATIONS)? {
+        let current = migrations::check(&conn, scripts)?;
+        if existed && current < migrations::latest(scripts)? {
             conn.backup(MAIN_DB, backup_path(path), None::<fn(_)>)?;
         }
+        migrations::run(&mut conn, scripts)?;
         conn.pragma_update_and_check(None, "journal_mode", "WAL", |row| row.get::<_, String>(0))?;
-        migrations::run(&mut conn, migrations::MIGRATIONS)?;
         Ok(Self { conn })
     }
 
@@ -221,5 +225,27 @@ mod tests {
         ));
         assert_eq!(std::fs::read(db.path()).unwrap(), before);
         assert!(!backup_path(db.path()).exists());
+    }
+
+    #[test]
+    fn failed_migration_leaves_the_file_byte_identical() {
+        let db = TempDb::new("store-failed-migration");
+        let old = Connection::open(db.path()).unwrap();
+        old.execute_batch("CREATE TABLE legacy (id INTEGER PRIMARY KEY);")
+            .unwrap();
+        drop(old);
+        let before = std::fs::read(db.path()).unwrap();
+
+        let broken = ["CREATE TABLE added (id INTEGER PRIMARY KEY); NOT VALID SQL;"];
+        assert!(matches!(
+            Store::open_with(db.path(), &broken),
+            Err(StoreError::Sqlite(_))
+        ));
+        assert_eq!(std::fs::read(db.path()).unwrap(), before);
+        assert!(backup_path(db.path()).exists());
+
+        let store = Store::open(db.path()).unwrap();
+        let latest = migrations::latest(migrations::MIGRATIONS).unwrap();
+        assert_eq!(store.schema_version().unwrap(), latest);
     }
 }
