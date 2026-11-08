@@ -11,6 +11,7 @@ mod ui {
 }
 
 mod app;
+mod autostart;
 mod bridge;
 mod chips;
 mod command;
