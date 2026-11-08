@@ -185,6 +185,8 @@ fn task_row(summary: &TaskSummary, project: Option<(&str, Option<Color>)>) -> Op
         has_pomodoro: !summary.links.pomodoro_presets.is_empty(),
         has_timer: !summary.links.timer_presets.is_empty(),
         time: format::tracked(summary.tracked).into(),
+        // M7a
+        has_alarm: !summary.links.alarms.is_empty(),
     })
 }
 
@@ -279,13 +281,25 @@ fn link_rows(links: &TaskLinks) -> Vec<ui::LinkRow> {
         kind: "Pomodoro".into(),
         label: format::pomodoro_link(&p.name, p.focus, p.short_break, p.long_break).into(),
         is_pomodoro: true,
+        ..ui::LinkRow::default()
     });
     let timers = links.timer_presets.iter().map(|t| ui::LinkRow {
         kind: "Temporizador".into(),
         label: format::timer_link(&t.name, t.duration).into(),
         is_pomodoro: false,
+        ..ui::LinkRow::default()
     });
-    pomodoros.chain(timers).collect()
+    // M7a: the alarms, first (they are listed by time of day).
+    let alarms = links.alarms.iter().filter_map(|a| {
+        Some(ui::LinkRow {
+            kind: "Alarme".into(),
+            label: crate::alarms::summary::link_label(a).into(),
+            is_alarm: true,
+            alarm_id: slint_id(a.id.0)?,
+            ..ui::LinkRow::default()
+        })
+    });
+    alarms.chain(pomodoros).chain(timers).collect()
 }
 
 fn session_row<Tz: TimeZone>(

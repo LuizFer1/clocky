@@ -4,6 +4,8 @@
 
 use std::rc::Rc;
 
+use clocky_core::domain::AlarmId;
+
 use super::TimerPanels;
 use super::state::View;
 use crate::alarms::Event;
@@ -39,6 +41,19 @@ impl TimerPanels {
                 }
             }
         }
+    }
+
+    /// Opens the editor on a saved alarm (a "Vinculado a" link of the manage window); back goes
+    /// to the menu. `false` when the alarm is gone.
+    pub fn show_alarm(&self, id: AlarmId) -> bool {
+        self.chooser.cancel();
+        if !self.alarms.edit_alarm(id) {
+            return false;
+        }
+        self.set_view(View::Alarm {
+            from_overview: false,
+        });
+        true
     }
 
     /// Adds lines to the panel's notice (missed alarms, "Alarme perdido às 07:30 · nome"). It

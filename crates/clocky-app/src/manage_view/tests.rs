@@ -196,3 +196,39 @@ fn search_results_mark_tasks_without_a_project() {
     };
     assert!(build(&core, &nav, &tz()).unwrap().tasks[0].has_project);
 }
+
+// M7a: alarms in "Vinculado a" and in the task rows.
+#[test]
+fn task_page_lists_the_alarms_of_the_task_first() {
+    let core = demo_core();
+    let connect = project_id(&core, "connect");
+    let standup = task_id(&core, "standup diário");
+    let nav = Nav {
+        project: Some(connect),
+        task: Some(standup),
+        ..Nav::default()
+    };
+    let task = build(&core, &nav, &tz()).unwrap().task.unwrap();
+    let link = &task.links[0];
+    assert!(link.is_alarm && !link.is_pomodoro);
+    assert_eq!(link.kind, "Alarme");
+    assert_eq!(link.label, "Daily standup · 07:30 · seg–sex");
+    let alarm = &core.alarms().unwrap()[0];
+    assert_eq!(i64::from(link.alarm_id), alarm.id.0);
+    let project = build(
+        &core,
+        &Nav {
+            project: Some(connect),
+            ..Nav::default()
+        },
+        &tz(),
+    )
+    .unwrap();
+    let rows: Vec<(&str, bool)> = project
+        .tasks
+        .iter()
+        .map(|t| (t.name.as_str(), t.has_alarm))
+        .collect();
+    assert!(rows.contains(&("standup diário", true)));
+    assert!(rows.contains(&("autenticação", false)));
+}

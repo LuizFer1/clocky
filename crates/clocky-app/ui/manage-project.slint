@@ -114,6 +114,15 @@ component TaskLine inherits Rectangle {
                             icon: @image-url("../icons/hourglass.svg");
                         }
                     }
+
+                    // M7a: alarms of the task.
+                    if root.task.has-alarm: VerticalLayout {
+                        alignment: center;
+
+                        LinkBadge {
+                            icon: @image-url("../icons/alarm.svg");
+                        }
+                    }
                 }
 
                 Text {

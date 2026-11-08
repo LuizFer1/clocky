@@ -38,6 +38,8 @@ export struct TaskRow {
     has-timer: bool,
     // "3h 40min" or "—"
     time: string,
+    // M7a: the task has alarms (alarm icon).
+    has-alarm: bool,
 }
 
 export struct SubtaskRow {
@@ -51,6 +53,9 @@ export struct LinkRow {
     kind: string,
     label: string,
     is-pomodoro: bool,
+    // M7a: an alarm of the task; a click opens its editor.
+    is-alarm: bool,
+    alarm-id: int,
 }
 
 // "Tempo registrado": one recent session.

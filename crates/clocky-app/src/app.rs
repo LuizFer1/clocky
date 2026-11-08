@@ -316,6 +316,27 @@ impl App {
         let weak = Rc::downgrade(self);
         self.alarms
             .set_anchor_source(move || weak.upgrade().and_then(|app| app.dock.anchor()));
+        // An alarm of the task page's "Vinculado a" opens its editor. Deferred so the manage
+        // window's callback has returned before the panel takes the focus.
+        let weak = Rc::downgrade(self);
+        self.manage
+            .ui
+            .global::<ui::ManageState>()
+            .on_open_alarm(move |id| {
+                let weak = weak.clone();
+                slint::Timer::single_shot(Duration::ZERO, move || {
+                    if let Some(app) = weak.upgrade() {
+                        app.open_alarm(clocky_core::domain::AlarmId(i64::from(id)));
+                    }
+                });
+            });
+    }
+
+    /// Shows the Alarme panel on a saved alarm.
+    pub fn open_alarm(&self, id: clocky_core::domain::AlarmId) {
+        if self.timers.show_alarm(id) {
+            self.panel.open(PanelKind::Alarm, self.dock.anchor(), true);
+        }
     }
 }
 

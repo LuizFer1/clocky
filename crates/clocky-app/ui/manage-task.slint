@@ -240,7 +240,7 @@ export component LinkedCard inherits SideCard {
                 Image {
                     width: 16px;
                     height: 16px;
-                    source: link.is-pomodoro ? @image-url("../icons/pomodoro.svg") : @image-url("../icons/hourglass.svg");
+                    source: link.is-alarm ? @image-url("../icons/alarm.svg") : link.is-pomodoro ? @image-url("../icons/pomodoro.svg") : @image-url("../icons/hourglass.svg");
                     colorize: Theme.fab-text;
                 }
             }
@@ -263,6 +263,25 @@ export component LinkedCard inherits SideCard {
                 color: Theme.muted;
                 font-size: Theme.fs-xs;
                 overflow: elide;
+            }
+        }
+
+        // M7a: an alarm link opens its editor.
+        if link.is-alarm: Rectangle {
+            width: 28px;
+            border-radius: Theme.radius-sm;
+            background: alarm-touch.has-hover ? Theme.accent-soft : transparent;
+
+            Image {
+                width: 16px;
+                height: 16px;
+                source: @image-url("../icons/chevron-right.svg");
+                colorize: Theme.muted;
+            }
+
+            alarm-touch := TouchArea {
+                mouse-cursor: pointer;
+                clicked => { ManageState.open-alarm(link.alarm-id); }
             }
         }
     }

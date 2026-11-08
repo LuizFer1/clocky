@@ -127,6 +127,20 @@ pub fn sound_label(path: Option<&str>) -> String {
     }
 }
 
+/// The "Vinculado a" label of an alarm on the task page: "Daily standup · 07:30 · seg–sex".
+pub fn link_label(alarm: &Alarm) -> String {
+    let mut label = format!(
+        "{} · {} · {}",
+        display_name(&alarm.name),
+        alarm.time,
+        repeat_label(alarm.repeat)
+    );
+    if !alarm.enabled {
+        label.push_str(" · desligado");
+    }
+    label
+}
+
 #[cfg(test)]
 mod tests {
     use chrono::{Utc, Weekday};
@@ -255,6 +269,20 @@ mod tests {
         assert_eq!(sound_label(None), "Sino suave");
         assert_eq!(sound_label(Some(" ")), "Sino suave");
         assert_eq!(sound_label(Some("C:/sons/galo.mp3")), "galo.mp3");
+    }
+
+    #[test]
+    fn link_label_has_name_time_days_and_off_state() {
+        assert_eq!(
+            link_label(&alarm(Weekdays::WEEKDAYS)),
+            "Daily standup · 07:30 · seg–sex"
+        );
+        let off = Alarm {
+            enabled: false,
+            name: String::new(),
+            ..alarm(Weekdays::ONCE)
+        };
+        assert_eq!(link_label(&off), "Alarme · 07:30 · uma vez · desligado");
     }
 
     #[test]
