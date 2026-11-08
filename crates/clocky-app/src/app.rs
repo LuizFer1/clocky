@@ -15,11 +15,8 @@ use crate::dock::Dock;
 use crate::manage::Manage;
 use crate::panel::{Panel, PanelKind};
 use crate::settings::{self, DockPlacement, Settings};
-use crate::{notify, screenshot, sound};
+use crate::{notify, sound};
 use crate::{tray, ui};
-
-/// Time for the windows to be placed and rendered before a screenshot.
-const SCREENSHOT_DELAY: Duration = Duration::from_millis(1500);
 
 thread_local! {
     /// The running app, for commands that arrive from other threads (single instance).
@@ -30,6 +27,8 @@ pub struct App {
     pub dock: Rc<Dock>,
     pub panel: Rc<Panel>,
     pub manage: Rc<Manage>,
+    /// The core, shared with the windows that read and change data.
+    pub core: Rc<RefCell<AppCore>>,
     settings: RefCell<Settings>,
     /// `None` when settings must not be written (no config dir, or screenshot mode).
     settings_path: Option<PathBuf>,
@@ -50,7 +49,8 @@ impl App {
         let app = Rc::new(Self {
             dock: Dock::new()?,
             panel: Panel::new(core.clone())?,
-            manage: Manage::new(core)?,
+            manage: Manage::new(core.clone())?,
+            core,
             settings: RefCell::new(settings),
             settings_path: path.filter(|_| !screenshot_mode),
             screenshot_mode,
@@ -191,42 +191,10 @@ impl App {
         }
     }
 
-    fn windows(&self) -> Vec<(&'static str, &slint::Window)> {
-        vec![
-            ("dock", self.dock.ui.window()),
-            ("panel", self.panel.ui.window()),
-            ("manage", self.manage.ui.window()),
-        ]
-    }
-
-    /// Screenshot mode: opens the windows, captures them in the dark theme, then in the light
-    /// one, and quits.
+    /// Screenshot mode: the tour of `tour.rs` (dark, then light), then quit.
     /// Nothing here takes the focus, so no key press is simulated on the user's desktop.
     pub fn schedule_screenshots(self: &Rc<Self>, dir: PathBuf) {
-        if !self.manage.show() {
-            tracing::warn!("the manage window could not be shown");
-        }
-        let weak = Rc::downgrade(self);
-        slint::Timer::single_shot(SCREENSHOT_DELAY / 2, move || {
-            if let Some(app) = weak.upgrade() {
-                app.panel
-                    .open(PanelKind::Overview, app.dock.anchor(), false);
-                app.dock.ui.set_open(true);
-            }
-        });
-        let weak = Rc::downgrade(self);
-        slint::Timer::single_shot(SCREENSHOT_DELAY * 2, move || {
-            let Some(app) = weak.upgrade() else { return };
-            screenshot::save_all(&dir, "dark", &app.windows());
-            app.set_dark(false);
-            let weak = Rc::downgrade(&app);
-            slint::Timer::single_shot(SCREENSHOT_DELAY, move || {
-                if let Some(app) = weak.upgrade() {
-                    screenshot::save_all(&dir, "light", &app.windows());
-                }
-                quit();
-            });
-        });
+        crate::tour::run(self, dir);
     }
 }
 

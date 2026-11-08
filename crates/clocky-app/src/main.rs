@@ -15,7 +15,6 @@ mod bridge;
 mod chips;
 mod command;
 mod core;
-#[allow(dead_code, reason = "wired to the windows in the next commits")]
 mod demo;
 mod dock;
 mod format;
@@ -34,6 +33,7 @@ mod screenshot;
 mod settings;
 mod sound;
 mod startup;
+mod tour;
 mod tray;
 
 fn main() {
@@ -66,7 +66,7 @@ fn run() -> anyhow::Result<()> {
         }
     }
     select_backend()?;
-    let core = match startup::open_core() {
+    let mut core = match startup::open_core() {
         Ok(core) => core,
         Err(failure) => {
             tracing::error!(
@@ -82,6 +82,12 @@ fn run() -> anyhow::Result<()> {
     // during it must reach this instance instead of starting a second one.
     if screenshot_dir.is_none() {
         instance::listen(app::run_command)?;
+    }
+    if demo::requested() {
+        match demo::seed_if_empty(&mut core, &chrono::Local) {
+            Ok(seeded) => tracing::info!("demo data requested (seeded: {seeded})"),
+            Err(e) => tracing::warn!("failed to seed the demo data: {e}"),
+        }
     }
     let app = app::App::new(core, screenshot_dir.is_some())?;
     app.start()?;
