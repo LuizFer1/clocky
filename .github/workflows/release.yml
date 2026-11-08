@@ -82,6 +82,8 @@ jobs:
           if [ "$RUNNER_OS" = "Windows" ]; then
             cp target/release/clocky.exe stage/
             (cd stage && 7z a "../dist/${name}.zip" .)
+            # The installer is the app itself under this stable name (the updater looks for it).
+            cp target/release/clocky.exe "dist/clocky-setup-${{ matrix.target }}.exe"
           else
             cp target/release/clocky stage/
             tar -czf "dist/${name}.tar.gz" -C stage .
@@ -107,6 +109,9 @@ jobs:
         with:
           path: dist
           merge-multiple: true
+      - name: Checksums
+        # The updater checks every download against this list.
+        run: (cd dist && sha256sum * > SHA256SUMS.txt && cat SHA256SUMS.txt)
       - name: Release notes
         run: git cliff --unreleased --tag "${{ needs.version.outputs.next }}" --strip all > notes.md
       - name: Create tag and release

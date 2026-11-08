@@ -44,7 +44,17 @@ export global SettingsState {
     // Why the last save was refused, or empty.
     in property <string> draft-error;
 
+    // Atualizações.
+    in property <string> version;
+    in property <string> update-status;
+    // The button; empty = none.
+    in property <string> update-action;
+    in property <bool> update-busy;
+    in property <bool> auto-update: true;
+
     callback set-theme(int);
+    callback update-act();
+    callback set-auto-update(bool);
     callback edit-preset(int);
     callback step-draft(int, int);
     callback draft-name-edited(string);

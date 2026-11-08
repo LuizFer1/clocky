@@ -405,6 +405,50 @@ export component SettingsPage inherits VerticalLayout {
 
     Card {
         SectionTitle {
+            text: "Atualizações";
+            help: "O Clocky " + SettingsState.version + " procura versões novas no GitHub.";
+        }
+
+        SettingRow {
+            label: "Atualizar automaticamente";
+            help: "Baixa a versão nova e instala quando nenhuma janela estiver aberta e nada estiver rodando.";
+
+            Switch {
+                checked: SettingsState.auto-update;
+                toggled(on) => { SettingsState.set-auto-update(on); }
+            }
+        }
+
+        Divider { }
+
+        HorizontalLayout {
+            spacing: Theme.space-3;
+
+            VerticalLayout {
+                horizontal-stretch: 1;
+                alignment: center;
+
+                Text {
+                    text: SettingsState.update-status;
+                    color: Theme.muted;
+                    font-size: Theme.fs-sm;
+                    wrap: word-wrap;
+                }
+            }
+
+            if SettingsState.update-action != "": VerticalLayout {
+                alignment: center;
+
+                SecondaryButton {
+                    text: SettingsState.update-action;
+                    clicked => { SettingsState.update-act(); }
+                }
+            }
+        }
+    }
+
+    Card {
+        SectionTitle {
             text: "Sistema";
         }
 

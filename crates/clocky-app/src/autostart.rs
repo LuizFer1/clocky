@@ -240,6 +240,12 @@ pub fn run_value(exe: &Path) -> String {
 #[cfg(windows)]
 pub use registry::Registry;
 
+/// The key Windows reads at login (the installer writes it too).
+#[cfg(windows)]
+pub fn registry_run_key() -> &'static str {
+    registry::RUN_KEY
+}
+
 #[cfg(windows)]
 mod registry {
     use std::io;

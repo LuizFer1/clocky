@@ -2,7 +2,8 @@
 
 A **lightweight, intuitive and pleasant-looking** time management app, written 100% in Rust (UI built with [Slint](https://slint.dev)).
 
-> **Status:** under active development. There is no release yet, and nothing is usable so far.
+> **Status:** under active development. Releases are published on the
+> [GitHub Releases](https://github.com/LuizFer1/clocky/releases) page.
 
 ## Features
 
@@ -10,6 +11,29 @@ A **lightweight, intuitive and pleasant-looking** time management app, written 1
 - Tasks and subtasks linked to timers and organized into projects
 - Time reports: overall, weekly, daily (timeline) and per session
 - Desktop app for Windows, Linux and macOS, with a system tray icon
+- Light, dark or system theme
+- Automatic updates from the GitHub releases
+
+## Installation
+
+**Windows:** download `clocky-setup-x86_64-pc-windows-msvc.exe` from the
+[latest release](https://github.com/LuizFer1/clocky/releases/latest) and run it. It installs
+Clocky for the current user (no administrator rights) in `%LOCALAPPDATA%\Programs\Clocky`, adds
+a Start menu shortcut and an entry in *Installed apps* to uninstall it. Uninstalling keeps your
+data.
+
+**Linux and macOS:** download the `.tar.gz` for your system, extract it and run `clocky`.
+
+### Updates
+
+Clocky checks the latest GitHub release 30 seconds after it starts and every 6 hours. With
+*Settings → Updates → Update automatically* on (the default), it downloads the new version,
+checks it against the release's `SHA256SUMS.txt` and installs it when no window is open and no
+timer is running, then starts again. With it off, the page shows the new version and a button to
+install it. On Linux and macOS the binary is replaced in place.
+
+> **Coming from v0.1.0:** that version has no updater. Install v0.2.0 by hand once (on Windows,
+> with the installer); later versions update themselves.
 
 ---
 
@@ -133,6 +157,9 @@ The version is calculated automatically from the commits since the last release:
 2. CI runs on `main`. If it passes, the **Release** pipeline:
    - calculates the version (`git-cliff`, rules in `cliff.toml`);
    - builds the binary for Windows (x86_64), Linux (x86_64) and macOS (Apple Silicon);
+   - publishes the Windows installer as `clocky-setup-<target>.exe` (the app itself: started
+     under that name it installs, and the updater looks for that name) and a `SHA256SUMS.txt`
+     with the checksum of every file;
    - creates the `vX.Y.Z` tag and the **GitHub Release** with the binaries and notes generated from the commits.
 
 To see locally what the next version would be:
