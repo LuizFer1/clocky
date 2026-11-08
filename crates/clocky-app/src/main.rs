@@ -27,11 +27,6 @@ mod sound;
 mod tray;
 
 fn main() {
-    let log_file = log::init(&paths::log_dir()).ok();
-    tracing::info!(
-        "starting Clocky {} (log: {log_file:?})",
-        clocky_core::version()
-    );
     match run() {
         Ok(()) => tracing::info!("exiting"),
         Err(e) => {
@@ -47,14 +42,16 @@ fn run() -> anyhow::Result<()> {
     let screenshot_dir = screenshot::dir_from_env();
     // Screenshot runs are independent of a running Clocky.
     if screenshot_dir.is_none() {
+        // Delivered to the running Clocky: nothing else to do (and nothing to log).
         if instance::forward(launch.command()) {
-            tracing::info!("Clocky is already running: sent {:?}", launch.command());
             return Ok(());
         }
         if let command::Launch::Send(command) = launch {
             anyhow::bail!("no running Clocky to receive {command:?}");
         }
     }
+    // Only the primary instance logs: a second launch must not touch the running one's log.
+    start_logging();
     select_backend()?;
     // Listen before creating the windows: that can take seconds on a cold start, and a launch
     // during it must reach this instance instead of starting a second one.
@@ -69,6 +66,14 @@ fn run() -> anyhow::Result<()> {
     // The app lives in the tray: closing every window does not end it, only "Sair" does.
     slint::run_event_loop_until_quit()?;
     Ok(())
+}
+
+fn start_logging() {
+    let log_file = log::init(&paths::log_dir()).ok();
+    tracing::info!(
+        "starting Clocky {} (log: {log_file:?})",
+        clocky_core::version()
+    );
 }
 
 /// Selects the winit backend (the dock relies on winit window APIs).
