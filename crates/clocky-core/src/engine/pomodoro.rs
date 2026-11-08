@@ -152,9 +152,10 @@ impl Pomodoro {
     /// Restores a pomodoro from its parts. `run` is `None` while the phase waits for the user.
     ///
     /// # Errors
-    /// [`EngineError::InvalidPomodoroState`] if `round` is zero, `focus_index` is outside
-    /// `1..=focus_per_round`, or the phase cannot happen at that focus index (the long break
-    /// only after the last focus of the round, the short break only before it).
+    /// [`EngineError::InvalidPomodoroState`] if `round` is zero or `u32::MAX` (it could not
+    /// grow), `focus_index` is outside `1..=focus_per_round`, or the phase cannot happen at that
+    /// focus index (the long break only after the last focus of the round, the short break only
+    /// before it).
     pub fn from_parts(
         config: PomodoroConfig,
         phase: Phase,
@@ -168,7 +169,8 @@ impl Pomodoro {
             Phase::ShortBreak => focus_index < last,
             Phase::LongBreak => focus_index == last,
         };
-        if round == 0 || focus_index == 0 || focus_index > last || !phase_fits {
+        let round_fits = round != 0 && round != u32::MAX;
+        if !round_fits || focus_index == 0 || focus_index > last || !phase_fits {
             return Err(EngineError::InvalidPomodoroState);
         }
         Ok(Self {
@@ -280,6 +282,20 @@ impl Pomodoro {
         events
     }
 
+    /// Catches up after the app was closed or the PC was suspended (decision 1): a phase that
+    /// came due by `now` closes at its scheduled time and the pomodoro stops and waits, with no
+    /// grace period and no simulated phases after it.
+    #[must_use = "events must be processed (sessions to record)"]
+    pub fn catch_up(&mut self, now: Timestamp) -> Vec<PomodoroEvent> {
+        match self.phase_end() {
+            Some(end) if end <= now => self.end_phase(Close::Scheduled {
+                at: end,
+                late: true,
+            }),
+            _ => Vec::new(),
+        }
+    }
+
     /// Skips the current phase: ends it now (an interrupted focus becomes a partial session)
     /// and moves on to the next one, which follows the normal start rules.
     ///
@@ -358,7 +374,7 @@ impl Pomodoro {
                 Phase::Focus
             }
             Phase::LongBreak => {
-                self.round += 1;
+                self.round = self.round.saturating_add(1);
                 self.focus_index = 1;
                 Phase::Focus
             }
@@ -719,6 +735,74 @@ mod tests {
     }
 
     #[test]
+    fn catch_up_closes_at_due_and_waits_even_within_grace() {
+        let mut p = Pomodoro::start(cfg(true), at(0));
+        assert_eq!(p.catch_up(at(1499)), vec![]);
+        assert_eq!(
+            p.catch_up(at(1500 + 30)),
+            vec![
+                PomodoroEvent::FocusSession {
+                    session: focus_session(0, 1500),
+                    round: 1
+                },
+                PomodoroEvent::PhaseEnded {
+                    ended: Phase::Focus,
+                    next: Phase::ShortBreak,
+                    auto_started: false,
+                },
+            ]
+        );
+        assert!(p.is_waiting());
+        assert_eq!(p.catch_up(at(9999)), vec![]);
+    }
+
+    #[test]
+    fn catch_up_does_not_simulate_later_phases() {
+        let config = PomodoroConfig::new(secs(10), secs(10), secs(10), 2, true).unwrap();
+        let mut p = Pomodoro::start(config, at(0));
+        let events = p.catch_up(at(40));
+        assert_eq!(events.len(), 2);
+        assert_eq!(
+            events[0],
+            PomodoroEvent::FocusSession {
+                session: focus_session(0, 10),
+                round: 1
+            }
+        );
+        assert_eq!((p.phase(), p.focus_index()), (Phase::ShortBreak, 1));
+        assert!(p.is_waiting());
+    }
+
+    #[test]
+    fn catch_up_after_a_long_break_does_not_start_the_new_round() {
+        let mut p = Pomodoro::from_parts(cfg(false), Phase::LongBreak, 2, 1, None).unwrap();
+        p.start_phase(at(0)).unwrap();
+        assert_eq!(
+            p.catch_up(at(900 + 30)),
+            vec![PomodoroEvent::PhaseEnded {
+                ended: Phase::LongBreak,
+                next: Phase::Focus,
+                auto_started: false,
+            }]
+        );
+        assert_eq!((p.round(), p.focus_index()), (2, 1));
+        assert!(p.is_waiting());
+    }
+
+    #[test]
+    fn the_last_possible_round_never_overflows() {
+        let mut p =
+            Pomodoro::from_parts(cfg(false), Phase::LongBreak, 2, u32::MAX - 1, None).unwrap();
+        let _events = p.skip(at(0));
+        assert_eq!(p.round(), u32::MAX);
+        let _events = p.skip(at(1)); // focus 1 -> short break
+        let _events = p.skip(at(2)); // short break -> focus 2
+        let _events = p.skip(at(3)); // focus 2 -> long break
+        let _events = p.skip(at(4)); // long break -> a new round, which saturates
+        assert_eq!((p.round(), p.phase()), (u32::MAX, Phase::Focus));
+    }
+
+    #[test]
     fn from_parts_restores_every_field() {
         let mut p = Pomodoro::start(cfg(false), at(0));
         let _events = p.tick(at(1500)); // short break waiting
@@ -761,6 +845,10 @@ mod tests {
             invalid
         );
         assert!(Pomodoro::from_parts(cfg(false), Phase::LongBreak, 2, 3, None).is_ok());
+        assert_eq!(
+            Pomodoro::from_parts(cfg(false), Phase::Focus, 1, u32::MAX, None),
+            invalid
+        );
         assert!(Pomodoro::from_parts(cfg(false), Phase::ShortBreak, 1, 1, None).is_ok());
     }
 

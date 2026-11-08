@@ -54,7 +54,8 @@ struct ActiveRow {
     id: TimerId,
     kind: TimerKind,
     task: Option<TaskId>,
-    preset: Option<i64>,
+    timer_preset: Option<i64>,
+    pomodoro_preset: Option<i64>,
     target_ms: Option<i64>,
     pomodoro: PomodoroRow,
 }
@@ -73,27 +74,28 @@ struct PomodoroRow {
     phase_started: Option<i64>,
 }
 
-const ACTIVE_COLUMNS: &str = "id, kind, task_id, preset_id, target_ms, focus_ms, \
-     short_break_ms, long_break_ms, focus_per_round, auto_start, phase, focus_index, round, \
-     phase_started";
+const ACTIVE_COLUMNS: &str = "id, kind, task_id, timer_preset_id, pomodoro_preset_id, \
+     target_ms, focus_ms, short_break_ms, long_break_ms, focus_per_round, auto_start, phase, \
+     focus_index, round, phase_started";
 
 fn active_row(row: &Row<'_>) -> Result<ActiveRow, StoreError> {
     Ok(ActiveRow {
         id: timer_id_from_sql(row.get(0)?)?,
         kind: kind_from_sql(&row.get::<_, String>(1)?)?,
         task: row.get::<_, Option<i64>>(2)?.map(TaskId),
-        preset: row.get(3)?,
-        target_ms: row.get(4)?,
+        timer_preset: row.get(3)?,
+        pomodoro_preset: row.get(4)?,
+        target_ms: row.get(5)?,
         pomodoro: PomodoroRow {
-            focus_ms: row.get(5)?,
-            short_break_ms: row.get(6)?,
-            long_break_ms: row.get(7)?,
-            focus_per_round: row.get(8)?,
-            auto_start: row.get(9)?,
-            phase: row.get(10)?,
-            focus_index: row.get(11)?,
-            round: row.get(12)?,
-            phase_started: row.get(13)?,
+            focus_ms: row.get(6)?,
+            short_break_ms: row.get(7)?,
+            long_break_ms: row.get(8)?,
+            focus_per_round: row.get(9)?,
+            auto_start: row.get(10)?,
+            phase: row.get(11)?,
+            focus_index: row.get(12)?,
+            round: row.get(13)?,
+            phase_started: row.get(14)?,
         },
     })
 }
@@ -182,12 +184,14 @@ fn timer_from_row(row: ActiveRow, segments: &[StoredSegment]) -> Result<ActiveTi
         TimerKind::Countdown => {
             let target = duration_from_ms(required(row.target_ms, "countdown target")?, "target")?;
             let run = run_from_segments(id, segments)?;
-            let preset = row.preset.map(|p| PresetRef::Timer(TimerPresetId(p)));
+            let preset = row.timer_preset.map(|p| PresetRef::Timer(TimerPresetId(p)));
             (Timer::Countdown(Countdown::from_parts(run, target)), preset)
         }
         TimerKind::Pomodoro => {
             let pomodoro = pomodoro_from_row(id, row.pomodoro, segments)?;
-            let preset = row.preset.map(|p| PresetRef::Pomodoro(PomodoroPresetId(p)));
+            let preset = row
+                .pomodoro_preset
+                .map(|p| PresetRef::Pomodoro(PomodoroPresetId(p)));
             (Timer::Pomodoro(pomodoro), preset)
         }
     };

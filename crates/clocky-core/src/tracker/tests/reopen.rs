@@ -165,20 +165,135 @@ fn timer_ids_are_never_reused() {
 }
 
 #[test]
-fn corrupted_active_timer_is_an_error_on_open() {
+fn corrupted_active_timer_gives_the_store_back_for_recovery() {
     let db = TempDb::new("reopen-corrupt");
     let (mut tracker, _) = open(&db, at(0));
+    let task = tracker
+        .store_mut()
+        .create_task(None, "report", at(0))
+        .unwrap();
+    let sw = tracker.start_stopwatch(Some(task), at(0)).unwrap();
+    let _events = tracker.stop(sw, at(60)).unwrap();
     tracker
-        .start_pomodoro(None, quick(false), None, at(0))
+        .start_pomodoro(None, quick(false), None, at(100))
         .unwrap();
     tracker.store().execute_batch_for_tests(
         "PRAGMA ignore_check_constraints = ON; UPDATE active_timers SET phase = 'nap';",
     );
     drop(tracker);
 
-    let result = Tracker::open(Store::open(db.path()).unwrap(), at(1));
+    let failed = Tracker::open(Store::open(db.path()).unwrap(), at(200)).unwrap_err();
     assert!(matches!(
-        result,
-        Err(TrackerError::Store(StoreError::Corrupt { .. }))
+        failed.error,
+        TrackerError::Store(StoreError::Corrupt { .. })
     ));
+    // The message is printed once along an error chain: by the source, not by the wrapper.
+    assert_eq!(
+        failed.to_string(),
+        "the active timers could not be restored"
+    );
+    let source = std::error::Error::source(&failed).unwrap();
+    assert!(source.to_string().starts_with("invalid pomodoro phase"));
+    // History is still there, and discarding the active timers lets the tracker open.
+    assert_eq!(failed.store.task_time(task).unwrap(), secs(60));
+    let store = failed.discard_active_timers().unwrap();
+    let (tracker, events) = Tracker::open(store, at(200)).unwrap();
+    assert_eq!(events, vec![]);
+    assert_eq!(tracker.timers().iter().count(), 0);
+}
+
+#[test]
+fn failed_catch_up_on_open_gives_the_store_back() {
+    let db = TempDb::new("reopen-failed-write");
+    let (mut tracker, _) = open(&db, at(0));
+    tracker
+        .start_countdown(None, secs(60), None, at(0))
+        .unwrap();
+    drop(tracker);
+
+    let store = Store::open(db.path()).unwrap();
+    store.execute_batch_for_tests(
+        "CREATE TEMP TRIGGER no_sessions BEFORE INSERT ON sessions
+         BEGIN SELECT RAISE(ABORT, 'disk is broken'); END;",
+    );
+    let failed = Tracker::open(store, at(500)).unwrap_err();
+    assert!(matches!(
+        failed.error,
+        TrackerError::Store(StoreError::Sqlite(_))
+    ));
+    assert_eq!(failed.store.load_active().unwrap().1.len(), 1);
+}
+
+fn classic(auto_start: bool) -> PomodoroConfig {
+    PomodoroConfig::new(mins(25), mins(5), mins(15), 4, auto_start).unwrap()
+}
+
+fn pomodoro(tracker: &Tracker, id: TimerId) -> Pomodoro {
+    let Timer::Pomodoro(p) = &tracker.timers().get(id).unwrap().timer else {
+        panic!("expected a pomodoro");
+    };
+    p.clone()
+}
+
+#[test]
+fn reopening_within_the_grace_still_stops_the_pomodoro() {
+    let db = TempDb::new("reopen-grace");
+    let (mut tracker, _) = open(&db, at(0));
+    let pomo = tracker
+        .start_pomodoro(None, classic(true), None, at(0))
+        .unwrap();
+    drop(tracker);
+
+    let (tracker, events) = open(&db, at(25 * 60 + 30));
+    let session = tracker.store().session(recorded(&events)[0]).unwrap();
+    assert_eq!(session.session.ended_at, at(25 * 60));
+    let p = pomodoro(&tracker, pomo);
+    assert_eq!(p.phase(), Phase::ShortBreak);
+    assert!(p.is_waiting());
+}
+
+#[test]
+fn reopening_after_a_long_break_does_not_start_the_next_round() {
+    let db = TempDb::new("reopen-long-break");
+    let (mut tracker, _) = open(&db, at(0));
+    let pomo = tracker
+        .start_pomodoro(None, quick(false), None, at(0))
+        .unwrap();
+    let _events = tracker.skip(pomo, at(1)).unwrap(); // short break waits
+    let _events = tracker.skip(pomo, at(2)).unwrap(); // focus 2 waits
+    let _events = tracker.skip(pomo, at(3)).unwrap(); // long break waits
+    tracker.start_phase(pomo, at(3)).unwrap(); // due at 13
+    drop(tracker);
+
+    let (tracker, events) = open(&db, at(13 + 30));
+    assert_eq!(recorded(&events).len(), 0);
+    let p = pomodoro(&tracker, pomo);
+    assert_eq!(
+        (p.phase(), p.round(), p.focus_index()),
+        (Phase::Focus, 2, 1)
+    );
+    assert!(p.is_waiting());
+}
+
+#[test]
+fn reopening_never_records_phases_that_did_not_happen() {
+    let db = TempDb::new("reopen-short-phases");
+    let (mut tracker, _) = open(&db, at(0));
+    let task = tracker
+        .store_mut()
+        .create_task(None, "report", at(0))
+        .unwrap();
+    let pomo = tracker
+        .start_pomodoro(Some(task), quick(true), None, at(0))
+        .unwrap();
+    drop(tracker);
+
+    let (tracker, events) = open(&db, at(40));
+    assert_eq!(recorded(&events).len(), 1);
+    let sessions = tracker.store().recent_sessions(task, 10).unwrap();
+    assert_eq!(sessions.len(), 1);
+    assert_eq!(sessions[0].ended_at, at(10));
+    let p = pomodoro(&tracker, pomo);
+    assert_eq!((p.phase(), p.focus_index()), (Phase::ShortBreak, 1));
+    assert!(p.is_waiting());
 }

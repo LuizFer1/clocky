@@ -279,3 +279,18 @@ fn huge_run_id_cannot_produce_a_next_id() {
         Err(StoreError::OutOfRange("timer id"))
     ));
 }
+
+#[test]
+fn a_missing_preset_is_refused_and_a_reused_id_is_not_linked() {
+    let mut store = Store::open_in_memory().unwrap();
+    assert!(matches!(
+        store.save_active(&countdown(1, Some(TimerPresetId(999)))),
+        Err(StoreError::Sqlite(_))
+    ));
+    let old = store.create_timer_preset("tea", mins(5), None).unwrap();
+    store.save_active(&countdown(1, Some(old))).unwrap();
+    store.delete_timer_preset(old).unwrap();
+    let new = store.create_timer_preset("coffee", mins(3), None).unwrap();
+    assert_eq!(new, old); // SQLite reused the id
+    assert_eq!(store.load_active().unwrap().1[0].preset, None);
+}
