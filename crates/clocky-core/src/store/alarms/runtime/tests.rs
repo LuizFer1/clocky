@@ -342,3 +342,28 @@ fn reenabling_a_once_alarm_after_its_time_rings_the_next_day() {
         ]
     );
 }
+
+#[test]
+fn marking_an_expired_snooze_before_the_last_fire_stops_it() {
+    let mut store = Store::open_in_memory().unwrap();
+    let once = NewAlarm {
+        repeat: Weekdays::ONCE,
+        ..at_time("once", 10, 0)
+    };
+    let id = store.create_alarm(&once, nov(2, 6, 0)).unwrap();
+    fire(&mut store, id, nov(2, 10, 0));
+    // The clock moves back to 09:00, the user snoozes, and the computer sleeps until 10:30.
+    store.snooze_alarm(id, nov(2, 9, 0)).unwrap();
+    let now = nov(2, 10, 30);
+    assert_eq!(
+        pending_at(&store, now),
+        vec![(id, nov(2, 9, 5), Firing::Missed)]
+    );
+
+    store.mark_alarm_fired(id, nov(2, 9, 5), now).unwrap();
+    assert_eq!(pending_at(&store, nov(2, 10, 31)), vec![]);
+    let alarm = store.alarm(id).unwrap();
+    assert_eq!(alarm.snoozed_until, None);
+    assert_eq!(alarm.last_fired_at, Some(nov(2, 10, 0)));
+    assert!(!alarm.enabled);
+}
