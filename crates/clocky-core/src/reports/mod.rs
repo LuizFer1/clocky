@@ -11,11 +11,13 @@ mod error;
 mod overview;
 mod period;
 mod rows;
+mod weekly;
 
 pub use error::ReportError;
 pub use overview::{Overview, ProjectTotal, TaskTotal, overview};
 pub use period::Period;
 pub use rows::{ProjectInfo, TaskInfo};
+pub use weekly::{DayTotals, ProjectTime, Weekly, weekly};
 
 #[cfg(test)]
 mod test_support;
