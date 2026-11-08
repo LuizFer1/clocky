@@ -481,3 +481,32 @@ fn a_corrupted_alarm_fails_the_runtime_operations() {
     assert!(store.mark_alarm_fired(id, nov(2, 10, 0)).is_err());
     assert!(store.snooze_alarm(id, nov(2, 10, 0)).is_err());
 }
+
+#[test]
+fn linked_alarms_appear_in_task_links_and_summaries() {
+    let mut store = Store::open_in_memory().unwrap();
+    let task = store.create_task(None, "report", at(0)).unwrap();
+    let other = store.create_task(None, "gym", at(0)).unwrap();
+    let late = store.create_alarm(&at_time("late", 9, 0), at(0)).unwrap();
+    let early = store.create_alarm(&at_time("early", 8, 0), at(0)).unwrap();
+    store.create_alarm(&wake(Some(other)), at(0)).unwrap();
+    store.create_alarm(&wake(None), at(0)).unwrap();
+    store.set_alarm_task(late, Some(task)).unwrap();
+    store.set_alarm_task(early, Some(task)).unwrap();
+
+    let linked: Vec<AlarmId> = store
+        .task_links(task)
+        .unwrap()
+        .alarms
+        .iter()
+        .map(|a| a.id)
+        .collect();
+    assert_eq!(linked, vec![early, late]);
+
+    let summaries = store.task_summaries(None, false).unwrap();
+    let alarm_counts: Vec<(TaskId, usize)> = summaries
+        .iter()
+        .map(|s| (s.task.id, s.links.alarms.len()))
+        .collect();
+    assert_eq!(alarm_counts, vec![(task, 2), (other, 1)]);
+}
