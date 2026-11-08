@@ -9,12 +9,14 @@ mod migrations;
 mod presets;
 mod projects;
 mod rows;
+mod settings;
 mod subtasks;
 mod tasks;
 
 pub use error::StoreError;
 pub use presets::{NewPomodoroPreset, PomodoroPreset, TimerPreset};
 pub use projects::Project;
+pub use settings::DEFAULT_FORGOTTEN_LIMIT;
 pub use subtasks::{Subtask, SubtaskEvent, SubtaskEventKind};
 pub use tasks::Task;
 
