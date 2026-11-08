@@ -25,7 +25,7 @@ use slint::ComponentHandle;
 
 pub use cards::AlarmCard;
 pub use queue::Ringing;
-pub use ringer::{Ringer, SilentRinger, SystemRinger};
+pub use ringer::{Ringer, SilentRinger, SystemRinger, effective_sound};
 
 use crate::core::AppCore;
 use crate::geometry::Anchor;
@@ -225,7 +225,7 @@ impl Alarms {
         if !same {
             let notice = self
                 .ringer
-                .start(current.sound.as_deref())
+                .start(self.sound_for(current.sound.as_deref()).as_deref())
                 .unwrap_or_default();
             *self.sounding.borrow_mut() = Some((current.id, current.due, notice));
         }
@@ -303,5 +303,25 @@ impl Alarms {
                 color: palette::color(&color),
             })
             .unwrap_or_default()
+    }
+}
+
+/// M7: the default alarm sound of Configurações.
+impl Alarms {
+    /// The `alarm.default_sound` setting (`None` when unset, empty or unreadable).
+    fn default_sound(&self) -> Option<String> {
+        let read = self
+            .core
+            .borrow()
+            .setting(crate::settings::keys::ALARM_SOUND);
+        read.unwrap_or_else(|e| {
+            tracing::warn!("cannot read the default alarm sound: {e}");
+            None
+        })
+    }
+
+    /// The sound to play for an alarm whose own file is `own` (see [`effective_sound`]).
+    fn sound_for(&self, own: Option<&str>) -> Option<String> {
+        effective_sound(own, self.default_sound().as_deref())
     }
 }

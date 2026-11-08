@@ -23,6 +23,17 @@ fn check_file(path: &str) -> Result<PathBuf, String> {
     })
 }
 
+/// The sound an alarm plays: its own file, else the `alarm.default_sound` setting of
+/// Configurações, else the built-in chime (`None`). Blank values count as unset.
+pub fn effective_sound(own: Option<&str>, default: Option<&str>) -> Option<String> {
+    let set = |s: Option<&str>| {
+        s.map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_owned)
+    };
+    set(own).or_else(|| set(default))
+}
+
 pub trait Ringer {
     /// Starts the looping sound of a ringing alarm (replacing any other). Returns a notice when
     /// its custom file failed and the built-in sound plays instead.
@@ -155,6 +166,24 @@ mod tests {
         assert_eq!(body, "Hora da daily! · connect › standup");
         let (_, body) = notification(&ring(" ", Some(Duration::from_mins(12))), None);
         assert_eq!(body, "Alarme das 07:30 · atrasado 12 min");
+    }
+
+    #[test]
+    fn own_sound_wins_over_the_default_setting_and_blank_means_unset() {
+        assert_eq!(
+            effective_sound(Some("C:/galo.mp3"), Some("C:/sino.wav")).as_deref(),
+            Some("C:/galo.mp3")
+        );
+        assert_eq!(
+            effective_sound(None, Some(" C:/sino.wav ")).as_deref(),
+            Some("C:/sino.wav")
+        );
+        assert_eq!(
+            effective_sound(Some("  "), Some("C:/sino.wav")).as_deref(),
+            Some("C:/sino.wav")
+        );
+        assert_eq!(effective_sound(None, Some("")), None);
+        assert_eq!(effective_sound(None, None), None);
     }
 
     #[test]

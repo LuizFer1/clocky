@@ -138,14 +138,15 @@ impl Alarms {
             draft.sound = (!path.is_empty()).then(|| path.to_owned());
         }
         if let Some(ui) = self.panel.upgrade() {
-            let label = summary::sound_label(Some(path));
+            let label = summary::sound_label(self.sound_for(Some(path)).as_deref());
             ui.global::<ui::AlarmUi>().set_sound_label(label.into());
         }
     }
 
     /// ▶ of the sound: plays it once; a file that fails plays the chime and says so.
     fn preview(&self) {
-        let sound = self.draft.borrow().sound.clone();
+        let own = self.draft.borrow().sound.clone();
+        let sound = self.sound_for(own.as_deref());
         let notice = self.ringer.preview(sound.as_deref()).unwrap_or_default();
         self.set_notice(&notice);
     }
@@ -240,7 +241,8 @@ impl Alarms {
         g.set_days(ModelRc::new(VecModel::from(days)));
         g.set_name(draft.name.as_str().into());
         g.set_task(task);
-        g.set_sound_label(summary::sound_label(draft.sound.as_deref()).into());
+        let sound = self.sound_for(draft.sound.as_deref());
+        g.set_sound_label(summary::sound_label(sound.as_deref()).into());
         g.set_sound_path(draft.sound.clone().unwrap_or_default().into());
         g.set_snooze(i32::try_from(draft.snooze).unwrap_or(5));
         g.set_message(draft.message.as_str().into());
