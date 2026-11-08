@@ -72,7 +72,20 @@ component Content inherits Rectangle {
 
             property <bool> shown: false;
 
-            init => { self.shown = true; }
+            // Evaluates the opacity once while hidden, so the flip below has a start to animate from.
+
+            property <float> start-opacity;
+
+            init => { self.start-opacity = self.opacity; }
+
+            // Flipped right after creation: set in `init`, the animation would be skipped.
+            Timer {
+                interval: 1ms;
+                triggered => {
+                    parent.shown = true;
+                    self.running = false;
+                }
+            }
 
             opacity: self.shown ? 1 : 0;
 
@@ -86,7 +99,20 @@ component Content inherits Rectangle {
 
             property <bool> shown: false;
 
-            init => { self.shown = true; }
+            // Evaluates the opacity once while hidden, so the flip below has a start to animate from.
+
+            property <float> start-opacity;
+
+            init => { self.start-opacity = self.opacity; }
+
+            // Flipped right after creation: set in `init`, the animation would be skipped.
+            Timer {
+                interval: 1ms;
+                triggered => {
+                    parent.shown = true;
+                    self.running = false;
+                }
+            }
 
             opacity: self.shown ? 1 : 0;
 
@@ -100,7 +126,20 @@ component Content inherits Rectangle {
 
             property <bool> shown: false;
 
-            init => { self.shown = true; }
+            // Evaluates the opacity once while hidden, so the flip below has a start to animate from.
+
+            property <float> start-opacity;
+
+            init => { self.start-opacity = self.opacity; }
+
+            // Flipped right after creation: set in `init`, the animation would be skipped.
+            Timer {
+                interval: 1ms;
+                triggered => {
+                    parent.shown = true;
+                    self.running = false;
+                }
+            }
 
             opacity: self.shown ? 1 : 0;
 
@@ -114,7 +153,20 @@ component Content inherits Rectangle {
 
             property <bool> shown: false;
 
-            init => { self.shown = true; }
+            // Evaluates the opacity once while hidden, so the flip below has a start to animate from.
+
+            property <float> start-opacity;
+
+            init => { self.start-opacity = self.opacity; }
+
+            // Flipped right after creation: set in `init`, the animation would be skipped.
+            Timer {
+                interval: 1ms;
+                triggered => {
+                    parent.shown = true;
+                    self.running = false;
+                }
+            }
 
             opacity: self.shown ? 1 : 0;
 
@@ -128,7 +180,20 @@ component Content inherits Rectangle {
 
             property <bool> shown: false;
 
-            init => { self.shown = true; }
+            // Evaluates the opacity once while hidden, so the flip below has a start to animate from.
+
+            property <float> start-opacity;
+
+            init => { self.start-opacity = self.opacity; }
+
+            // Flipped right after creation: set in `init`, the animation would be skipped.
+            Timer {
+                interval: 1ms;
+                triggered => {
+                    parent.shown = true;
+                    self.running = false;
+                }
+            }
 
             opacity: self.shown ? 1 : 0;
 
@@ -142,7 +207,20 @@ component Content inherits Rectangle {
 
             property <bool> shown: false;
 
-            init => { self.shown = true; }
+            // Evaluates the opacity once while hidden, so the flip below has a start to animate from.
+
+            property <float> start-opacity;
+
+            init => { self.start-opacity = self.opacity; }
+
+            // Flipped right after creation: set in `init`, the animation would be skipped.
+            Timer {
+                interval: 1ms;
+                triggered => {
+                    parent.shown = true;
+                    self.running = false;
+                }
+            }
 
             opacity: self.shown ? 1 : 0;
 

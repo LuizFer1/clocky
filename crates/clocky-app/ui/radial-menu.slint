@@ -56,7 +56,17 @@ component RadialPill inherits Rectangle {
 
     // Grows from the circle once shown (the width animation runs from the circle's size).
     property <bool> grown: false;
-    init => { self.grown = true; }
+    // Evaluates the width once while collapsed, so the flip below has a start to animate from.
+    property <length> start-width;
+    init => { self.start-width = self.width; }
+    // Flipped right after creation: set in `init`, the animation would be skipped.
+    Timer {
+        interval: 1ms;
+        triggered => {
+            parent.grown = true;
+            self.running = false;
+        }
+    }
 
     height: Theme.size-radial-item;
     width: root.grown ? txt.preferred-width + Theme.size-radial-item + 22px : Theme.size-radial-item;
@@ -70,7 +80,8 @@ component RadialPill inherits Rectangle {
     animate width { duration: Theme.dur-pill-expand; easing: ease; }
 
     txt := Text {
-        x: root.mirrored ? Theme.size-radial-item + 2px : 20px;
+        // Next to the icon, so the growing pill uncovers it from there.
+        x: root.mirrored ? Theme.size-radial-item + 2px : parent.width - Theme.size-radial-item - 2px - self.width;
         y: (parent.height - self.height) / 2;
         text: root.label;
         color: Theme.fab-text;
