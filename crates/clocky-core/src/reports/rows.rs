@@ -51,6 +51,9 @@ pub struct SubtaskMarker {
     pub at: Timestamp,
     /// Session that contains it; `None` if it happened outside a recorded session (for
     /// example during a pomodoro break, or with no timer).
+    ///
+    /// The session may have no block on the same day: an event during a pause that covers
+    /// the whole day still belongs to its session, which ran only on other days.
     pub session: Option<SessionId>,
 }
 

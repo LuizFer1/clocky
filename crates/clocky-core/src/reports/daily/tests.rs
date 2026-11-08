@@ -147,3 +147,31 @@ fn markers_include_events_with_and_without_a_session() {
     assert_eq!((marker.task.id, marker.task.name.as_str()), (api, "API"));
     assert_eq!(marker.project.as_ref().unwrap().id, work);
 }
+
+#[test]
+fn marker_may_point_to_a_session_with_no_block_that_day() {
+    let (mut store, _, api, outline) = fixture();
+    let run = TimerId(8);
+    // Checked on Wednesday, during a pause that lasts from Tuesday night to Thursday.
+    store
+        .complete_subtask(outline, wed(12, 0), Some(run))
+        .unwrap();
+    let tuesday = |h, m| local(&New_York, (2026, 11, 3), (h, m));
+    let thursday = |h, m| local(&New_York, (2026, 11, 5), (h, m));
+    let session = record_run(
+        &mut store,
+        Some(api),
+        (run, None),
+        TimerKind::Stopwatch,
+        &[
+            (tuesday(23, 0), tuesday(23, 30)),
+            (thursday(0, 10), thursday(0, 20)),
+        ],
+    );
+
+    let daily = daily(&store, date(2026, 11, 4), &New_York).unwrap();
+    assert_eq!(daily.blocks.len(), 0);
+    assert_eq!(daily.total, Duration::ZERO);
+    assert_eq!(daily.markers.len(), 1);
+    assert_eq!(daily.markers[0].session, Some(session));
+}
