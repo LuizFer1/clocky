@@ -11,6 +11,7 @@ mod ui {
 }
 
 mod app;
+mod bridge;
 mod command;
 mod dock;
 mod geometry;

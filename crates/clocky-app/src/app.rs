@@ -5,8 +5,10 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::time::Duration;
 
+use clocky_core::clock::SystemClock;
 use slint::ComponentHandle;
 
+use crate::bridge::{self, Bridge};
 use crate::command::Command;
 use crate::dock::Dock;
 use crate::manage::Manage;
@@ -34,6 +36,8 @@ pub struct App {
     screenshot_mode: bool,
     /// Keeps the tray icon alive (dropping it removes the icon).
     tray: RefCell<Option<ui::ClockyTray>>,
+    bridge: Bridge<SystemClock>,
+    tick_timer: slint::Timer,
 }
 
 impl App {
@@ -49,6 +53,8 @@ impl App {
             settings_path: path.filter(|_| !screenshot_mode),
             screenshot_mode,
             tray: RefCell::new(None),
+            bridge: Bridge::new(SystemClock),
+            tick_timer: slint::Timer::default(),
         });
         app.connect();
         APP.with(|cell| *cell.borrow_mut() = Some(app.clone()));
@@ -95,6 +101,13 @@ impl App {
         let settings = self.settings.borrow().clone();
         self.set_dark(settings.dark_theme);
         self.dock.show_at(settings.dock)?;
+        let weak = Rc::downgrade(self);
+        self.tick_timer
+            .start(slint::TimerMode::Repeated, bridge::TICK, move || {
+                if let Some(app) = weak.upgrade() {
+                    app.on_tick();
+                }
+            });
         if !self.screenshot_mode {
             let weak = Rc::downgrade(self);
             slint::Timer::single_shot(Duration::ZERO, move || {
@@ -104,6 +117,13 @@ impl App {
             });
         }
         Ok(())
+    }
+
+    /// 1 Hz: asks the bridge for the current state and pushes it to the UI.
+    fn on_tick(&self) {
+        let snapshot = self.bridge.tick();
+        self.dock.ui.set_active_count(snapshot.active_count);
+        tracing::trace!("tick at {} ms", snapshot.now.as_millis());
     }
 
     fn start_tray(&self) {
