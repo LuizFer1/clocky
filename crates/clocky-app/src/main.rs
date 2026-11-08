@@ -40,11 +40,6 @@ mod timers;
 mod tracker_handle;
 
 fn main() {
-    let log_file = log::init(&paths::log_dir()).ok();
-    tracing::info!(
-        "starting Clocky {} (log: {log_file:?})",
-        clocky_core::version()
-    );
     match run() {
         Ok(()) => tracing::info!("exiting"),
         Err(e) => {
@@ -60,14 +55,16 @@ fn run() -> anyhow::Result<()> {
     let screenshot_dir = screenshot::dir_from_env();
     // Screenshot runs are independent of a running Clocky.
     if screenshot_dir.is_none() {
+        // Delivered to the running Clocky: nothing else to do (and nothing to log).
         if instance::forward(launch.command()) {
-            tracing::info!("Clocky is already running: sent {:?}", launch.command());
             return Ok(());
         }
         if let command::Launch::Send(command) = launch {
             anyhow::bail!("no running Clocky to receive {command:?}");
         }
     }
+    // Only the primary instance logs: a second launch must not touch the running one's log.
+    start_logging();
     select_backend()?;
     let mut core = match startup::open_core() {
         Ok(core) => core,
@@ -98,8 +95,19 @@ fn run() -> anyhow::Result<()> {
         app.schedule_screenshots(dir);
     }
     // The app lives in the tray: closing every window does not end it, only "Sair" does.
-    slint::run_event_loop_until_quit()?;
+    let result = slint::run_event_loop_until_quit();
+    // Drops the windows and the tray icon before the process exits.
+    app::shutdown(app);
+    result?;
     Ok(())
+}
+
+fn start_logging() {
+    let log_file = log::init(&paths::log_dir()).ok();
+    tracing::info!(
+        "starting Clocky {} (log: {log_file:?})",
+        clocky_core::version()
+    );
 }
 
 /// Selects the winit backend (the dock relies on winit window APIs).
@@ -112,7 +120,7 @@ fn select_backend() -> anyhow::Result<()> {
 }
 
 /// Wayland does not let an app place its own windows, and the dock must sit at a screen edge.
-/// So on Linux the app goes through X11 (XWayland on Wayland desktops) whenever `DISPLAY` is set.
+/// So on Linux the app goes through X11 (`XWayland` on Wayland desktops) whenever `DISPLAY` is set.
 #[cfg(all(unix, not(target_vendor = "apple")))]
 fn linux_event_loop_builder() -> slint::winit_030::EventLoopBuilder {
     use slint::winit_030::winit::platform::x11::EventLoopBuilderExtX11;

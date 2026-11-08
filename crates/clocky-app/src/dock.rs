@@ -105,11 +105,9 @@ impl Dock {
         window.set_min_inner_size(Some(winit::dpi::PhysicalSize::new(1_u32, 1_u32)));
         hide_from_taskbar(window);
         let monitors = monitors(window);
-        let current = window
-            .current_monitor()
-            .or_else(|| window.primary_monitor())
-            .map(|m| to_monitor(&m));
-        let fallback = current.and_then(|c| monitors.iter().find(|m| m.rect == c.rect));
+        let primary = window.primary_monitor().map(|m| to_monitor(&m).rect);
+        let current = window.current_monitor().map(|m| to_monitor(&m).rect);
+        let fallback = geometry::fallback_monitor(&monitors, primary, current);
         let saved = saved.map(|p| (p.monitor.as_deref().unwrap_or(""), p.edge, p.y_fraction));
         if let Some((anchor, _)) = geometry::restore(&monitors, saved, fallback) {
             self.set_anchor(anchor);
