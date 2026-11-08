@@ -209,7 +209,11 @@ impl App {
     }
 
     fn start_tray(&self) {
-        let tray = tray::create(|| run_command(Command::Show), || run_command(Command::Quit));
+        let tray = tray::create(tray::Actions {
+            open_manage: Box::new(|| run_command(Command::Show)),
+            show_dock: Box::new(|| run_command(Command::ShowDock)),
+            quit: Box::new(|| run_command(Command::Quit)),
+        });
         *self.tray.borrow_mut() = tray;
     }
 
@@ -217,6 +221,7 @@ impl App {
         tracing::info!("command: {}", command.as_str());
         match command {
             Command::Show => self.manage.bring_to_front(),
+            Command::ShowDock => self.dock.recover(),
             Command::Quit => quit(),
             Command::NotifyTest => notify::show("Clocky", "Notificação de teste do Clocky."),
             Command::SoundTest => sound::play_default(),

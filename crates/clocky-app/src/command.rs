@@ -5,6 +5,8 @@
 pub enum Command {
     /// Bring the manage window to the front (what a plain second launch sends).
     Show,
+    /// Show the floating icon again where it belongs (tray "Mostrar ícone flutuante").
+    ShowDock,
     /// Quit the app, as the tray's "Sair".
     Quit,
     /// Debug: show a test notification.
@@ -17,6 +19,7 @@ impl Command {
     pub fn parse(text: &str) -> Option<Self> {
         match text.trim() {
             "show" => Some(Self::Show),
+            "show-dock" => Some(Self::ShowDock),
             "quit" => Some(Self::Quit),
             "notify-test" => Some(Self::NotifyTest),
             "sound-test" => Some(Self::SoundTest),
@@ -27,6 +30,7 @@ impl Command {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Show => "show",
+            Self::ShowDock => "show-dock",
             Self::Quit => "quit",
             Self::NotifyTest => "notify-test",
             Self::SoundTest => "sound-test",
@@ -95,6 +99,7 @@ mod tests {
     fn commands_roundtrip_through_text() {
         let all = [
             Command::Show,
+            Command::ShowDock,
             Command::Quit,
             Command::NotifyTest,
             Command::SoundTest,
