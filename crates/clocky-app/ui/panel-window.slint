@@ -34,8 +34,10 @@ export component PanelWindow inherits Window {
     background: transparent;
     default-font-family: Theme.font-sans;
     width: Theme.size-panel-width;
-    // Header (64 + 1) plus the timer view, capped; past the cap the view scrolls.
-    height: root.timer-view ? min(65px + timer-body.preferred-height, root.height-cap) : root.panel-height;
+    // Header (64 + 1) plus the timer view, capped; past the cap the view scrolls. Rust reads it
+    // to place the window before it is shown (its size is not known yet then).
+    out property <length> wanted-height: root.timer-view ? min(65px + timer-body.preferred-height, root.height-cap) : root.panel-height;
+    height: root.wanted-height;
     forward-focus: keys;
 
     keys := FocusScope {

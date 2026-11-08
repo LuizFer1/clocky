@@ -166,8 +166,9 @@ impl Panel {
     }
 
     /// Sizes the placeholder or the picker to `height` logical px and the timer views up to
-    /// the monitor's cap, then places the window. The timer views size to their content, so the
-    /// window is placed again with its real height when it resizes (see [`Panel::prepare`]).
+    /// the monitor's cap, then places the window for the height it asks for (known before it is
+    /// shown, unlike its size). Later content changes re-place it on resize (see
+    /// [`Panel::prepare`]).
     fn place(&self, height: f64) {
         let cap = self
             .anchor
@@ -178,18 +179,25 @@ impl Panel {
             self.ui.set_height_cap(cap as f32);
             self.ui.set_panel_height(height.min(cap) as f32);
         }
-        self.reposition();
+        self.place_for(f64::from(self.ui.get_wanted_height()));
     }
 
-    /// Places the window next to the dock for its current height.
+    /// Places the window next to the dock for its current height (after a resize).
     fn reposition(&self) {
-        let Some(anchor) = self.anchor.get() else {
-            return;
-        };
         let window = self.ui.window();
         let height = f64::from(window.size().height) / f64::from(window.scale_factor());
-        let origin = anchor.panel_origin_for(height);
-        window.set_position(PhysicalPosition::new(origin.x, origin.y));
+        if height > 0.0 {
+            self.place_for(height);
+        }
+    }
+
+    fn place_for(&self, height: f64) {
+        if let Some(anchor) = self.anchor.get() {
+            let origin = anchor.panel_origin_for(height);
+            self.ui
+                .window()
+                .set_position(PhysicalPosition::new(origin.x, origin.y));
+        }
     }
 
     /// Opens the task picker in this panel with `current` selected. `on_done` runs with the
