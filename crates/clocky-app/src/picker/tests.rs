@@ -54,6 +54,16 @@ fn without_search_lists_recent_then_projects() {
 }
 
 #[test]
+fn a_completed_recent_task_is_not_offered() {
+    let mut core = demo_core();
+    let auth = id_of(&core, "autenticação");
+    core.set_task_done(auth, true).unwrap();
+    let t = titles(&rows(&load(&core, "").unwrap(), None));
+    assert_eq!(t[..4], ["-", "#RECENTES", "TCC", "testes"]);
+    assert!(!t.contains(&"autenticação".to_owned()));
+}
+
+#[test]
 fn selection_marks_rows_and_counts_subtasks() {
     let core = demo_core();
     let auth = id_of(&core, "autenticação");

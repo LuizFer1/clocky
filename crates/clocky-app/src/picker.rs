@@ -115,12 +115,18 @@ pub fn rows(data: &PickerData, selected: Option<TaskId>) -> Vec<Row> {
     let mut rows = vec![Row::NoTask {
         selected: selected.is_none(),
     }];
-    if data.matches.is_none() && !data.recent.is_empty() {
+    // Only open tasks are offered: a recent task that was completed since is left out.
+    let recent: Vec<&(TaskId, String)> = data
+        .recent
+        .iter()
+        .filter(|(id, _)| data.tasks.iter().any(|t| t.id == *id))
+        .collect();
+    if data.matches.is_none() && !recent.is_empty() {
         rows.push(Row::Header {
             title: "RECENTES".into(),
             dot: Dot::Accent,
         });
-        rows.extend(data.recent.iter().map(|(id, name)| Row::Task {
+        rows.extend(recent.into_iter().map(|(id, name)| Row::Task {
             id: *id,
             name: name.clone(),
             subtasks: String::new(),
