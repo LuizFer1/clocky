@@ -23,6 +23,16 @@ use clocky_core::tracker::{Tracker, TrackerError, TrackerEvent, TrackerOpenError
 /// Result of a core call. Store errors convert into it, so `?` works on both.
 pub type CoreResult<T> = Result<T, TrackerError>;
 
+/// What the project form saves.
+#[derive(Debug, Clone, Copy)]
+pub struct ProjectForm<'a> {
+    pub name: &'a str,
+    /// `#rrggbb`
+    pub color: &'a str,
+    /// `""` = none.
+    pub description: &'a str,
+}
+
 pub struct AppCore {
     tracker: Tracker,
     clock: Box<dyn Clock>,
@@ -189,14 +199,25 @@ impl AppCore {
         Ok(self.store_mut().create_project(name, color, now)?)
     }
 
-    /// Renames the project and changes its color (the edit form has both), all or nothing: if
-    /// the color cannot be saved, the old name is put back.
-    pub fn update_project(&mut self, id: ProjectId, name: &str, color: &str) -> CoreResult<()> {
+    pub fn set_project_description(&mut self, id: ProjectId, description: &str) -> CoreResult<()> {
+        Ok(self.store_mut().set_project_description(id, description)?)
+    }
+
+    /// Saves the edit form (name, color and description), all or nothing: if a later field
+    /// cannot be saved, the earlier ones are put back.
+    pub fn update_project(&mut self, id: ProjectId, form: &ProjectForm<'_>) -> CoreResult<()> {
         let old = self.store().project(id)?;
-        self.store_mut().rename_project(id, name)?;
-        if let Err(e) = self.store_mut().set_project_color(id, color) {
-            if let Err(undo) = self.store_mut().rename_project(id, &old.name) {
-                tracing::error!("failed to restore the name of project {}: {undo}", id.0);
+        self.store_mut().rename_project(id, form.name)?;
+        let store = self.store_mut();
+        let rest = store
+            .set_project_color(id, form.color)
+            .and_then(|()| store.set_project_description(id, form.description));
+        if let Err(e) = rest {
+            let undo = store
+                .rename_project(id, &old.name)
+                .and_then(|()| store.set_project_color(id, &old.color));
+            if let Err(undo) = undo {
+                tracing::error!("failed to restore project {}: {undo}", id.0);
             }
             return Err(e.into());
         }
@@ -229,6 +250,14 @@ impl AppCore {
 
     pub fn rename_task(&mut self, id: TaskId, name: &str) -> CoreResult<()> {
         Ok(self.store_mut().rename_task(id, name)?)
+    }
+
+    pub fn set_task_description(&mut self, id: TaskId, description: &str) -> CoreResult<()> {
+        Ok(self.store_mut().set_task_description(id, description)?)
+    }
+
+    pub fn set_task_estimate(&mut self, id: TaskId, estimate: Option<Duration>) -> CoreResult<()> {
+        Ok(self.store_mut().set_task_estimate(id, estimate)?)
     }
 
     /// Completes (`done`) or reopens a task. Its subtasks are left as they are (spec, section 3).
@@ -266,6 +295,18 @@ impl AppCore {
 
     pub fn rename_subtask(&mut self, id: SubtaskId, name: &str) -> CoreResult<()> {
         Ok(self.store_mut().rename_subtask(id, name)?)
+    }
+
+    pub fn set_subtask_description(&mut self, id: SubtaskId, description: &str) -> CoreResult<()> {
+        Ok(self.store_mut().set_subtask_description(id, description)?)
+    }
+
+    pub fn set_subtask_estimate(
+        &mut self,
+        id: SubtaskId,
+        estimate: Option<Duration>,
+    ) -> CoreResult<()> {
+        Ok(self.store_mut().set_subtask_estimate(id, estimate)?)
     }
 
     /// Checks (`done`) or unchecks a subtask from the manage window.
@@ -452,16 +493,48 @@ mod tests {
     fn project_edit_archive_and_delete() {
         let mut core = core();
         let id = core.create_project("a", "#3d8fd6").unwrap();
-        core.update_project(id, "b", "#2fb3a6").unwrap();
+        core.update_project(id, &form("b", "#2fb3a6", "notes"))
+            .unwrap();
         let project = core.project(id).unwrap();
         assert_eq!(
             (project.name.as_str(), project.color.as_str()),
             ("b", "#2fb3a6")
         );
+        assert_eq!(project.description, "notes");
         core.archive_project(id).unwrap();
         assert_eq!(core.projects().unwrap().len(), 0);
         core.delete_project(id).unwrap();
         assert!(core.project(id).is_err());
+    }
+
+    fn form<'a>(name: &'a str, color: &'a str, description: &'a str) -> ProjectForm<'a> {
+        ProjectForm {
+            name,
+            color,
+            description,
+        }
+    }
+
+    #[test]
+    fn task_and_subtask_details_are_saved() {
+        let mut core = core();
+        let t = core.create_task(None, "x").unwrap();
+        let s = core.add_subtask(t, "y").unwrap();
+        let hour = Duration::from_hours(1);
+        core.set_task_description(t, "about x").unwrap();
+        core.set_task_estimate(t, Some(hour)).unwrap();
+        core.set_subtask_description(s, "about y").unwrap();
+        core.set_subtask_estimate(s, Some(hour)).unwrap();
+        let task = core.task(t).unwrap();
+        assert_eq!(
+            (task.description.as_str(), task.estimate),
+            ("about x", Some(hour))
+        );
+        let sub = &core.subtasks(t).unwrap()[0];
+        assert_eq!(
+            (sub.description.as_str(), sub.estimate),
+            ("about y", Some(hour))
+        );
     }
 
     #[test]
@@ -476,7 +549,10 @@ mod tests {
     #[test]
     fn updating_a_missing_project_changes_nothing() {
         let mut core = core();
-        assert!(core.update_project(ProjectId(42), "x", "#3d8fd6").is_err());
+        assert!(
+            core.update_project(ProjectId(42), &form("x", "#3d8fd6", ""))
+                .is_err()
+        );
     }
 
     #[test]

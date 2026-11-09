@@ -7,9 +7,9 @@ use rusqlite::params;
 
 use super::alarms::Alarm;
 use super::convert::{duration_from_ms, u32_from_sql};
-use super::projects::{PROJECT_COLUMNS, project_from_row};
+use super::projects::{PROJECT_COLUMN_COUNT, PROJECT_COLUMNS, project_from_row};
 use super::rows::collect;
-use super::tasks::{TASK_COLUMNS, task_from_row};
+use super::tasks::{TASK_COLUMN_COUNT, TASK_COLUMNS, task_from_row};
 use super::{ActiveTimerLink, PomodoroPreset, Project, Store, StoreError, Task, TimerPreset};
 use crate::domain::{ProjectId, TaskId};
 
@@ -69,8 +69,11 @@ impl Store {
         collect(&self.conn, &sql, [], |row| {
             Ok(ProjectOverview {
                 project: project_from_row(row)?,
-                open_tasks: u32_from_sql(row.get(5)?, "open task count")?,
-                completed_tasks: u32_from_sql(row.get(6)?, "completed task count")?,
+                open_tasks: u32_from_sql(row.get(PROJECT_COLUMN_COUNT)?, "open task count")?,
+                completed_tasks: u32_from_sql(
+                    row.get(PROJECT_COLUMN_COUNT + 1)?,
+                    "completed task count",
+                )?,
             })
         })
     }
@@ -102,9 +105,9 @@ impl Store {
             let links = self.task_links(task.id)?;
             Ok(TaskSummary {
                 task,
-                subtasks_done: u32_from_sql(row.get(7)?, "subtask count")?,
-                subtasks_total: u32_from_sql(row.get(8)?, "subtask count")?,
-                tracked: duration_from_ms(row.get(9)?, "tracked time")?,
+                subtasks_done: u32_from_sql(row.get(TASK_COLUMN_COUNT)?, "subtask count")?,
+                subtasks_total: u32_from_sql(row.get(TASK_COLUMN_COUNT + 1)?, "subtask count")?,
+                tracked: duration_from_ms(row.get(TASK_COLUMN_COUNT + 2)?, "tracked time")?,
                 links,
             })
         })
@@ -170,7 +173,10 @@ impl Store {
         );
         let needle = fold(text);
         let rows = collect(&self.conn, &sql, [], |row| {
-            Ok((task_from_row(row)?, row.get::<_, String>(7)?))
+            Ok((
+                task_from_row(row)?,
+                row.get::<_, String>(TASK_COLUMN_COUNT)?,
+            ))
         })?;
         let mut found: Vec<(String, Task)> = rows
             .into_iter()

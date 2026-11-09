@@ -7,7 +7,9 @@
 mod clock;
 // M7b: dates of the reports.
 pub mod dates;
+mod estimate;
 pub use clock::hh_mm_in;
+pub use estimate::{estimate_input, estimate_progress, estimate_short, parse_estimate};
 
 pub use clock::{
     active_count, duration_minutes, duration_short, elapsed_label, hh_mm_ss, local_hh_mm,

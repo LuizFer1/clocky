@@ -1,16 +1,81 @@
 // Task page (handoff screen 73): subtasks column + "Vinculado a" and "Tempo registrado".
 import { Theme } from "theme.slint";
 import { SubtaskRow } from "models.slint";
-import { CheckBox, ProgressBar, SecondaryButton, TextAction, TextField } from "widgets.slint";
+import { CheckBox, ProgressBar, SecondaryButton, TextAction, TextArea, TextField } from "widgets.slint";
 import { StrikeText } from "manage-project.slint";
 import { ManageState } from "manage-state.slint";
 
-// A checklist item: checkbox and name. Double-click renames (Enter saves, Esc cancels); the
-// cross on hover deletes it.
+// Estimate typed as "1h30", "45min" or "1:30". Enter or leaving the field saves it (when it
+// changed); Esc puts the saved value back.
+export component EstimateField inherits Rectangle {
+    in property <string> value;
+    callback committed(string);
+
+    width: 120px;
+    height: 32px;
+    border-radius: Theme.radius-sm;
+    background: Theme.field;
+    border-width: 1px;
+    border-color: input.has-focus ? Theme.accent : Theme.line-2;
+
+    input := TextInput {
+        x: Theme.space-2-5;
+        width: parent.width - Theme.space-2-5 * 2;
+        height: 100%;
+        vertical-alignment: center;
+        text: root.value;
+        color: Theme.text;
+        font-size: Theme.fs-sm;
+        single-line: true;
+        accepted => { self.clear-focus(); }
+        changed has-focus => {
+            if (!self.has-focus && self.text != root.value) {
+                root.committed(self.text);
+            }
+        }
+        key-pressed(event) => {
+            if (event.text == Key.Escape) {
+                self.text = root.value;
+                self.clear-focus();
+                return accept;
+            }
+            reject
+        }
+    }
+
+    changed value => {
+        if (input.text != root.value) {
+            input.text = root.value;
+        }
+    }
+
+    if input.text == "": Text {
+        x: Theme.space-2-5;
+        height: 100%;
+        vertical-alignment: center;
+        text: "ex.: 1h30";
+        color: Theme.muted;
+        font-size: Theme.fs-sm;
+    }
+}
+
+// "Não entendi" under an estimate field.
+component EstimateHint inherits Text {
+    text: "Não entendi. Use 1h30, 45min, 1:30 ou só os minutos.";
+    color: Theme.danger;
+    font-size: Theme.fs-xs;
+    wrap: word-wrap;
+}
+
+// A checklist item: checkbox, name, the first line of its description and its estimate.
+// Double-click renames (Enter saves, Esc cancels); on hover, "⋯" opens the description and
+// estimate below the row and the cross deletes it.
 component SubtaskLine inherits Rectangle {
     in property <SubtaskRow> subtask;
     in property <bool> first;
     property <bool> editing;
+    property <bool> expanded: ManageState.expanded-subtask == root.subtask.id;
+    property <bool> hovered: hover.has-hover || remove.has-hover || details.has-hover;
 
     min-height: 48px;
 
@@ -24,61 +89,142 @@ component SubtaskLine inherits Rectangle {
         double-clicked => { root.editing = true; }
     }
 
-    HorizontalLayout {
-        padding-left: Theme.space-4;
-        padding-right: Theme.space-3;
-        spacing: Theme.space-3;
+    VerticalLayout {
+        HorizontalLayout {
+            min-height: 48px;
+            padding-left: Theme.space-4;
+            padding-right: Theme.space-3;
+            spacing: Theme.space-3;
 
-        CheckBox {
-            checked: root.subtask.done;
-            toggled(done) => { ManageState.set-subtask-done(root.subtask.id, done); }
-        }
+            CheckBox {
+                checked: root.subtask.done;
+                toggled(done) => { ManageState.set-subtask-done(root.subtask.id, done); }
+            }
 
-        if !root.editing: VerticalLayout {
-            horizontal-stretch: 1;
-            alignment: center;
+            if !root.editing: VerticalLayout {
+                horizontal-stretch: 1;
+                alignment: center;
+                spacing: 2px;
 
-            StrikeText {
+                StrikeText {
+                    text: root.subtask.name;
+                    struck: root.subtask.done;
+                }
+
+                if !root.expanded && root.subtask.note != "": Text {
+                    text: root.subtask.note;
+                    color: Theme.muted;
+                    font-size: Theme.fs-xs;
+                    overflow: elide;
+                }
+            }
+
+            if root.editing: TextField {
+                horizontal-stretch: 1;
+                boxed: false;
                 text: root.subtask.name;
-                struck: root.subtask.done;
+                init => { self.focus-input(); }
+                accepted(text) => {
+                    root.editing = false;
+                    ManageState.rename-subtask(root.subtask.id, text);
+                }
+                cancelled => { root.editing = false; }
+            }
+
+            if root.subtask.estimate != "" && !root.expanded: Text {
+                vertical-alignment: center;
+                text: root.subtask.estimate;
+                color: Theme.muted;
+                font-size: Theme.fs-sm;
+            }
+
+            VerticalLayout {
+                alignment: center;
+
+                Rectangle {
+                    width: 28px;
+                    height: 28px;
+                    border-radius: Theme.radius-sm;
+                    opacity: root.hovered || root.expanded ? 1 : 0;
+                    background: details.has-hover || root.expanded ? Theme.accent-soft : transparent;
+                    animate background { duration: Theme.dur-hover; }
+
+                    Image {
+                        width: 14px;
+                        height: 14px;
+                        source: @image-url("../icons/more.svg");
+                        colorize: Theme.muted;
+                    }
+
+                    details := TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => {
+                            ManageState.expanded-subtask = root.expanded ? -1 : root.subtask.id;
+                        }
+                    }
+                }
+            }
+
+            VerticalLayout {
+                alignment: center;
+
+                Rectangle {
+                    width: 28px;
+                    height: 28px;
+                    border-radius: Theme.radius-sm;
+                    opacity: root.hovered ? 1 : 0;
+                    background: remove.has-hover ? Theme.accent-soft : transparent;
+                    animate background { duration: Theme.dur-hover; }
+
+                    Image {
+                        width: 14px;
+                        height: 14px;
+                        source: @image-url("../icons/x.svg");
+                        colorize: Theme.muted;
+                    }
+
+                    remove := TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => { ManageState.delete-subtask(root.subtask.id); }
+                    }
+                }
             }
         }
 
-        if root.editing: TextField {
-            horizontal-stretch: 1;
-            boxed: false;
-            text: root.subtask.name;
-            init => { self.focus-input(); }
-            accepted(text) => {
-                root.editing = false;
-                ManageState.rename-subtask(root.subtask.id, text);
+        if root.expanded: VerticalLayout {
+            // Lined up with the name (16 padding + checkbox 20 + spacing 12).
+            padding-left: 48px;
+            padding-right: Theme.space-4;
+            padding-bottom: Theme.space-3-5;
+            spacing: Theme.space-2-5;
+
+            TextArea {
+                placeholder: "Descrição da subtarefa";
+                font-size: Theme.fs-md;
+                min-text-height: 36px;
+                value: root.subtask.description;
+                owner: root.subtask.id;
+                committed(id, text) => { ManageState.set-subtask-description(id, text); }
             }
-            cancelled => { root.editing = false; }
-        }
 
-        VerticalLayout {
-            alignment: center;
+            HorizontalLayout {
+                alignment: start;
+                spacing: Theme.space-3;
 
-            Rectangle {
-                width: 28px;
-                height: 28px;
-                border-radius: Theme.radius-sm;
-                opacity: hover.has-hover || remove.has-hover ? 1 : 0;
-                background: remove.has-hover ? Theme.accent-soft : transparent;
-                animate background { duration: Theme.dur-hover; }
-
-                Image {
-                    width: 14px;
-                    height: 14px;
-                    source: @image-url("../icons/x.svg");
-                    colorize: Theme.muted;
+                Text {
+                    vertical-alignment: center;
+                    text: "Estimativa";
+                    color: Theme.muted;
+                    font-size: Theme.fs-sm;
                 }
 
-                remove := TouchArea {
-                    mouse-cursor: pointer;
-                    clicked => { ManageState.delete-subtask(root.subtask.id); }
+                EstimateField {
+                    value: root.subtask.estimate;
+                    committed(text) => { ManageState.set-subtask-estimate(root.subtask.id, text); }
                 }
             }
+
+            if ManageState.estimate-invalid == root.subtask.id: EstimateHint { }
         }
     }
 }
@@ -130,6 +276,28 @@ component AddSubtaskLine inherits Rectangle {
 export component SubtasksColumn inherits VerticalLayout {
     alignment: start;
     spacing: Theme.space-3;
+
+    VerticalLayout {
+        padding-bottom: Theme.space-3;
+        spacing: Theme.space-1-5;
+
+        Text {
+            text: "Descrição";
+            color: Theme.text;
+            font-size: Theme.fs-base;
+            font-weight: Theme.fw-medium;
+        }
+
+        TextArea {
+            boxed: false;
+            placeholder: "Adicionar uma descrição";
+            font-size: Theme.fs-md;
+            min-text-height: 20px;
+            value: ManageState.task-description;
+            owner: ManageState.task-id;
+            committed(id, text) => { ManageState.set-task-description(id, text); }
+        }
+    }
 
     HorizontalLayout {
         Text {
@@ -314,6 +482,40 @@ export component TrackedCard inherits SideCard {
             font-family: Theme.font-mono;
             font-size: 18px;
             font-weight: Theme.fw-semibold;
+        }
+    }
+
+    HorizontalLayout {
+        spacing: Theme.space-3;
+
+        Text {
+            horizontal-stretch: 1;
+            vertical-alignment: center;
+            text: "Estimativa";
+            color: Theme.muted;
+            font-size: Theme.fs-sm;
+        }
+
+        EstimateField {
+            value: ManageState.task-estimate;
+            committed(text) => { ManageState.set-task-estimate(text); }
+        }
+    }
+
+    if ManageState.estimate-invalid == -1: EstimateHint { }
+
+    if ManageState.task-estimate != "": VerticalLayout {
+        spacing: Theme.space-1-5;
+
+        ProgressBar {
+            progress: ManageState.task-estimate-progress;
+            bar-color: ManageState.task-estimate-over ? Theme.danger : Theme.ok;
+        }
+
+        Text {
+            text: ManageState.task-estimate-label;
+            color: ManageState.task-estimate-over ? Theme.danger : Theme.muted;
+            font-size: Theme.fs-xs;
         }
     }
 

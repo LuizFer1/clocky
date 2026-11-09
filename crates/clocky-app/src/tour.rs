@@ -9,7 +9,7 @@ use std::rc::Rc;
 use std::time::Duration;
 
 use clocky_core::domain::{ProjectId, TaskId};
-use slint::{ComponentHandle, LogicalSize};
+use slint::{ComponentHandle, LogicalSize, Model};
 
 use crate::app::{App, quit};
 use crate::manage_view::Nav;
@@ -122,6 +122,15 @@ const STEPS: &[Step] = &[
                 task: t.task,
                 ..Nav::default()
             });
+        },
+    },
+    Step {
+        name: "manage-subtask-details",
+        shot: Shot::Manage,
+        prepare: |app, _| {
+            let state = app.manage.ui.global::<ui::ManageState>();
+            let second = state.get_subtasks().row_data(1).map_or(-1, |row| row.id);
+            state.set_expanded_subtask(second);
         },
     },
     Step {

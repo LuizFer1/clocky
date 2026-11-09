@@ -287,6 +287,127 @@ export component TextField inherits Rectangle {
     }
 }
 
+// Multi-line text (descriptions). Shows `value`; what is typed is saved through
+// `committed(owner, text)` 600 ms after the last key and when the field loses the focus, so
+// nothing is lost when the user clicks elsewhere. `owner` names what the text belongs to (a
+// task or subtask id): the save goes to the owner the text was typed for, and a new owner
+// replaces the text. Esc puts `value` back. `boxed: false` draws no box (the text lines up
+// with the content around it), only an underline while hovered or editing.
+export component TextArea inherits Rectangle {
+    in property <string> value;
+    in property <int> owner;
+    in property <string> placeholder;
+    in property <length> font-size: Theme.fs-base;
+    in property <length> min-text-height: 48px;
+    in property <bool> boxed: true;
+    out property <bool> has-focus: input.has-focus;
+    callback edited(string);
+    callback committed(int, string);
+
+    property <length> pad-x: root.boxed ? Theme.space-3-5 : 0px;
+    property <length> pad-y: root.boxed ? Theme.space-2-5 : Theme.space-1-5;
+    // Typed and not saved yet, for `edit-owner`.
+    property <bool> dirty;
+    property <int> edit-owner;
+
+    function commit() {
+        if (root.dirty) {
+            root.dirty = false;
+            root.committed(root.edit-owner, input.text);
+        }
+    }
+
+    min-height: max(root.min-text-height, input.preferred-height) + root.pad-y * 2;
+    border-radius: root.boxed ? Theme.radius-lg : 0px;
+    background: root.boxed ? Theme.field : transparent;
+    border-width: root.boxed ? 1px : 0px;
+    border-color: input.has-focus ? Theme.accent : Theme.line-2;
+
+    touch := TouchArea {
+        mouse-cursor: text;
+        clicked => { input.focus(); }
+    }
+
+    input := TextInput {
+        x: root.pad-x;
+        y: root.pad-y;
+        width: parent.width - root.pad-x * 2;
+        height: parent.height - root.pad-y * 2;
+        text: root.value;
+        color: Theme.text;
+        font-size: root.font-size;
+        single-line: false;
+        wrap: word-wrap;
+        edited => {
+            if (!root.dirty) {
+                root.edit-owner = root.owner;
+            }
+            root.dirty = true;
+            // Restarts the pause before saving.
+            pause.running = false;
+            pause.running = true;
+            root.edited(self.text);
+        }
+        changed has-focus => {
+            if (!self.has-focus) {
+                root.commit();
+            }
+        }
+        key-pressed(event) => {
+            if (event.text == Key.Escape) {
+                root.dirty = false;
+                self.text = root.value;
+                self.clear-focus();
+                return accept;
+            }
+            reject
+        }
+    }
+
+    pause := Timer {
+        interval: 600ms;
+        running: false;
+        triggered => {
+            self.running = false;
+            root.commit();
+        }
+    }
+
+    // A saved value comes back while typing: keep what is being typed.
+    changed value => {
+        if (!input.has-focus && !root.dirty && input.text != root.value) {
+            input.text = root.value;
+        }
+    }
+
+    // Another task or subtask: save the pending text for the old one, show the new one.
+    changed owner => {
+        root.commit();
+        input.text = root.value;
+    }
+
+    if input.text == "": Text {
+        x: root.pad-x;
+        y: root.pad-y;
+        width: parent.width - root.pad-x * 2;
+        text: root.placeholder;
+        color: Theme.muted;
+        font-size: root.font-size;
+        wrap: word-wrap;
+    }
+
+    // Inline: an underline shows where the text goes (hover) and that it is being edited.
+    if !root.boxed && (input.has-focus || touch.has-hover): Rectangle {
+        y: parent.height - 1px;
+        height: 1px;
+        background: input.has-focus ? Theme.accent : Theme.line-2;
+    }
+
+    public function focus-input() {
+        input.focus();
+    }
+}
+
 // Thin progress bar (cards: project color; checklist: ok).
 export component ProgressBar inherits Rectangle {
     in property <float> progress;
