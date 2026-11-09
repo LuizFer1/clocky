@@ -74,7 +74,7 @@ component SubtaskLine inherits Rectangle {
     in property <SubtaskRow> subtask;
     in property <bool> first;
     property <bool> editing;
-    property <bool> expanded;
+    property <bool> expanded: ManageState.expanded-subtask == root.subtask.id;
     property <bool> hovered: hover.has-hover || remove.has-hover || details.has-hover;
 
     min-height: 48px;
@@ -158,7 +158,9 @@ component SubtaskLine inherits Rectangle {
 
                     details := TouchArea {
                         mouse-cursor: pointer;
-                        clicked => { root.expanded = !root.expanded; }
+                        clicked => {
+                            ManageState.expanded-subtask = root.expanded ? -1 : root.subtask.id;
+                        }
                     }
                 }
             }
@@ -201,7 +203,8 @@ component SubtaskLine inherits Rectangle {
                 font-size: Theme.fs-md;
                 min-text-height: 36px;
                 value: root.subtask.description;
-                committed(text) => { ManageState.set-subtask-description(root.subtask.id, text); }
+                owner: root.subtask.id;
+                committed(id, text) => { ManageState.set-subtask-description(id, text); }
             }
 
             HorizontalLayout {
@@ -291,7 +294,8 @@ export component SubtasksColumn inherits VerticalLayout {
             font-size: Theme.fs-md;
             min-text-height: 20px;
             value: ManageState.task-description;
-            committed(text) => { ManageState.set-task-description(text); }
+            owner: ManageState.task-id;
+            committed(id, text) => { ManageState.set-task-description(id, text); }
         }
     }
 

@@ -14,7 +14,7 @@ use std::rc::{Rc, Weak};
 
 use clocky_core::domain::{PomodoroPresetId, ProjectId, SessionId, TaskId};
 use slint::winit_030::WinitWindowAccessor;
-use slint::{ComponentHandle, ModelRc, SharedString, VecModel};
+use slint::{ComponentHandle, Model, ModelRc, SharedString, VecModel};
 
 use crate::core::{AppCore, CoreResult};
 use crate::manage_view::{self, ManageView, Nav, Page};
@@ -74,6 +74,8 @@ pub struct Manage {
     on_settings: RefCell<Option<SettingsHook>>,
     /// The saved pomodoro open in the Configurações editor.
     preset_draft: RefCell<Option<PresetDraft>>,
+    /// The checklist of the task page, kept across refreshes (see [`sync_rows`]).
+    subtasks: Rc<VecModel<ui::SubtaskRow>>,
 }
 
 impl Manage {
@@ -93,7 +95,11 @@ impl Manage {
             autostart: RefCell::new(Box::new(autostart::Fake::default())),
             on_settings: RefCell::new(None),
             preset_draft: RefCell::new(None),
+            subtasks: Rc::new(VecModel::default()),
         });
+        manage
+            .state()
+            .set_subtasks(ModelRc::from(manage.subtasks.clone()));
         let colors: Vec<slint::Color> = palette::COLORS
             .iter()
             .map(|(_, hex)| palette::color(hex))
@@ -154,6 +160,7 @@ impl Manage {
         state.set_moving_task(false);
         state.set_project_form_open(false);
         state.set_estimate_invalid(NO_INVALID_ESTIMATE);
+        state.set_expanded_subtask(-1);
         let search = SharedString::from(self.nav.borrow().search.as_str());
         state.set_search(search);
         self.refresh();
@@ -229,6 +236,7 @@ impl Manage {
 
     fn apply_task(&self, task: &manage_view::TaskDetail, view: &ManageView) {
         let state = self.state();
+        state.set_task_id(task.id);
         state.set_task_done(task.done);
         state.set_task_project(SharedString::from(task.project.as_str()));
         state.set_task_total(task.total.as_str().into());
@@ -237,7 +245,8 @@ impl Manage {
         state.set_task_estimate_progress(task.estimate_progress);
         state.set_task_estimate_over(task.estimate_over);
         state.set_task_estimate_label(task.estimate_label.as_str().into());
-        state.set_subtasks(model(task.subtasks.clone()));
+        // Updated in place: the rows keep their editors (and the focus) across refreshes.
+        sync_rows(&self.subtasks, task.subtasks.clone());
         state.set_checklist(task.checklist.as_str().into());
         state.set_checklist_progress(task.progress);
         state.set_links(model(task.links.clone()));
@@ -292,6 +301,24 @@ impl Manage {
     }
 }
 
+/// Updates `model` to `rows` in place: changed rows are replaced, extra ones added or removed.
+/// Unlike a new model, the rows that stay keep their Slint instances (local state, focus).
+fn sync_rows<T: Clone + PartialEq + 'static>(model: &VecModel<T>, rows: Vec<T>) {
+    let len = rows.len();
+    for (i, row) in rows.into_iter().enumerate() {
+        if i < model.row_count() {
+            if model.row_data(i).as_ref() != Some(&row) {
+                model.set_row_data(i, row);
+            }
+        } else {
+            model.push(row);
+        }
+    }
+    while model.row_count() > len {
+        model.remove(model.row_count() - 1);
+    }
+}
+
 fn model<T: Clone + 'static>(rows: Vec<T>) -> ModelRc<T> {
     ModelRc::new(VecModel::from(rows))
 }
@@ -315,6 +342,15 @@ mod tests {
     fn negative_ids_mean_none() {
         assert_eq!(db_id(-1), None);
         assert_eq!(db_id(7), Some(7));
+    }
+
+    #[test]
+    fn rows_are_synced_in_place() {
+        let model = VecModel::from(vec![1, 2, 3]);
+        sync_rows(&model, vec![1, 5, 3, 4]);
+        assert_eq!(model.iter().collect::<Vec<_>>(), [1, 5, 3, 4]);
+        sync_rows(&model, vec![1]);
+        assert_eq!(model.iter().collect::<Vec<_>>(), [1]);
     }
 
     #[test]

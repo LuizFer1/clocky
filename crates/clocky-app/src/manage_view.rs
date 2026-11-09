@@ -69,6 +69,8 @@ pub struct ManageView {
 /// The task page.
 #[derive(Debug, Clone)]
 pub struct TaskDetail {
+    /// The task's Slint id (-1 when it does not fit, which drops its description edits).
+    pub id: i32,
     pub done: bool,
     /// Project name, or "Sem projeto".
     pub project: String,
@@ -294,6 +296,7 @@ fn fill_task<Tz: TimeZone>(
         .map(|e| format::estimate_progress(tracked, e))
         .unwrap_or_default();
     view.task = Some(TaskDetail {
+        id: slint_id(task.id.0).unwrap_or(-1),
         done: task.completed_at.is_some(),
         project: project.to_owned(),
         total: format::duration(tracked),

@@ -30,6 +30,8 @@ export global ManageState {
     in property <string> task-total;
     // Description and estimate of the task ("1h 30min"; empty = none), with the recorded
     // time against it ("75% · faltam 15min").
+    // The task of the task page (owner of its description).
+    in property <int> task-id: -1;
     in property <string> task-description;
     in property <string> task-estimate;
     in property <float> task-estimate-progress;
@@ -90,7 +92,7 @@ export global ManageState {
     // Completes or reopens the task of the task page ("⋯" menu).
     callback toggle-current-task();
     callback rename-task(string);
-    callback set-task-description(string);
+    callback set-task-description(int, string);
     // Typed text ("1h30", "45min", "1:30"; empty clears it).
     callback set-task-estimate(string);
     callback move-task(int);
@@ -103,6 +105,8 @@ export global ManageState {
     callback set-subtask-done(int, bool);
     callback rename-subtask(int, string);
     callback set-subtask-description(int, string);
+    // The subtask whose description and estimate are open below its row; -1 = none.
+    in-out property <int> expanded-subtask: -1;
     callback set-subtask-estimate(int, string);
     callback delete-subtask(int);
 

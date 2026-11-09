@@ -4,21 +4,25 @@
 
 use std::time::Duration;
 
+use clocky_core::domain::TaskId;
 use slint::SharedString;
 
-use super::{Manage, NO_INVALID_ESTIMATE, TASK_ESTIMATE};
+use super::{Manage, NO_INVALID_ESTIMATE, TASK_ESTIMATE, db_id};
 use crate::core::{AppCore, CoreResult};
 use crate::format;
 
 impl Manage {
     pub(super) fn connect_details(&self) {
         let state = self.state();
-        state.on_set_task_description(self.handler1(Self::set_task_description));
+        state.on_set_task_description(self.handler2(Self::set_task_description));
         state.on_set_task_estimate(self.handler1(Self::set_task_estimate));
     }
 
-    fn set_task_description(&self, text: SharedString) {
-        let Some(task) = self.nav().task else { return };
+    /// Saves the description typed for `id` (which may no longer be the open task).
+    fn set_task_description(&self, id: i32, text: SharedString) {
+        let Some(task) = db_id(id).map(TaskId) else {
+            return;
+        };
         self.mutate("save the task description", |c| {
             c.set_task_description(task, text.trim())
         });
