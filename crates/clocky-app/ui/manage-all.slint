@@ -1,6 +1,6 @@
 // "Todos os projetos": project cards and the project form (handoff screens 70-71).
 import { Theme } from "theme.slint";
-import { AccentButton, DotCell, ProgressBar, SecondaryButton, TextField } from "widgets.slint";
+import { AccentButton, DotCell, ProgressBar, SecondaryButton, TextArea, TextField } from "widgets.slint";
 import { ManageState } from "manage-state.slint";
 
 // Name + palette of 10 colors. New project (all projects page) or edit (project page).
@@ -33,6 +33,24 @@ export component ProjectForm inherits Rectangle {
                 text <=> ManageState.project-form-name;
                 accepted(text) => { ManageState.save-project(text, ManageState.project-form-color); }
                 cancelled => { ManageState.project-form-open = false; }
+            }
+        }
+
+        VerticalLayout {
+            spacing: Theme.space-2;
+
+            Text {
+                text: "Descrição (opcional)";
+                color: Theme.muted;
+                font-size: Theme.fs-sm;
+                font-weight: Theme.fw-medium;
+            }
+
+            TextArea {
+                background: Theme.panel;
+                placeholder: "Do que se trata o projeto";
+                value: ManageState.project-form-description;
+                edited(text) => { ManageState.project-form-description = text; }
             }
         }
 

@@ -155,6 +155,13 @@ export component Header inherits HorizontalLayout {
             font-size: Theme.fs-md;
             wrap: word-wrap;
         }
+
+        if ManageState.page == 1 && ManageState.project-description != "": Text {
+            text: ManageState.project-description;
+            color: Theme.text;
+            font-size: Theme.fs-md;
+            wrap: word-wrap;
+        }
     }
 
     // Search results, Relatórios and Configurações have no contextual button.

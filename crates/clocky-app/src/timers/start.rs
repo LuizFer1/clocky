@@ -8,7 +8,7 @@ use clocky_core::store::PomodoroPreset;
 
 use super::TimerPanels;
 use super::frame_pomodoro::preset_config;
-use super::state::{PomodoroPick, View};
+use super::state::{PomodoroPick, StopwatchPick, View};
 use super::wizard::Defaults;
 use crate::manage::TimerStart;
 use crate::panel::PanelKind;
@@ -49,7 +49,7 @@ impl TimerPanels {
                 });
                 if let Some(id) = started {
                     let mut state = self.state.borrow_mut();
-                    state.stopwatch = Some(id);
+                    state.stopwatch = StopwatchPick::Active(Some(id));
                     state.view = View::Stopwatch;
                 }
                 PanelKind::Stopwatch

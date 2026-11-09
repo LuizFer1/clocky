@@ -1,8 +1,11 @@
 //! Tasks: create (appended to the end of their project), rename, complete, archive, move and
 //! delete.
 
+use std::time::Duration;
+
 use rusqlite::{Row, params};
 
+use super::convert::{estimate_from_sql, estimate_to_sql};
 use super::rows::{collect, ensure_found, first};
 use super::{Store, StoreError};
 use crate::domain::{ProjectId, TaskId};
@@ -17,6 +20,10 @@ pub struct Task {
     pub project: Option<ProjectId>,
     /// Name.
     pub name: String,
+    /// Free text about the task; empty = none.
+    pub description: String,
+    /// How long the task is expected to take; `None` = no estimate.
+    pub estimate: Option<Duration>,
     /// When it was completed; `None` while open.
     pub completed_at: Option<Timestamp>,
     /// When it was archived; `None` while active.
@@ -29,7 +36,10 @@ pub struct Task {
 
 /// Columns read by [`task_from_row`], for a `tasks` table aliased as `t`.
 pub(super) const TASK_COLUMNS: &str = "t.id, t.project_id, t.name, t.completed_at_ms, \
-     t.archived_at_ms, t.position, t.created_at_ms";
+     t.archived_at_ms, t.position, t.created_at_ms, t.description, t.estimate_ms";
+
+/// How many columns [`TASK_COLUMNS`] has: the index of the first column a query adds after it.
+pub(super) const TASK_COLUMN_COUNT: usize = 9;
 
 /// Reads the [`TASK_COLUMNS`] at the start of `row`.
 pub(super) fn task_from_row(row: &Row<'_>) -> Result<Task, StoreError> {
@@ -41,6 +51,8 @@ pub(super) fn task_from_row(row: &Row<'_>) -> Result<Task, StoreError> {
         archived_at: row.get::<_, Option<i64>>(4)?.map(Timestamp::from_millis),
         position: row.get(5)?,
         created_at: Timestamp::from_millis(row.get(6)?),
+        description: row.get(7)?,
+        estimate: estimate_from_sql(row.get(8)?)?,
     })
 }
 
@@ -82,6 +94,37 @@ impl Store {
     /// [`StoreError::NotFound`] if it does not exist.
     pub fn rename_task(&mut self, id: TaskId, name: &str) -> Result<(), StoreError> {
         self.update_task(id, "UPDATE tasks SET name = ?2 WHERE id = ?1", name)
+    }
+
+    /// Changes the description of a task (`""` clears it).
+    ///
+    /// # Errors
+    /// [`StoreError::NotFound`] if it does not exist.
+    pub fn set_task_description(
+        &mut self,
+        id: TaskId,
+        description: &str,
+    ) -> Result<(), StoreError> {
+        let sql = "UPDATE tasks SET description = ?2 WHERE id = ?1";
+        self.update_task(id, sql, description)
+    }
+
+    /// Changes the estimated time of a task (`None` clears it).
+    ///
+    /// # Errors
+    /// [`StoreError::OutOfRange`] if `estimate` is zero or too long; [`StoreError::NotFound`] if
+    /// the task does not exist.
+    pub fn set_task_estimate(
+        &mut self,
+        id: TaskId,
+        estimate: Option<Duration>,
+    ) -> Result<(), StoreError> {
+        let millis = estimate_to_sql(estimate)?;
+        self.update_task(
+            id,
+            "UPDATE tasks SET estimate_ms = ?2 WHERE id = ?1",
+            millis,
+        )
     }
 
     /// Marks a task as completed (completing its subtasks is up to the user). If it is already
@@ -179,12 +222,48 @@ mod tests {
                 id,
                 project: Some(project),
                 name: "report".into(),
+                description: String::new(),
+                estimate: None,
                 completed_at: None,
                 archived_at: None,
                 position: 1,
                 created_at: at(10),
             }
         );
+    }
+
+    #[test]
+    fn estimate_is_saved_cleared_and_must_be_positive() {
+        let mut store = Store::open_in_memory().unwrap();
+        let id = store.create_task(None, "report", at(0)).unwrap();
+        let hour = Duration::from_hours(1);
+        store.set_task_estimate(id, Some(hour)).unwrap();
+        assert_eq!(store.task(id).unwrap().estimate, Some(hour));
+        assert!(matches!(
+            store.set_task_estimate(id, Some(Duration::ZERO)),
+            Err(StoreError::OutOfRange(_))
+        ));
+        assert_eq!(store.task(id).unwrap().estimate, Some(hour));
+        store.set_task_estimate(id, None).unwrap();
+        assert_eq!(store.task(id).unwrap().estimate, None);
+        assert!(matches!(
+            store.set_task_estimate(TaskId(99), Some(hour)),
+            Err(StoreError::NotFound { .. })
+        ));
+    }
+
+    #[test]
+    fn description_is_saved_and_cleared() {
+        let mut store = Store::open_in_memory().unwrap();
+        let id = store.create_task(None, "report", at(0)).unwrap();
+        store.set_task_description(id, "Numbers for Q4").unwrap();
+        assert_eq!(store.task(id).unwrap().description, "Numbers for Q4");
+        store.set_task_description(id, "").unwrap();
+        assert_eq!(store.task(id).unwrap().description, "");
+        assert!(matches!(
+            store.set_task_description(TaskId(99), "x"),
+            Err(StoreError::NotFound { .. })
+        ));
     }
 
     #[test]

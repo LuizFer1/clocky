@@ -9,6 +9,96 @@ import { TimerUi } from "panels/timer-ui.slint";
 import { TimerBody, TimerOverlays } from "panels/timer-body.slint";
 import { PickerState, TaskPicker } from "task-picker.slint";
 
+// A small header button: an icon (‹ ›) or a label ("+ Novo").
+component HeaderButton inherits Rectangle {
+    in property <image> icon;
+    in property <string> text;
+    callback clicked();
+
+    height: 28px;
+    min-width: 28px;
+    border-radius: Theme.radius-sm;
+    background: touch.has-hover ? Theme.accent-soft : transparent;
+    animate background { duration: Theme.dur-hover; }
+
+    HorizontalLayout {
+        padding-left: root.text == "" ? 0px : Theme.space-2;
+        padding-right: root.text == "" ? 0px : Theme.space-2;
+        spacing: Theme.space-1;
+        alignment: center;
+
+        VerticalLayout {
+            alignment: center;
+
+            Image {
+                width: 14px;
+                height: 14px;
+                source: root.icon;
+                colorize: Theme.muted;
+            }
+        }
+
+        if root.text != "": Text {
+            vertical-alignment: center;
+            text: root.text;
+            color: Theme.text;
+            font-size: Theme.fs-sm;
+            font-weight: Theme.fw-medium;
+        }
+    }
+
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+// Several timers of the panel's kind: ‹ 2/3 › and "+ Novo".
+component SiblingControls inherits HorizontalLayout {
+    spacing: Theme.space-1;
+
+    if TimerUi.sibling-label != "": HorizontalLayout {
+        spacing: 2px;
+
+        if TimerUi.can-cycle: VerticalLayout {
+            alignment: center;
+
+            HeaderButton {
+                icon: @image-url("../icons/chevron-left.svg");
+                clicked => { TimerUi.cycle(false); }
+            }
+        }
+
+        Text {
+            vertical-alignment: center;
+            horizontal-alignment: center;
+            min-width: 28px;
+            text: TimerUi.sibling-label;
+            color: Theme.muted;
+            font-size: Theme.fs-sm;
+        }
+
+        if TimerUi.can-cycle: VerticalLayout {
+            alignment: center;
+
+            HeaderButton {
+                icon: @image-url("../icons/chevron-right.svg");
+                clicked => { TimerUi.cycle(true); }
+            }
+        }
+    }
+
+    if TimerUi.can-new: VerticalLayout {
+        alignment: center;
+
+        HeaderButton {
+            icon: @image-url("../icons/plus.svg");
+            text: "Novo";
+            clicked => { TimerUi.new-timer(); }
+        }
+    }
+}
+
 export component PanelWindow inherits Window {
     in property <string> panel-title: "Clocky";
     in property <string> panel-subtitle: "";
@@ -92,6 +182,7 @@ export component PanelWindow inherits Window {
                             color: Theme.text;
                             font-size: Theme.fs-lg;
                             font-weight: Theme.fw-medium;
+                            overflow: elide;
                         }
 
                         if !root.picking && (TimerUi.view == "" ? root.panel-subtitle : TimerUi.subtitle) != "": Text {
@@ -100,6 +191,8 @@ export component PanelWindow inherits Window {
                             font-size: Theme.fs-sm;
                         }
                     }
+
+                    if !root.picking && TimerUi.view != "": SiblingControls { }
 
                     if !root.picking: FabIcon {
                         source: TimerUi.view == "" ? root.panel-icon

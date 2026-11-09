@@ -16,6 +16,8 @@ pub struct Project {
     pub name: String,
     /// Color, as chosen in the UI (for example `#7c5cff`).
     pub color: String,
+    /// Free text about the project; empty = none.
+    pub description: String,
     /// When it was archived; `None` while active.
     pub archived_at: Option<Timestamp>,
     /// When it was created.
@@ -23,7 +25,11 @@ pub struct Project {
 }
 
 /// Columns read by [`project_from_row`], for a `projects` table aliased as `p`.
-pub(super) const PROJECT_COLUMNS: &str = "p.id, p.name, p.color, p.archived_at_ms, p.created_at_ms";
+pub(super) const PROJECT_COLUMNS: &str =
+    "p.id, p.name, p.color, p.archived_at_ms, p.created_at_ms, p.description";
+
+/// How many columns [`PROJECT_COLUMNS`] has: the index of the first column a query adds after it.
+pub(super) const PROJECT_COLUMN_COUNT: usize = 6;
 
 /// Reads the [`PROJECT_COLUMNS`] at the start of `row`.
 pub(super) fn project_from_row(row: &Row<'_>) -> Result<Project, StoreError> {
@@ -33,6 +39,7 @@ pub(super) fn project_from_row(row: &Row<'_>) -> Result<Project, StoreError> {
         color: row.get(2)?,
         archived_at: row.get::<_, Option<i64>>(3)?.map(Timestamp::from_millis),
         created_at: Timestamp::from_millis(row.get(4)?),
+        description: row.get(5)?,
     })
 }
 
@@ -88,6 +95,22 @@ impl Store {
         let changed = self.conn.execute(
             "UPDATE projects SET name = ?1 WHERE id = ?2",
             params![name, id.0],
+        )?;
+        ensure_found(changed, "project", id.0)
+    }
+
+    /// Changes the description of a project (`""` clears it).
+    ///
+    /// # Errors
+    /// [`StoreError::NotFound`] if it does not exist.
+    pub fn set_project_description(
+        &mut self,
+        id: ProjectId,
+        description: &str,
+    ) -> Result<(), StoreError> {
+        let changed = self.conn.execute(
+            "UPDATE projects SET description = ?1 WHERE id = ?2",
+            params![description, id.0],
         )?;
         ensure_found(changed, "project", id.0)
     }
@@ -166,8 +189,38 @@ mod tests {
                 color: "#7c5cff".into(),
                 archived_at: None,
                 created_at: at(10),
+                description: String::new(),
             }
         );
+    }
+
+    #[test]
+    fn description_is_saved_and_cleared() {
+        let mut store = Store::open_in_memory().unwrap();
+        let id = store.create_project("work", "#000000", at(0)).unwrap();
+        store
+            .set_project_description(
+                id,
+                "Client work
+Q4",
+            )
+            .unwrap();
+        assert_eq!(
+            store.project(id).unwrap().description,
+            "Client work
+Q4"
+        );
+        assert_eq!(
+            store.projects(false).unwrap()[0].description,
+            "Client work
+Q4"
+        );
+        store.set_project_description(id, "").unwrap();
+        assert_eq!(store.project(id).unwrap().description, "");
+        assert!(matches!(
+            store.set_project_description(ProjectId(99), "x"),
+            Err(StoreError::NotFound { .. })
+        ));
     }
 
     #[test]

@@ -13,6 +13,7 @@ pub(super) const MIGRATIONS: &[&str] = &[
     include_str!("sql/0001_init.sql"),
     include_str!("sql/0002_active_timers.sql"),
     include_str!("sql/0003_alarms.sql"),
+    include_str!("sql/0004_task_details.sql"),
 ];
 
 /// Latest schema version that `migrations` produces.

@@ -54,7 +54,7 @@ fn migrating_a_version_1_file_keeps_its_data() {
     drop(old);
 
     let store = Store::open(db.path()).unwrap();
-    assert_eq!(store.schema_version().unwrap(), 3);
+    assert_eq!(store.schema_version().unwrap(), latest_version());
     assert_eq!(store.task(task).unwrap().name, "report");
     assert_eq!(store.project(project).unwrap().name, "work");
     assert_eq!(store.task_time(task).unwrap(), secs(60));
@@ -96,7 +96,7 @@ fn a_version_1_file_migrates_through_active_timers_and_alarms() {
     drop(old);
 
     let mut store = Store::open(db.path()).unwrap();
-    assert_eq!(store.schema_version().unwrap(), 3);
+    assert_eq!(store.schema_version().unwrap(), latest_version());
     for table in ["active_timers", "active_timer_segments", "alarms"] {
         assert!(has_table(&store, table), "missing table {table}");
     }
@@ -106,7 +106,7 @@ fn a_version_1_file_migrates_through_active_timers_and_alarms() {
 }
 
 #[test]
-fn a_version_2_file_migrates_to_version_3_and_keeps_its_active_timer() {
+fn a_version_2_file_migrates_to_the_latest_version_and_keeps_its_active_timer() {
     let db = TempDb::new("alarms-migrate-v2");
     let mut old = Store::open_with(db.path(), &MIGRATIONS[..2]).unwrap();
     assert_eq!(old.schema_version().unwrap(), 2);
@@ -122,7 +122,7 @@ fn a_version_2_file_migrates_to_version_3_and_keeps_its_active_timer() {
     drop(old);
 
     let mut store = Store::open(db.path()).unwrap();
-    assert_eq!(store.schema_version().unwrap(), 3);
+    assert_eq!(store.schema_version().unwrap(), latest_version());
     let links = store.task_links(task).unwrap();
     assert_eq!(links.active_timers.len(), 1);
     assert_eq!(links.active_timers[0].timer, TimerId(7));
@@ -422,4 +422,8 @@ fn negative_instants_are_not_written() {
     let far_past = Timestamp::from_millis(-3_600_000);
     assert!(out_of_range(store.snooze_alarm(id, far_past).map(|_| ())));
     assert_eq!(store.alarm(id).unwrap().created_at, at(3));
+}
+
+fn latest_version() -> u32 {
+    crate::store::migrations::latest(crate::store::migrations::MIGRATIONS).unwrap()
 }

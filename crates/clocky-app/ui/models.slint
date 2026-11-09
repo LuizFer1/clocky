@@ -46,6 +46,12 @@ export struct SubtaskRow {
     id: int,
     name: string,
     done: bool,
+    // Free text; empty = none.
+    description: string,
+    // Its first line, under the name.
+    note: string,
+    // "30min"; empty = no estimate (also what its edit field starts with).
+    estimate: string,
 }
 
 // "Vinculado a": a saved pomodoro or countdown timer of the task.

@@ -69,6 +69,7 @@ fn project_page_lists_open_tasks() {
     let view = build(&core, &nav, &tz()).unwrap();
     assert_eq!(view.crumb, "connect");
     assert_eq!(view.subheading, "4 abertas · 0 concluídas");
+    assert!(view.project_description.starts_with("App de mensagens"));
     assert!(view.projects[0].selected);
     let names: Vec<_> = view.tasks.iter().map(|t| t.name.to_string()).collect();
     assert_eq!(
@@ -77,7 +78,8 @@ fn project_page_lists_open_tasks() {
     );
     let auth = &view.tasks[0];
     assert_eq!(auth.subtasks, "1/3 subtarefas");
-    assert_eq!(auth.time, "3h 40min");
+    // 3h 40min recorded of a 4h estimate.
+    assert_eq!(auth.time, "3h 40min / 4h");
     assert!(auth.has_pomodoro && !auth.has_timer);
     assert!(view.tasks[1].has_timer);
     assert_eq!(view.tasks[3].time, "—");
@@ -156,6 +158,26 @@ fn task_page_has_checklist_links_and_sessions() {
     );
     assert_eq!(task.sessions[1].duration, "1h 25min");
     assert_eq!(task.sessions[2].day, "Ontem");
+}
+
+#[test]
+fn task_page_shows_the_description_and_estimates() {
+    let core = demo_core();
+    let nav = Nav {
+        project: Some(project_id(&core, "connect")),
+        task: Some(task_id(&core, "autenticação")),
+        ..Nav::default()
+    };
+    let task = build(&core, &nav, &tz()).unwrap().task.unwrap();
+    assert!(task.description.starts_with("Login com e-mail"));
+    // 3h 40min recorded of 4h.
+    assert_eq!(task.estimate, "4h 00min");
+    assert!(!task.estimate_over);
+    assert_eq!(task.estimate_label, "91% · faltam 20min");
+    let tests = &task.subtasks[1];
+    assert_eq!(tests.estimate, "1h 00min");
+    assert_eq!(tests.note, "Cobrir token expirado e senha errada.");
+    assert_eq!(task.subtasks[2].estimate, "");
 }
 
 #[test]

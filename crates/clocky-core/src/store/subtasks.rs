@@ -1,8 +1,10 @@
 //! Subtasks (one level, guaranteed by the schema) and their completion events.
 
+use std::time::Duration;
+
 use rusqlite::{OptionalExtension, Row, params};
 
-use super::convert::{timer_id_from_sql, timer_id_to_sql};
+use super::convert::{estimate_from_sql, estimate_to_sql, timer_id_from_sql, timer_id_to_sql};
 use super::rows::{collect, ensure_found};
 use super::{Store, StoreError};
 use crate::domain::{SessionId, SubtaskId, TaskId, TimerId};
@@ -17,6 +19,10 @@ pub struct Subtask {
     pub task: TaskId,
     /// Name.
     pub name: String,
+    /// Free text about the subtask; empty = none.
+    pub description: String,
+    /// How long the subtask is expected to take; `None` = no estimate.
+    pub estimate: Option<Duration>,
     /// When it was completed; `None` while open.
     pub completed_at: Option<Timestamp>,
     /// Order inside the task (ascending).
@@ -91,6 +97,8 @@ fn subtask_from_row(row: &Row<'_>) -> Result<Subtask, StoreError> {
         name: row.get(2)?,
         completed_at: row.get::<_, Option<i64>>(3)?.map(Timestamp::from_millis),
         position: row.get(4)?,
+        description: row.get(5)?,
+        estimate: estimate_from_sql(row.get(6)?)?,
     })
 }
 
@@ -113,7 +121,7 @@ impl Store {
     /// # Errors
     /// [`StoreError::Sqlite`] if SQLite fails.
     pub fn subtasks(&self, task: TaskId) -> Result<Vec<Subtask>, StoreError> {
-        let sql = "SELECT id, task_id, name, completed_at_ms, position FROM subtasks
+        let sql = "SELECT id, task_id, name, completed_at_ms, position, description, estimate_ms FROM subtasks
                    WHERE task_id = ?1 ORDER BY position, id";
         collect(&self.conn, sql, [task.0], subtask_from_row)
     }
@@ -126,6 +134,39 @@ impl Store {
         let changed = self.conn.execute(
             "UPDATE subtasks SET name = ?1 WHERE id = ?2",
             params![name, id.0],
+        )?;
+        ensure_found(changed, "subtask", id.0)
+    }
+
+    /// Changes the description of a subtask (`""` clears it).
+    ///
+    /// # Errors
+    /// [`StoreError::NotFound`] if it does not exist.
+    pub fn set_subtask_description(
+        &mut self,
+        id: SubtaskId,
+        description: &str,
+    ) -> Result<(), StoreError> {
+        let changed = self.conn.execute(
+            "UPDATE subtasks SET description = ?1 WHERE id = ?2",
+            params![description, id.0],
+        )?;
+        ensure_found(changed, "subtask", id.0)
+    }
+
+    /// Changes the estimated time of a subtask (`None` clears it).
+    ///
+    /// # Errors
+    /// [`StoreError::OutOfRange`] if `estimate` is zero or too long; [`StoreError::NotFound`] if
+    /// the subtask does not exist.
+    pub fn set_subtask_estimate(
+        &mut self,
+        id: SubtaskId,
+        estimate: Option<Duration>,
+    ) -> Result<(), StoreError> {
+        let changed = self.conn.execute(
+            "UPDATE subtasks SET estimate_ms = ?1 WHERE id = ?2",
+            params![estimate_to_sql(estimate)?, id.0],
         )?;
         ensure_found(changed, "subtask", id.0)
     }
@@ -229,6 +270,37 @@ mod tests {
         let mut store = Store::open_in_memory().unwrap();
         let task = store.create_task(None, "report", at(0)).unwrap();
         (store, task)
+    }
+
+    #[test]
+    fn description_and_estimate_are_saved_and_cleared() {
+        let (mut store, task) = store_with_task();
+        let id = store.add_subtask(task, "outline").unwrap();
+        let fresh = &store.subtasks(task).unwrap()[0];
+        assert_eq!((fresh.description.as_str(), fresh.estimate), ("", None));
+        let half_hour = Duration::from_mins(30);
+        store.set_subtask_description(id, "Three sections").unwrap();
+        store.set_subtask_estimate(id, Some(half_hour)).unwrap();
+        let saved = &store.subtasks(task).unwrap()[0];
+        assert_eq!(saved.description, "Three sections");
+        assert_eq!(saved.estimate, Some(half_hour));
+        assert!(matches!(
+            store.set_subtask_estimate(id, Some(Duration::ZERO)),
+            Err(StoreError::OutOfRange(_))
+        ));
+        store.set_subtask_description(id, "").unwrap();
+        store.set_subtask_estimate(id, None).unwrap();
+        let cleared = &store.subtasks(task).unwrap()[0];
+        assert_eq!((cleared.description.as_str(), cleared.estimate), ("", None));
+        let missing = SubtaskId(99);
+        assert!(matches!(
+            store.set_subtask_description(missing, "x"),
+            Err(StoreError::NotFound { .. })
+        ));
+        assert!(matches!(
+            store.set_subtask_estimate(missing, Some(half_hour)),
+            Err(StoreError::NotFound { .. })
+        ));
     }
 
     #[test]

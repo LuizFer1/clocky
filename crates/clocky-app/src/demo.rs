@@ -82,6 +82,8 @@ fn minutes(n: u64) -> Duration {
 impl<Tz: TimeZone> Seeder<'_, Tz> {
     fn connect(&mut self) -> CoreResult<()> {
         let p = self.core.create_project("connect", "#3d8fd6")?;
+        self.core
+            .set_project_description(p, "App de mensagens da empresa: API e app mobile.")?;
         let auth = self.task(
             p,
             "autenticação",
@@ -89,6 +91,7 @@ impl<Tz: TimeZone> Seeder<'_, Tz> {
             &["Testes de integração", "Atualizar documentação"],
         )?;
         self.pomodoro("Clássico", (25, 5, 15), auth)?;
+        self.details(auth)?;
         self.sessions(
             auth,
             &[
@@ -107,6 +110,25 @@ impl<Tz: TimeZone> Seeder<'_, Tz> {
             .create_timer_preset("revisão de PR", minutes(25), Some(review))?;
         self.sessions(review, &[DemoSession(2, (11, 0), 45, TimerKind::Countdown)])?;
         self.task(p, "standup diário", &[], &[])?;
+        Ok(())
+    }
+
+    /// Description and estimates of "autenticação" and its subtasks.
+    fn details(&mut self, task: TaskId) -> CoreResult<()> {
+        self.core.set_task_description(
+            task,
+            "Login com e-mail e senha e renovação do token. Seguir o guia de segurança do time.",
+        )?;
+        self.core.set_task_estimate(task, Some(minutes(240)))?;
+        let subtasks = self.core.subtasks(task)?;
+        if let [login, tests, ..] = subtasks.as_slice() {
+            self.core
+                .set_subtask_estimate(login.id, Some(minutes(90)))?;
+            self.core
+                .set_subtask_estimate(tests.id, Some(minutes(60)))?;
+            self.core
+                .set_subtask_description(tests.id, "Cobrir token expirado e senha errada.")?;
+        }
         Ok(())
     }
 

@@ -256,3 +256,33 @@ fn links_and_summaries_include_active_timers() {
     store.delete_active(TimerId(1)).unwrap();
     assert_eq!(store.task_links(task).unwrap().active_timers.len(), 0);
 }
+
+#[test]
+fn queries_read_the_details_and_their_extra_columns() {
+    let mut store = Store::open_in_memory().unwrap();
+    let work = store.create_project("work", "#000000", at(0)).unwrap();
+    store.set_project_description(work, "Client").unwrap();
+    let task = store.create_task(Some(work), "report", at(0)).unwrap();
+    store.set_task_description(task, "Q4 numbers").unwrap();
+    store.set_task_estimate(task, Some(mins(90))).unwrap();
+    let sub = store.add_subtask(task, "outline").unwrap();
+    store.complete_subtask(sub, at(5), None).unwrap();
+    record(&mut store, task, 0, 60);
+
+    let overview = store.projects_overview().unwrap();
+    assert_eq!(overview[0].project.description, "Client");
+    assert_eq!(
+        (overview[0].open_tasks, overview[0].completed_tasks),
+        (1, 0)
+    );
+
+    let summary = &store.task_summaries(Some(work), false).unwrap()[0];
+    assert_eq!(summary.task.description, "Q4 numbers");
+    assert_eq!(summary.task.estimate, Some(mins(90)));
+    assert_eq!((summary.subtasks_done, summary.subtasks_total), (1, 1));
+    assert_eq!(summary.tracked, secs(60));
+
+    let found = store.search_tasks("work").unwrap();
+    assert_eq!(found[0].estimate, Some(mins(90)));
+    assert_eq!(store.recent_tasks(5).unwrap()[0].description, "Q4 numbers");
+}
