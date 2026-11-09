@@ -8,6 +8,7 @@ mod clock;
 // M7b: dates of the reports.
 pub mod dates;
 mod estimate;
+pub mod markdown;
 pub use clock::hh_mm_in;
 pub use estimate::{estimate_input, estimate_progress, estimate_short, parse_estimate};
 

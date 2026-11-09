@@ -9,6 +9,7 @@ use clocky_core::store::{ProjectOverview, Session, Subtask, TaskLinks, TaskSumma
 use slint::Color;
 
 use crate::core::{AppCore, CoreResult};
+use crate::format::markdown;
 use crate::{format, palette, ui};
 
 /// Sessions listed under "Tempo registrado".
@@ -215,18 +216,16 @@ fn tracked_label(summary: &TaskSummary) -> String {
 
 /// A checklist row: the first non-empty line of the description goes under the name.
 fn subtask_row(subtask: &Subtask) -> Option<ui::SubtaskRow> {
-    let note = subtask
-        .description
-        .lines()
-        .map(str::trim)
-        .find(|line| !line.is_empty())
-        .unwrap_or_default();
+    let description = subtask.description.as_str();
     Some(ui::SubtaskRow {
         id: slint_id(subtask.id.0)?,
         name: subtask.name.as_str().into(),
         done: subtask.completed_at.is_some(),
-        description: subtask.description.as_str().into(),
-        note: note.into(),
+        description: description.into(),
+        description_styled: markdown::styled(description),
+        description_links: markdown::has_links(description),
+        has_note: description.lines().any(|line| !line.trim().is_empty()),
+        note: markdown::first_line(description),
         estimate: format::estimate_input(subtask.estimate).into(),
     })
 }

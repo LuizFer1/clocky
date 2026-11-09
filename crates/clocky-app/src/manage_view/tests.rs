@@ -176,7 +176,11 @@ fn task_page_shows_the_description_and_estimates() {
     assert_eq!(task.estimate_label, "91% · faltam 20min");
     let tests = &task.subtasks[1];
     assert_eq!(tests.estimate, "1h 00min");
-    assert_eq!(tests.note, "Cobrir token expirado e senha errada.");
+    assert!(tests.has_note);
+    assert_eq!(
+        tests.note,
+        markdown::styled("Cobrir token expirado e senha errada.")
+    );
     assert_eq!(task.subtasks[2].estimate, "");
 }
 
