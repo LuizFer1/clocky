@@ -15,10 +15,13 @@ export global ManageState {
     in property <color> heading-color;
     // Project page: the project's description under the heading (empty = none).
     in property <string> project-description;
+    in property <styled-text> project-description-styled;
 
     // Project page and search results.
     in property <[TaskRow]> tasks;
     in property <bool> show-completed;
+    // The task just completed that is sweeping out of the list; -1 = none.
+    in property <int> leaving-task: -1;
     // "Nova tarefa" typing row.
     in-out property <bool> adding-task;
     in-out property <string> task-draft;
@@ -33,6 +36,9 @@ export global ManageState {
     // The task of the task page (owner of its description).
     in property <int> task-id: -1;
     in property <string> task-description;
+    // The description as Markdown, and whether it has links (see `TextArea.has-links`).
+    in property <styled-text> task-description-styled;
+    in property <bool> task-description-links;
     in property <string> task-estimate;
     in property <float> task-estimate-progress;
     in property <bool> task-estimate-over;
@@ -93,6 +99,8 @@ export global ManageState {
     callback toggle-current-task();
     callback rename-task(string);
     callback set-task-description(int, string);
+    // A link clicked in a description (opened in the browser).
+    callback open-link(string);
     // Typed text ("1h30", "45min", "1:30"; empty clears it).
     callback set-task-estimate(string);
     callback move-task(int);

@@ -33,11 +33,22 @@ export component StrikeText inherits Rectangle {
 }
 
 // One task of the list: checkbox, name (+ subtasks or project), link icons, time, chevron.
+// Completed while the list hides completed tasks, it shows the check, sweeps to the right and
+// closes before it leaves the list (`ManageState.leaving-task`).
 component TaskLine inherits Rectangle {
     in property <TaskRow> task;
     in property <bool> first;
 
-    min-height: 56px;
+    property <bool> leaving: ManageState.leaving-task == root.task.id;
+    property <bool> done: root.task.done || root.leaving;
+
+    height: root.leaving ? 0px : 56px;
+    clip: true;
+    animate height {
+        delay: Theme.dur-complete-hold + Theme.dur-complete-swipe;
+        duration: Theme.dur-complete-collapse;
+        easing: ease-in-out;
+    }
 
     if !root.first: Rectangle {
         y: 0;
@@ -45,103 +56,119 @@ component TaskLine inherits Rectangle {
         background: Theme.line;
     }
 
-    HorizontalLayout {
-        padding-left: Theme.space-4;
-        padding-right: Theme.space-3;
-        spacing: Theme.space-3;
-
-        CheckBox {
-            checked: root.task.done;
-            toggled(done) => { ManageState.set-task-done(root.task.id, done); }
+    // The row itself, kept at full height (and centered) while the line closes around it.
+    Rectangle {
+        x: root.leaving ? root.width : 0px;
+        y: (root.height - self.height) / 2;
+        width: root.width;
+        height: 56px;
+        opacity: root.leaving ? 0 : 1;
+        background: root.leaving ? Theme.accent-soft : transparent;
+        animate x, opacity {
+            delay: Theme.dur-complete-hold;
+            duration: Theme.dur-complete-swipe;
+            easing: ease-in;
         }
+        animate background { duration: Theme.dur-fade; easing: ease; }
 
-        Rectangle {
-            horizontal-stretch: 1;
+        HorizontalLayout {
+            padding-left: Theme.space-4;
+            padding-right: Theme.space-3;
+            spacing: Theme.space-3;
 
-            touch := TouchArea {
-                mouse-cursor: pointer;
-                clicked => { ManageState.open-task(root.task.id); }
+            CheckBox {
+                checked: root.done;
+                toggled(done) => { ManageState.set-task-done(root.task.id, done); }
             }
 
-            HorizontalLayout {
-                spacing: Theme.space-3;
+            Rectangle {
+                horizontal-stretch: 1;
 
-                VerticalLayout {
-                    horizontal-stretch: 1;
-                    alignment: center;
-                    spacing: 3px;
-
-                    StrikeText {
-                        text: root.task.name;
-                        struck: root.task.done;
-                        font-weight: Theme.fw-medium;
-                    }
-
-                    if root.task.subtasks != "" || root.task.project != "": HorizontalLayout {
-                        spacing: Theme.space-1-5;
-
-                        if root.task.project != "": DotCell {
-                            size: 8px;
-                            dot-color: root.task.has-project ? root.task.project-color : Theme.line-2;
-                        }
-
-                        Text {
-                            horizontal-stretch: 1;
-                            overflow: elide;
-                            text: root.task.project != "" && root.task.subtasks != "" ? root.task.project + " · " + root.task.subtasks : root.task.project + root.task.subtasks;
-                            color: Theme.muted;
-                            font-size: Theme.fs-xs;
-                        }
-                    }
+                touch := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { ManageState.open-task(root.task.id); }
                 }
 
                 HorizontalLayout {
-                    alignment: center;
-                    spacing: Theme.space-1;
+                    spacing: Theme.space-3;
 
-                    if root.task.has-pomodoro: VerticalLayout {
+                    VerticalLayout {
+                        horizontal-stretch: 1;
                         alignment: center;
+                        spacing: 3px;
 
-                        LinkBadge {
-                            icon: @image-url("../icons/pomodoro.svg");
+                        StrikeText {
+                            text: root.task.name;
+                            struck: root.done;
+                            font-weight: Theme.fw-medium;
+                        }
+
+                        if root.task.subtasks != "" || root.task.project != "": HorizontalLayout {
+                            spacing: Theme.space-1-5;
+
+                            if root.task.project != "": DotCell {
+                                size: 8px;
+                                dot-color: root.task.has-project ? root.task.project-color : Theme.line-2;
+                            }
+
+                            Text {
+                                horizontal-stretch: 1;
+                                overflow: elide;
+                                text: root.task.project != "" && root.task.subtasks != "" ? root.task.project + " · " + root.task.subtasks : root.task.project + root.task.subtasks;
+                                color: Theme.muted;
+                                font-size: Theme.fs-xs;
+                            }
                         }
                     }
 
-                    if root.task.has-timer: VerticalLayout {
+                    HorizontalLayout {
                         alignment: center;
+                        spacing: Theme.space-1;
 
-                        LinkBadge {
-                            icon: @image-url("../icons/hourglass.svg");
+                        if root.task.has-pomodoro: VerticalLayout {
+                            alignment: center;
+
+                            LinkBadge {
+                                icon: @image-url("../icons/pomodoro.svg");
+                            }
+                        }
+
+                        if root.task.has-timer: VerticalLayout {
+                            alignment: center;
+
+                            LinkBadge {
+                                icon: @image-url("../icons/hourglass.svg");
+                            }
+                        }
+
+                        // M7a: alarms of the task.
+                        if root.task.has-alarm: VerticalLayout {
+                            alignment: center;
+
+                            LinkBadge {
+                                icon: @image-url("../icons/alarm.svg");
+                            }
                         }
                     }
 
-                    // M7a: alarms of the task.
-                    if root.task.has-alarm: VerticalLayout {
+                    Text {
+                        min-width: 72px;
+                        vertical-alignment: center;
+                        horizontal-alignment: right;
+                        text: root.task.time;
+                        color: Theme.muted;
+                        font-size: Theme.fs-sm;
+                    }
+
+                    VerticalLayout {
                         alignment: center;
 
-                        LinkBadge {
-                            icon: @image-url("../icons/alarm.svg");
+                        Image {
+                            width: 16px;
+                            height: 16px;
+                            source: @image-url("../icons/chevron-right.svg");
+                            colorize: Theme.muted;
                         }
-                    }
-                }
-
-                Text {
-                    min-width: 72px;
-                    vertical-alignment: center;
-                    horizontal-alignment: right;
-                    text: root.task.time;
-                    color: Theme.muted;
-                    font-size: Theme.fs-sm;
-                }
-
-                VerticalLayout {
-                    alignment: center;
-
-                    Image {
-                        width: 16px;
-                        height: 16px;
-                        source: @image-url("../icons/chevron-right.svg");
-                        colorize: Theme.muted;
                     }
                 }
             }

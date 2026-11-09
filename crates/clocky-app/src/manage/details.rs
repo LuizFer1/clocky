@@ -16,6 +16,7 @@ impl Manage {
         let state = self.state();
         state.on_set_task_description(self.handler2(Self::set_task_description));
         state.on_set_task_estimate(self.handler1(Self::set_task_estimate));
+        state.on_open_link(|url| open_link(&url));
     }
 
     /// Saves the description typed for `id` (which may no longer be the open task).
@@ -49,5 +50,23 @@ impl Manage {
         };
         self.state().set_estimate_invalid(NO_INVALID_ESTIMATE);
         self.mutate("save the estimate", |c| save(c, estimate));
+    }
+}
+
+/// Opens a link of a description in the default browser (or mail app). Other schemes (files,
+/// scripts) are ignored: a description must not be able to start a program.
+fn open_link(url: &str) {
+    if !format::markdown::is_openable(url) {
+        tracing::warn!("link not opened (not a web or mail link): {url}");
+        return;
+    }
+    #[cfg(windows)]
+    let mut command = std::process::Command::new("explorer.exe");
+    #[cfg(target_os = "macos")]
+    let mut command = std::process::Command::new("open");
+    #[cfg(not(any(windows, target_os = "macos")))]
+    let mut command = std::process::Command::new("xdg-open");
+    if let Err(e) = command.arg(url).spawn() {
+        tracing::warn!("failed to open the link {url}: {e}");
     }
 }

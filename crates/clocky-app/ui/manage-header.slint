@@ -156,11 +156,12 @@ export component Header inherits HorizontalLayout {
             wrap: word-wrap;
         }
 
-        if ManageState.page == 1 && ManageState.project-description != "": Text {
-            text: ManageState.project-description;
-            color: Theme.text;
-            font-size: Theme.fs-md;
-            wrap: word-wrap;
+        if ManageState.page == 1 && ManageState.project-description != "": StyledText {
+            text: ManageState.project-description-styled;
+            default-color: Theme.text;
+            default-font-size: Theme.fs-md;
+            link-color: Theme.accent-text;
+            link-clicked(url) => { ManageState.open-link(url); }
         }
     }
 

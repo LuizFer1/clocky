@@ -46,10 +46,13 @@ export struct SubtaskRow {
     id: int,
     name: string,
     done: bool,
-    // Free text; empty = none.
+    // Free text (Markdown); empty = none.
     description: string,
-    // Its first line, under the name.
-    note: string,
+    description-styled: styled-text,
+    description-links: bool,
+    // Its first line, formatted, under the name.
+    has-note: bool,
+    note: styled-text,
     // "30min"; empty = no estimate (also what its edit field starts with).
     estimate: string,
 }

@@ -111,11 +111,12 @@ component SubtaskLine inherits Rectangle {
                     struck: root.subtask.done;
                 }
 
-                if !root.expanded && root.subtask.note != "": Text {
+                if !root.expanded && root.subtask.has-note: StyledText {
                     text: root.subtask.note;
-                    color: Theme.muted;
-                    font-size: Theme.fs-xs;
-                    overflow: elide;
+                    default-color: Theme.muted;
+                    default-font-size: Theme.fs-xs;
+                    link-color: Theme.muted;
+                    max-lines: 1;
                 }
             }
 
@@ -203,6 +204,10 @@ component SubtaskLine inherits Rectangle {
                 font-size: Theme.fs-md;
                 min-text-height: 36px;
                 value: root.subtask.description;
+                formatted: true;
+                styled: root.subtask.description-styled;
+                has-links: root.subtask.description-links;
+                link-clicked(url) => { ManageState.open-link(url); }
                 owner: root.subtask.id;
                 committed(id, text) => { ManageState.set-subtask-description(id, text); }
             }
@@ -290,10 +295,14 @@ export component SubtasksColumn inherits VerticalLayout {
 
         TextArea {
             boxed: false;
-            placeholder: "Adicionar uma descrição";
+            placeholder: "Adicionar uma descrição (aceita Markdown)";
             font-size: Theme.fs-md;
             min-text-height: 20px;
             value: ManageState.task-description;
+            formatted: true;
+            styled: ManageState.task-description-styled;
+            has-links: ManageState.task-description-links;
+            link-clicked(url) => { ManageState.open-link(url); }
             owner: ManageState.task-id;
             committed(id, text) => { ManageState.set-task-description(id, text); }
         }
