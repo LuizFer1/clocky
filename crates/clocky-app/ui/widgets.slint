@@ -298,6 +298,9 @@ export component TextField inherits Rectangle {
 // task or subtask id): the save goes to the owner the text was typed for, and a new owner
 // replaces the text. Esc puts `value` back. `boxed: false` draws no box (the text lines up
 // with the content around it), only an underline while hovered or editing.
+// `formatted`: while not being edited, the text shows as Markdown (`styled`). A click on it
+// edits it; with links (`has-links`) a click opens the link instead, and "Editar" (on hover)
+// edits it.
 export component TextArea inherits Rectangle {
     in property <string> value;
     in property <int> owner;
@@ -305,15 +308,21 @@ export component TextArea inherits Rectangle {
     in property <length> font-size: Theme.fs-base;
     in property <length> min-text-height: 48px;
     in property <bool> boxed: true;
+    in property <bool> formatted;
+    in property <styled-text> styled;
+    in property <bool> has-links;
     out property <bool> has-focus: input.has-focus;
     callback edited(string);
     callback committed(int, string);
+    callback link-clicked(string);
 
     property <length> pad-x: root.boxed ? Theme.space-3-5 : 0px;
     property <length> pad-y: root.boxed ? Theme.space-2-5 : Theme.space-1-5;
     // Typed and not saved yet, for `edit-owner`.
     property <bool> dirty;
     property <int> edit-owner;
+    // Markdown shown instead of the typed text.
+    property <bool> show-styled: root.formatted && !input.has-focus && !root.dirty && root.value != "";
 
     function commit() {
         if (root.dirty) {
@@ -322,7 +331,7 @@ export component TextArea inherits Rectangle {
         }
     }
 
-    min-height: max(root.min-text-height, input.preferred-height) + root.pad-y * 2;
+    min-height: max(root.min-text-height, root.show-styled ? styled-under.preferred-height : input.preferred-height) + root.pad-y * 2;
     border-radius: root.boxed ? Theme.radius-lg : 0px;
     background: root.boxed ? Theme.field : transparent;
     border-width: root.boxed ? 1px : 0px;
@@ -333,13 +342,25 @@ export component TextArea inherits Rectangle {
         clicked => { input.focus(); }
     }
 
+    // Draws the Markdown under the (transparent) input, so a click edits it. Also measures it.
+    styled-under := StyledText {
+        x: root.pad-x;
+        y: root.pad-y;
+        width: parent.width - root.pad-x * 2;
+        opacity: root.show-styled && !root.has-links ? 1 : 0;
+        text: root.styled;
+        default-color: Theme.text;
+        default-font-size: root.font-size;
+        link-color: Theme.accent-text;
+    }
+
     input := TextInput {
         x: root.pad-x;
         y: root.pad-y;
         width: parent.width - root.pad-x * 2;
         height: parent.height - root.pad-y * 2;
         text: root.value;
-        color: Theme.text;
+        color: root.show-styled ? transparent : Theme.text;
         font-size: root.font-size;
         single-line: false;
         wrap: word-wrap;
@@ -389,6 +410,46 @@ export component TextArea inherits Rectangle {
     changed owner => {
         root.commit();
         input.text = root.value;
+    }
+
+    // With links, above the input: a click on a link opens it.
+    if root.show-styled && root.has-links: links := TouchArea {
+        x: root.pad-x;
+        y: root.pad-y;
+        width: parent.width - root.pad-x * 2;
+        height: styled-under.preferred-height;
+
+        StyledText {
+            width: 100%;
+            text: root.styled;
+            default-color: Theme.text;
+            default-font-size: root.font-size;
+            link-color: Theme.accent-text;
+            link-clicked(url) => { root.link-clicked(url); }
+        }
+
+        if links.has-hover: Rectangle {
+            x: parent.width - self.width;
+            y: 0;
+            width: edit-label.preferred-width + Theme.space-2 * 2;
+            height: 24px;
+            border-radius: Theme.radius-sm;
+            background: Theme.panel;
+            border-width: 1px;
+            border-color: Theme.line-2;
+
+            edit-label := Text {
+                text: "Editar";
+                color: Theme.accent-text;
+                font-size: Theme.fs-xs;
+                font-weight: Theme.fw-medium;
+            }
+
+            edit := TouchArea {
+                mouse-cursor: pointer;
+                clicked => { input.focus(); }
+            }
+        }
     }
 
     if input.text == "": Text {
