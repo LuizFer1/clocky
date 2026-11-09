@@ -125,4 +125,9 @@ export global Theme {
     out property <duration> dur-page: 200ms; // ease-out
     // Hover and selection backgrounds.
     out property <duration> dur-hover: 120ms; // ease
+    // A task completed in a list that hides completed ones: the check shows (hold), the row
+    // sweeps to the right (swipe) and closes (collapse). `LEAVE` in manage/mod.rs is the sum.
+    out property <duration> dur-complete-hold: 280ms; // ease
+    out property <duration> dur-complete-swipe: 320ms; // ease-in
+    out property <duration> dur-complete-collapse: 180ms; // ease-in-out
 }

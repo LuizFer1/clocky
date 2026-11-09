@@ -19,6 +19,8 @@ export global ManageState {
     // Project page and search results.
     in property <[TaskRow]> tasks;
     in property <bool> show-completed;
+    // The task just completed that is sweeping out of the list; -1 = none.
+    in property <int> leaving-task: -1;
     // "Nova tarefa" typing row.
     in-out property <bool> adding-task;
     in-out property <string> task-draft;
