@@ -6,6 +6,7 @@ use clocky_core::domain::{ProjectId, SubtaskId, TaskId};
 use slint::SharedString;
 
 use super::{Manage, Pending, Section, TimerStart, clean, db_id};
+use crate::core::ProjectForm;
 use crate::manage_view::Nav;
 use crate::palette;
 
@@ -15,6 +16,7 @@ impl Manage {
         self.connect_projects();
         self.connect_tasks();
         self.connect_subtasks();
+        self.connect_details();
         // M7b: Relatórios and Configurações.
         self.connect_reports();
         self.connect_settings();
@@ -63,6 +65,8 @@ impl Manage {
         state.on_add_subtask(self.handler1(Self::add_subtask));
         state.on_set_subtask_done(self.handler2(Self::set_subtask_done));
         state.on_rename_subtask(self.handler2(Self::rename_subtask));
+        state.on_set_subtask_description(self.handler2(Self::set_subtask_description));
+        state.on_set_subtask_estimate(self.handler2(Self::set_subtask_estimate));
         state.on_delete_subtask(self.handler1(Self::delete_subtask));
     }
 }
@@ -169,6 +173,7 @@ impl Manage {
         });
         let state = self.state();
         state.set_project_form_name(SharedString::new());
+        state.set_project_form_description(SharedString::new());
         state.set_project_form_color(i32::try_from(palette::DEFAULT_INDEX).unwrap_or(0));
         state.set_project_form_editing(false);
         state.set_project_form_open(true);
@@ -184,6 +189,7 @@ impl Manage {
         let index = palette::index_of(&project.color).unwrap_or(palette::DEFAULT_INDEX);
         let state = self.state();
         state.set_project_form_name(project.name.into());
+        state.set_project_form_description(project.description.into());
         state.set_project_form_color(i32::try_from(index).unwrap_or(0));
         state.set_project_form_editing(true);
         state.set_project_form_open(true);
@@ -193,15 +199,33 @@ impl Manage {
         let Some(name) = clean(&name) else { return };
         let hex = palette::hex(usize::try_from(color).unwrap_or(palette::DEFAULT_INDEX));
         let editing = self.state().get_project_form_editing();
+        let description = self.state().get_project_form_description();
+        let form = ProjectForm {
+            name: &name,
+            color: hex,
+            description: description.trim(),
+        };
         if let (true, Some(id)) = (editing, self.nav().project) {
-            if self.mutate("edit the project", |c| c.update_project(id, &name, hex)) {
+            if self.mutate("edit the project", |c| c.update_project(id, &form)) {
                 self.state().set_project_form_open(false);
             }
             return;
         }
         let created = self.core.borrow_mut().create_project(&name, hex);
         match created {
-            Ok(id) => self.go_to_project(id),
+            Ok(id) => {
+                if !form.description.is_empty() {
+                    // The project exists: a lost description is only logged.
+                    let saved = self
+                        .core
+                        .borrow_mut()
+                        .set_project_description(id, form.description);
+                    if let Err(e) = saved {
+                        tracing::warn!("failed to save the project description: {e}");
+                    }
+                }
+                self.go_to_project(id);
+            }
             Err(e) => tracing::warn!("failed to create the project: {e}"),
         }
     }
@@ -363,6 +387,24 @@ impl Manage {
             return;
         };
         self.mutate("rename the subtask", |c| c.rename_subtask(id, &name));
+    }
+
+    fn set_subtask_description(&self, id: i32, text: SharedString) {
+        let Some(id) = db_id(id).map(SubtaskId) else {
+            return;
+        };
+        self.mutate("save the subtask description", |c| {
+            c.set_subtask_description(id, text.trim())
+        });
+    }
+
+    fn set_subtask_estimate(&self, id: i32, text: SharedString) {
+        let Some(sub) = db_id(id).map(SubtaskId) else {
+            return;
+        };
+        self.save_estimate(id, &text, |c, estimate| {
+            c.set_subtask_estimate(sub, estimate)
+        });
     }
 
     fn delete_subtask(&self, id: i32) {

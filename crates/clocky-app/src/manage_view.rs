@@ -5,7 +5,7 @@ use std::collections::{HashMap, HashSet};
 
 use chrono::TimeZone;
 use clocky_core::domain::{ProjectId, TaskId};
-use clocky_core::store::{ProjectOverview, Session, TaskLinks, TaskSummary};
+use clocky_core::store::{ProjectOverview, Session, Subtask, TaskLinks, TaskSummary};
 use slint::Color;
 
 use crate::core::{AppCore, CoreResult};
@@ -60,6 +60,8 @@ pub struct ManageView {
     pub subheading: String,
     /// Dot before the heading (project and task pages).
     pub heading_color: Option<Color>,
+    /// Project page: the project's description.
+    pub project_description: String,
     pub tasks: Vec<ui::TaskRow>,
     pub task: Option<TaskDetail>,
 }
@@ -72,6 +74,13 @@ pub struct TaskDetail {
     pub project: String,
     /// "3h 40min"
     pub total: String,
+    pub description: String,
+    /// "1h 30min"; empty = no estimate.
+    pub estimate: String,
+    /// Recorded time against the estimate: bar fraction, overrun and label.
+    pub estimate_progress: f32,
+    pub estimate_over: bool,
+    pub estimate_label: String,
     pub subtasks: Vec<ui::SubtaskRow>,
     /// "1/3 concluídas"
     pub checklist: String,
@@ -101,6 +110,7 @@ pub fn build<Tz: TimeZone>(core: &AppCore, nav: &Nav, tz: &Tz) -> CoreResult<Man
         heading: "Todos os projetos".into(),
         subheading: format::project_count(overview.len()),
         heading_color: None,
+        project_description: String::new(),
         tasks: Vec::new(),
         task: None,
     };
@@ -149,6 +159,8 @@ fn fill_project(
     view.heading.clone_from(&project.project.name);
     view.subheading = format::task_counts(project.open_tasks, project.completed_tasks);
     view.heading_color = Some(palette::color(&project.project.color));
+    view.project_description
+        .clone_from(&project.project.description);
     let summaries = core.task_summaries(Some(project.project.id), nav.show_completed)?;
     let matches = search_ids(core, &nav.search)?;
     view.tasks = summaries
@@ -184,9 +196,36 @@ fn task_row(summary: &TaskSummary, project: Option<(&str, Option<Color>)>) -> Op
         project_color: color.unwrap_or_default(),
         has_pomodoro: !summary.links.pomodoro_presets.is_empty(),
         has_timer: !summary.links.timer_presets.is_empty(),
-        time: format::tracked(summary.tracked).into(),
+        time: tracked_label(summary).into(),
         // M7a
         has_alarm: !summary.links.alarms.is_empty(),
+    })
+}
+
+/// "3h 40min", or "3h 40min / 4h" with an estimate.
+fn tracked_label(summary: &TaskSummary) -> String {
+    let tracked = format::tracked(summary.tracked);
+    match summary.task.estimate {
+        Some(estimate) => format!("{tracked} / {}", format::estimate_short(estimate)),
+        None => tracked,
+    }
+}
+
+/// A checklist row: the first non-empty line of the description goes under the name.
+fn subtask_row(subtask: &Subtask) -> Option<ui::SubtaskRow> {
+    let note = subtask
+        .description
+        .lines()
+        .map(str::trim)
+        .find(|line| !line.is_empty())
+        .unwrap_or_default();
+    Some(ui::SubtaskRow {
+        id: slint_id(subtask.id.0)?,
+        name: subtask.name.as_str().into(),
+        done: subtask.completed_at.is_some(),
+        description: subtask.description.as_str().into(),
+        note: note.into(),
+        estimate: format::estimate_input(subtask.estimate).into(),
     })
 }
 
@@ -250,20 +289,20 @@ fn fill_task<Tz: TimeZone>(
     view.subheading = format::task_status(task.completed_at.is_some(), tracked);
     view.heading_color = owner.map(|p| palette::color(&p.project.color));
     let now = core.now();
+    let (estimate_progress, estimate_label) = task
+        .estimate
+        .map(|e| format::estimate_progress(tracked, e))
+        .unwrap_or_default();
     view.task = Some(TaskDetail {
         done: task.completed_at.is_some(),
         project: project.to_owned(),
         total: format::duration(tracked),
-        subtasks: subtasks
-            .iter()
-            .filter_map(|s| {
-                Some(ui::SubtaskRow {
-                    id: slint_id(s.id.0)?,
-                    name: s.name.as_str().into(),
-                    done: s.completed_at.is_some(),
-                })
-            })
-            .collect(),
+        description: task.description.clone(),
+        estimate: format::estimate_input(task.estimate),
+        estimate_progress,
+        estimate_over: task.estimate.is_some_and(|e| tracked > e),
+        estimate_label,
+        subtasks: subtasks.iter().filter_map(subtask_row).collect(),
         checklist: format::checklist_label(done, total),
         progress: format::fraction(done, total),
         links: link_rows(&core.task_links(id)?),

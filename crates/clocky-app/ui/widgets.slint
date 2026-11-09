@@ -287,6 +287,88 @@ export component TextField inherits Rectangle {
     }
 }
 
+// Multi-line text (descriptions). Shows `value` and follows it while not being edited; losing
+// the focus commits the text when it changed, Esc puts `value` back. `boxed: false` draws no
+// box (the text lines up with the content around it), only an underline while editing.
+export component TextArea inherits Rectangle {
+    in property <string> value;
+    in property <string> placeholder;
+    in property <length> font-size: Theme.fs-base;
+    in property <length> min-text-height: 48px;
+    in property <bool> boxed: true;
+    out property <bool> has-focus: input.has-focus;
+    callback edited(string);
+    callback committed(string);
+
+    property <length> pad-x: root.boxed ? Theme.space-3-5 : 0px;
+    property <length> pad-y: root.boxed ? Theme.space-2-5 : Theme.space-1-5;
+
+    min-height: max(root.min-text-height, input.preferred-height) + root.pad-y * 2;
+    border-radius: root.boxed ? Theme.radius-lg : 0px;
+    background: root.boxed ? Theme.field : transparent;
+    border-width: root.boxed ? 1px : 0px;
+    border-color: input.has-focus ? Theme.accent : Theme.line-2;
+
+    touch := TouchArea {
+        mouse-cursor: text;
+        clicked => { input.focus(); }
+    }
+
+    input := TextInput {
+        x: root.pad-x;
+        y: root.pad-y;
+        width: parent.width - root.pad-x * 2;
+        height: parent.height - root.pad-y * 2;
+        text: root.value;
+        color: Theme.text;
+        font-size: root.font-size;
+        single-line: false;
+        wrap: word-wrap;
+        edited => { root.edited(self.text); }
+        changed has-focus => {
+            if (!self.has-focus && self.text != root.value) {
+                root.committed(self.text);
+            }
+        }
+        key-pressed(event) => {
+            if (event.text == Key.Escape) {
+                self.text = root.value;
+                self.clear-focus();
+                return accept;
+            }
+            reject
+        }
+    }
+
+    // Typing breaks the text binding: follow a new value (another task opened, saved).
+    changed value => {
+        if (input.text != root.value) {
+            input.text = root.value;
+        }
+    }
+
+    if input.text == "": Text {
+        x: root.pad-x;
+        y: root.pad-y;
+        width: parent.width - root.pad-x * 2;
+        text: root.placeholder;
+        color: Theme.muted;
+        font-size: root.font-size;
+        wrap: word-wrap;
+    }
+
+    // Inline: an underline shows where the text goes (hover) and that it is being edited.
+    if !root.boxed && (input.has-focus || touch.has-hover): Rectangle {
+        y: parent.height - 1px;
+        height: 1px;
+        background: input.has-focus ? Theme.accent : Theme.line-2;
+    }
+
+    public function focus-input() {
+        input.focus();
+    }
+}
+
 // Thin progress bar (cards: project color; checklist: ok).
 export component ProgressBar inherits Rectangle {
     in property <float> progress;

@@ -5,6 +5,7 @@
 mod actions;
 // M7b: Relatórios, Configurações and the archive confirmations.
 mod archive;
+mod details;
 mod reports;
 mod settings;
 
@@ -21,6 +22,11 @@ use crate::reports_view::ReportNav;
 use crate::settings_view::Applied;
 use crate::settings_view::presets::PresetDraft;
 use crate::{autostart, chips, palette, ui};
+
+/// `estimate-invalid` when every typed estimate was understood.
+const NO_INVALID_ESTIMATE: i32 = -2;
+/// `estimate-invalid` for the task's own estimate field.
+const TASK_ESTIMATE: i32 = -1;
 
 /// Width used to wrap the "Mover para" chips (fits the 480px layout).
 const MOVE_CHIPS_WIDTH: f32 = 380.0;
@@ -147,6 +153,7 @@ impl Manage {
         state.set_renaming_task(false);
         state.set_moving_task(false);
         state.set_project_form_open(false);
+        state.set_estimate_invalid(NO_INVALID_ESTIMATE);
         let search = SharedString::from(self.nav.borrow().search.as_str());
         state.set_search(search);
         self.refresh();
@@ -193,6 +200,7 @@ impl Manage {
         state.set_subheading(view.subheading.as_str().into());
         state.set_has_heading_color(view.heading_color.is_some());
         state.set_heading_color(view.heading_color.unwrap_or_default());
+        state.set_project_description(view.project_description.as_str().into());
         state.set_tasks(model(view.tasks.clone()));
         let show_completed = self.nav.borrow().show_completed;
         state.set_show_completed(show_completed);
@@ -224,6 +232,11 @@ impl Manage {
         state.set_task_done(task.done);
         state.set_task_project(SharedString::from(task.project.as_str()));
         state.set_task_total(task.total.as_str().into());
+        state.set_task_description(task.description.as_str().into());
+        state.set_task_estimate(task.estimate.as_str().into());
+        state.set_task_estimate_progress(task.estimate_progress);
+        state.set_task_estimate_over(task.estimate_over);
+        state.set_task_estimate_label(task.estimate_label.as_str().into());
         state.set_subtasks(model(task.subtasks.clone()));
         state.set_checklist(task.checklist.as_str().into());
         state.set_checklist_progress(task.progress);
