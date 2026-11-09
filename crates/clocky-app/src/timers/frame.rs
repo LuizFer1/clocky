@@ -8,10 +8,9 @@ use clocky_core::time::Timestamp;
 use clocky_core::tracker::Tracker;
 use slint::SharedString;
 
-use super::cards::Kind;
 use super::convert::{color, count_ratio, fraction, row_to_ui};
 use super::names::{Names, TaskLabel};
-use super::state::{State, View, pick, pick_countdown};
+use super::state::{State, View, pick_countdown, pick_stopwatch};
 use crate::format;
 use crate::ui;
 
@@ -23,6 +22,8 @@ pub struct Frame {
     pub notice: SharedString,
     pub body: Body,
     pub forgotten: Option<SharedString>,
+    /// The header's "2/3", ‹ › and "+ Novo".
+    pub siblings: super::siblings::Siblings,
 }
 
 pub enum Body {
@@ -104,6 +105,7 @@ pub fn build(src: &Source<'_>) -> Frame {
         notice: src.state.notice.as_str().into(),
         body: Body::None,
         forgotten: forgotten_text(src),
+        siblings: super::siblings::siblings(src.state, src.tracker.timers()),
     };
     frame.body = match view {
         View::Hidden => Body::None,
@@ -152,7 +154,7 @@ fn forgotten_text(src: &Source<'_>) -> Option<SharedString> {
 
 fn stopwatch(src: &Source<'_>) -> StopwatchFrame {
     let timers = src.tracker.timers();
-    let active = pick(timers, Kind::Stopwatch, src.state.stopwatch).and_then(|id| timers.get(id));
+    let active = pick_stopwatch(timers, src.state.stopwatch).and_then(|id| timers.get(id));
     let (state, time, task) = match active {
         Some(active) => match &active.timer {
             Timer::Stopwatch(sw) => (

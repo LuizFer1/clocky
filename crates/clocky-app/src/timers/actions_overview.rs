@@ -4,7 +4,7 @@ use clocky_core::domain::{TaskId, TimerId};
 use clocky_core::engine::timers::Timers;
 
 use super::cards::Kind;
-use super::state::{PomodoroPick, View};
+use super::state::{PomodoroPick, StopwatchPick, View};
 use super::{TimerPanels, kind_of};
 
 /// Where a chosen task goes.
@@ -52,7 +52,7 @@ impl TimerPanels {
                     state.view = View::CountdownRun;
                 }
                 (Some(Kind::Stopwatch), _) => {
-                    state.stopwatch = Some(id);
+                    state.stopwatch = StopwatchPick::Active(Some(id));
                     state.view = View::Stopwatch;
                 }
                 (Some(Kind::Pomodoro), _) => {
@@ -63,6 +63,49 @@ impl TimerPanels {
             }
         }
         self.render();
+    }
+
+    /// "+ Novo" in the header: leaves the shown timer running and opens the screen that starts
+    /// another one of its kind. A new stopwatch keeps the task of the one shown.
+    pub(super) fn new_timer(&self) {
+        self.chooser.cancel();
+        let task = {
+            let handle = self.core.borrow();
+            let timers = handle.tracker().timers();
+            let state = self.state.borrow();
+            super::siblings::shown(&state, timers)
+                .and_then(|id| timers.get(id).and_then(|a| a.task))
+        };
+        {
+            let mut state = self.state.borrow_mut();
+            match state.view {
+                View::Stopwatch => {
+                    state.stopwatch = StopwatchPick::Fresh;
+                    state.stopwatch_task = task;
+                }
+                View::CountdownRun => state.view = View::CountdownConfig,
+                View::PomodoroTimer => state.view = View::PomodoroList,
+                _ => {}
+            }
+        }
+        self.render();
+    }
+
+    /// ‹ › in the header: shows the previous or next active timer of the panel's kind.
+    pub(super) fn cycle(&self, forward: bool) {
+        self.chooser.cancel();
+        let target = {
+            let handle = self.core.borrow();
+            let timers = handle.tracker().timers();
+            let state = self.state.borrow();
+            super::siblings::kind_of_view(state.view).and_then(|kind| {
+                let current = super::siblings::shown(&state, timers);
+                super::siblings::cycle_target(timers, kind, current, forward)
+            })
+        };
+        if let Some(id) = target {
+            self.open_card(id);
+        }
     }
 
     /// "Registrar tudo" / "Descartar". If the tracker refuses, the dialog stays up (the notice

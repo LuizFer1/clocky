@@ -61,6 +61,13 @@ export global TimerUi {
     in property <string> subtitle;
     // Header icon: "stopwatch" | "countdown" | "pomodoro" | "overview".
     in property <string> icon-kind;
+    // Several timers of the panel's kind: "2/3" (or "3 ativos" on a new-timer screen), ‹ ›
+    // between them and "+ Novo" to start another one while the shown one runs.
+    in property <string> sibling-label;
+    in property <bool> can-cycle;
+    in property <bool> can-new;
+    callback cycle(bool);
+    callback new-timer();
     // One-line notice at the top of the body ("Sessão de 00:12:04 registrada").
     in property <string> notice;
     callback dismiss-notice();

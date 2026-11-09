@@ -9,7 +9,7 @@ use clocky_core::tracker::{Tracker, TrackerError, TrackerEvent};
 use super::TimerPanels;
 use super::cards::Kind;
 use super::hms::Field;
-use super::state::{PomodoroPick, View, pick, pick_countdown};
+use super::state::{PomodoroPick, StopwatchPick, View, pick, pick_countdown, pick_stopwatch};
 use crate::format;
 
 /// Shown when a command fails (the details go to the log).
@@ -45,7 +45,9 @@ impl TimerPanels {
         let handle = self.core.borrow();
         let state = self.state.borrow();
         let selected = match kind {
-            Kind::Stopwatch => state.stopwatch,
+            Kind::Stopwatch => {
+                return pick_stopwatch(handle.tracker().timers(), state.stopwatch);
+            }
             Kind::Countdown => state.countdown,
             Kind::Pomodoro => match state.pomodoro {
                 PomodoroPick::Active(selected) => selected,
@@ -147,7 +149,7 @@ impl TimerPanels {
         let task = self.state.borrow().stopwatch_task;
         if let Some(id) = self.command("start stopwatch", |t, now| t.start_stopwatch(task, now)) {
             let mut state = self.state.borrow_mut();
-            state.stopwatch = Some(id);
+            state.stopwatch = StopwatchPick::Active(Some(id));
             state.notice.clear();
         }
         self.render();

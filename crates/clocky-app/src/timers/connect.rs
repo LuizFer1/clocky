@@ -145,4 +145,8 @@ fn overview(g: &ui::TimerUi<'_>, weak: &Weak<TimerPanels>) {
     });
     let w = weak.clone();
     g.on_open_menu(move || with(&w, TimerPanels::open_menu));
+    let w = weak.clone();
+    g.on_new_timer(move || with(&w, TimerPanels::new_timer));
+    let w = weak.clone();
+    g.on_cycle(move |forward| with(&w, |p| p.cycle(forward)));
 }
