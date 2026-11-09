@@ -82,6 +82,9 @@ pub fn apply(window: &ui::PanelWindow, models: &Models, frame: Frame) {
     global.set_notice(frame.notice);
     global.set_forgotten_visible(frame.forgotten.is_some());
     global.set_forgotten_text(frame.forgotten.unwrap_or_default());
+    global.set_sibling_label(frame.siblings.label);
+    global.set_can_cycle(frame.siblings.can_cycle);
+    global.set_can_new(frame.siblings.can_new);
     match frame.body {
         Body::None | Body::AlarmEditor => {}
         Body::Stopwatch(f) => stopwatch(&global, models, f),

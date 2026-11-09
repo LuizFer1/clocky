@@ -26,6 +26,7 @@ mod overview_alarms;
 mod pomodoro_view;
 mod segments;
 pub mod shots;
+mod siblings;
 mod start;
 mod state;
 mod wizard;
@@ -168,7 +169,12 @@ impl TimerPanels {
                 PanelKind::Alarm => View::Alarm {
                     from_overview: false,
                 },
-                PanelKind::Stopwatch => View::Stopwatch,
+                PanelKind::Stopwatch => {
+                    if state.stopwatch == state::StopwatchPick::Fresh {
+                        state.stopwatch = state::StopwatchPick::Active(None);
+                    }
+                    View::Stopwatch
+                }
                 PanelKind::Countdown => View::CountdownRun,
                 PanelKind::Pomodoro => {
                     state.pomodoro = PomodoroPick::Active(match state.pomodoro {
@@ -352,7 +358,7 @@ impl TimerPanels {
             .find(|id| !state.forgotten_asked.contains(id))?;
         state.forgotten_asked.insert(id);
         state.forgotten = Some(id);
-        state.stopwatch = Some(id);
+        state.stopwatch = state::StopwatchPick::Active(Some(id));
         state.view = View::Stopwatch;
         drop(state);
         // The window may be hidden (the tick renders only a visible one): fill it now, so it

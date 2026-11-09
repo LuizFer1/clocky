@@ -41,6 +41,15 @@ impl View {
     }
 }
 
+/// What the Cronômetro shows.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StopwatchPick {
+    /// The selected active stopwatch, else the most recent one.
+    Active(Option<TimerId>),
+    /// "+ Novo": a ready stopwatch, so "Iniciar" starts another one next to the running ones.
+    Fresh,
+}
+
 /// What the pomodoro timer view shows.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PomodoroPick {
@@ -52,7 +61,7 @@ pub enum PomodoroPick {
 
 pub struct State {
     pub view: View,
-    pub stopwatch: Option<TimerId>,
+    pub stopwatch: StopwatchPick,
     pub countdown: Option<TimerId>,
     pub pomodoro: PomodoroPick,
     /// Task of the next stopwatch, countdown and draft pomodoro.
@@ -80,7 +89,7 @@ impl State {
     pub fn new() -> Self {
         Self {
             view: View::Hidden,
-            stopwatch: None,
+            stopwatch: StopwatchPick::Active(None),
             countdown: None,
             pomodoro: PomodoroPick::Active(None),
             stopwatch_task: None,
@@ -124,6 +133,14 @@ pub fn pick(timers: &Timers, kind: Kind, selected: Option<TimerId>) -> Option<Ti
     }
 }
 
+/// The stopwatch the Cronômetro shows: none for a fresh one, else as [`pick`].
+pub fn pick_stopwatch(timers: &Timers, selected: StopwatchPick) -> Option<TimerId> {
+    match selected {
+        StopwatchPick::Active(selected) => pick(timers, Kind::Stopwatch, selected),
+        StopwatchPick::Fresh => None,
+    }
+}
+
 /// The countdown the Temporizador shows: the selected one while it rings or runs (none once it
 /// ended, as [`pick`]); with no selection, a ringing one, then the most recent active one.
 pub fn pick_countdown(
@@ -146,7 +163,7 @@ pub fn pick_countdown(
 /// started yet (a draft) stays selected: stopping another pomodoro (from Ativos) keeps it.
 pub fn select(state: &mut State, kind: Kind, id: TimerId) {
     match kind {
-        Kind::Stopwatch => state.stopwatch = Some(id),
+        Kind::Stopwatch => state.stopwatch = StopwatchPick::Active(Some(id)),
         Kind::Countdown => state.countdown = Some(id),
         Kind::Pomodoro => {
             if let PomodoroPick::Active(_) = state.pomodoro {
@@ -195,8 +212,10 @@ pub fn draft_tasks(state: &State) -> Vec<TaskId> {
 /// timer of its kind again.
 pub fn forget_ended(state: &mut State, timers: &Timers) {
     let gone = |id: Option<TimerId>| id.is_some_and(|id| timers.get(id).is_none());
-    if gone(state.stopwatch) {
-        state.stopwatch = None;
+    if let StopwatchPick::Active(selected) = state.stopwatch
+        && gone(selected)
+    {
+        state.stopwatch = StopwatchPick::Active(None);
     }
     let ringing =
         |id: Option<TimerId>| id.is_some_and(|id| state.ringing.iter().any(|r| r.timer == id));
@@ -297,12 +316,27 @@ mod tests {
         // "Parar" on `a` and "Cancelar" on `c`: a second click finds nothing to stop.
         timers.discard(a).unwrap();
         timers.discard(c).unwrap();
-        assert_eq!(pick(&timers, Kind::Stopwatch, state.stopwatch), None);
+        assert_eq!(pick_stopwatch(&timers, state.stopwatch), None);
         assert_eq!(pick_countdown(&timers, &[], state.countdown), None);
         // Opening the panel again from the menu shows the remaining stopwatch.
         forget_ended(&mut state, &timers);
-        assert_eq!(pick(&timers, Kind::Stopwatch, state.stopwatch), Some(b));
+        assert_eq!(pick_stopwatch(&timers, state.stopwatch), Some(b));
         assert_eq!(state.countdown, None);
+    }
+
+    #[test]
+    fn a_fresh_stopwatch_shows_none_and_survives_ended_timers() {
+        let (mut timers, [a, _, _]) = timers();
+        let mut state = State::new();
+        state.stopwatch = StopwatchPick::Fresh;
+        // "Iniciar" on it starts a new stopwatch instead of pausing a running one.
+        assert_eq!(pick_stopwatch(&timers, state.stopwatch), None);
+        timers.discard(a).unwrap();
+        forget_ended(&mut state, &timers);
+        assert_eq!(state.stopwatch, StopwatchPick::Fresh);
+        // Selecting a stopwatch (a card, ‹ ›) leaves the fresh one.
+        select(&mut state, Kind::Stopwatch, a);
+        assert_eq!(state.stopwatch, StopwatchPick::Active(Some(a)));
     }
 
     #[test]

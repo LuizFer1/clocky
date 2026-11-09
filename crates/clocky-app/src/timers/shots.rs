@@ -39,6 +39,10 @@ enum Scene {
     WizardCreated,
     /// "Iniciar" in the configuration, then "Pausar".
     CountdownPaused,
+    /// "+ Novo" over a running stopwatch (one is started first if none runs).
+    StopwatchNew,
+    /// "Iniciar" on that fresh stopwatch: two run side by side.
+    StopwatchSecond,
     /// The configuration on a 1366×768 screen at 125% (558 px cap): the body scrolls.
     SmallScreen,
 }
@@ -85,6 +89,8 @@ fn plan() -> Vec<Step> {
         Step::Shot("pomodoro-wizard-step4", Scene::WizardStep4),
         Step::Shot("pomodoro-criado", Scene::WizardCreated),
         Step::Shot("temporizador-pausado", Scene::CountdownPaused),
+        Step::Shot("cronometro-novo", Scene::StopwatchNew),
+        Step::Shot("cronometro-dois", Scene::StopwatchSecond),
         Step::Shot("temporizador-config-tela-pequena", Scene::SmallScreen),
     ]);
     steps
@@ -214,6 +220,14 @@ fn click(run: &Run, global: &ui::TimerUi<'_>, scene: Scene) -> bool {
             run.ctx.panels.show(PanelKind::Stopwatch);
             global.invoke_sw_change_task();
         }
+        Scene::StopwatchNew => {
+            run.ctx.panels.show(PanelKind::Stopwatch);
+            if global.get_sw_state() == 0 {
+                global.invoke_sw_primary();
+            }
+            global.invoke_new_timer();
+        }
+        Scene::StopwatchSecond => global.invoke_sw_primary(),
         _ => return false,
     }
     true
@@ -242,7 +256,9 @@ fn open(run: &Run, scene: Scene) {
         | Scene::Recorded
         | Scene::WizardStep4
         | Scene::WizardCreated
-        | Scene::CountdownPaused => {}
+        | Scene::CountdownPaused
+        | Scene::StopwatchNew
+        | Scene::StopwatchSecond => {}
     }
 }
 
