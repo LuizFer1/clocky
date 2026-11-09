@@ -11,13 +11,14 @@ mod settings;
 
 use std::cell::{Cell, RefCell};
 use std::rc::{Rc, Weak};
+use std::time::Duration;
 
 use clocky_core::domain::{PomodoroPresetId, ProjectId, SessionId, TaskId};
 use slint::winit_030::WinitWindowAccessor;
 use slint::{ComponentHandle, Model, ModelRc, SharedString, VecModel};
 
 use crate::core::{AppCore, CoreResult};
-use crate::manage_view::{self, ManageView, Nav, Page};
+use crate::manage_view::{self, ManageView, Nav, Page, slint_id};
 use crate::reports_view::ReportNav;
 use crate::settings_view::Applied;
 use crate::settings_view::presets::PresetDraft;
@@ -76,6 +77,9 @@ pub struct Manage {
     preset_draft: RefCell<Option<PresetDraft>>,
     /// The checklist of the task page, kept across refreshes (see [`sync_rows`]).
     subtasks: Rc<VecModel<ui::SubtaskRow>>,
+    /// A task completed in a list that hides completed tasks: saved when its row has swept out
+    /// (see [`Manage::sweep_out`]), or right away by the next refresh.
+    leaving: Cell<Option<TaskId>>,
 }
 
 impl Manage {
@@ -96,6 +100,7 @@ impl Manage {
             on_settings: RefCell::new(None),
             preset_draft: RefCell::new(None),
             subtasks: Rc::new(VecModel::default()),
+            leaving: Cell::new(None),
         });
         manage
             .state()
@@ -173,6 +178,7 @@ impl Manage {
 
     /// Rebuilds every model from the core. The core borrow ends before Slint is touched.
     pub fn refresh(&self) {
+        self.save_leaving();
         let nav = self.nav();
         let built = {
             let core = self.core.borrow();
@@ -298,6 +304,59 @@ impl Manage {
                 f(&manage, a, b);
             }
         }
+    }
+}
+
+/// How long a completed row takes to leave the list: the sum of the `dur-complete-*` durations
+/// in theme.slint, plus a frame or two so the row is closed before the list loses it.
+const LEAVE: Duration = Duration::from_millis(280 + 320 + 180 + 40);
+
+/// Completed tasks leaving the list.
+impl Manage {
+    /// Completes `id` after its row sweeps out of the list. A task already leaving is saved
+    /// first, so quick clicks on several rows complete them all.
+    fn sweep_out(&self, id: TaskId) {
+        if self.leaving.get().is_some() {
+            self.refresh();
+        }
+        let Some(row) = slint_id(id.0) else {
+            return self.complete(id);
+        };
+        self.leaving.set(Some(id));
+        self.state().set_leaving_task(row);
+        let weak = self.weak.clone();
+        slint::Timer::single_shot(LEAVE, move || {
+            if let Some(manage) = weak.upgrade()
+                && manage.leaving.get() == Some(id)
+            {
+                manage.refresh();
+            }
+        });
+    }
+
+    /// Unchecked again while it sweeps out: it stays open and its row comes back.
+    fn stay(&self, id: TaskId) -> bool {
+        if self.leaving.get() != Some(id) {
+            return false;
+        }
+        self.leaving.set(None);
+        self.state().set_leaving_task(-1);
+        true
+    }
+
+    /// Saves the leaving task (before the view is rebuilt without it).
+    fn save_leaving(&self) {
+        let Some(id) = self.leaving.take() else {
+            return;
+        };
+        self.state().set_leaving_task(-1);
+        if let Err(e) = self.core.borrow_mut().set_task_done(id, true) {
+            tracing::warn!("failed to complete the task: {e}");
+        }
+    }
+
+    fn complete(&self, id: TaskId) {
+        self.mutate("complete the task", |c| c.set_task_done(id, true));
     }
 }
 

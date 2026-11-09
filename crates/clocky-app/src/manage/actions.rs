@@ -308,6 +308,13 @@ impl Manage {
         let Some(id) = db_id(id).map(TaskId) else {
             return;
         };
+        if !done && self.stay(id) {
+            return;
+        }
+        // The list hides completed tasks: the row sweeps out before the task is saved.
+        if done && !self.nav().show_completed {
+            return self.sweep_out(id);
+        }
         self.mutate("complete or reopen the task", |c| c.set_task_done(id, done));
     }
 
