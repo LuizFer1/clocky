@@ -34,6 +34,21 @@ pub(super) fn duration_from_ms(millis: i64, what: &'static str) -> Result<Durati
         .map_err(|_| StoreError::OutOfRange(what))
 }
 
+/// An optional estimate as nullable milliseconds; a zero estimate is out of range.
+pub(super) fn estimate_to_sql(estimate: Option<Duration>) -> Result<Option<i64>, StoreError> {
+    estimate
+        .map(|d| match duration_to_ms(d, "estimate")? {
+            0 => Err(StoreError::OutOfRange("estimate")),
+            millis => Ok(millis),
+        })
+        .transpose()
+}
+
+/// Nullable milliseconds read from the database as an optional estimate.
+pub(super) fn estimate_from_sql(millis: Option<i64>) -> Result<Option<Duration>, StoreError> {
+    millis.map(|m| duration_from_ms(m, "estimate")).transpose()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -63,6 +78,20 @@ mod tests {
             timer_id_from_sql(-1),
             Err(StoreError::OutOfRange("timer id"))
         ));
+    }
+
+    #[test]
+    fn estimates_roundtrip_and_reject_zero_and_negative() {
+        let hour = Duration::from_hours(1);
+        assert_eq!(estimate_to_sql(Some(hour)).unwrap(), Some(3_600_000));
+        assert_eq!(estimate_to_sql(None).unwrap(), None);
+        assert!(matches!(
+            estimate_to_sql(Some(Duration::ZERO)),
+            Err(StoreError::OutOfRange("estimate"))
+        ));
+        assert_eq!(estimate_from_sql(Some(3_600_000)).unwrap(), Some(hour));
+        assert_eq!(estimate_from_sql(None).unwrap(), None);
+        assert!(estimate_from_sql(Some(-1)).is_err());
     }
 
     #[test]
