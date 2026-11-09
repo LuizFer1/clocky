@@ -251,7 +251,12 @@ export component TextField inherits Rectangle {
         padding-left: root.boxed ? Theme.space-3-5 : 0px;
         padding-right: root.boxed ? Theme.space-3-5 : 0px;
 
+        // A single-line input asks for its whole text's width; without this a long name
+        // would widen the field (and the page) past the window instead of scrolling.
         Rectangle {
+            min-width: 0px;
+            horizontal-stretch: 1;
+
             input := TextInput {
                 width: 100%;
                 height: 100%;
